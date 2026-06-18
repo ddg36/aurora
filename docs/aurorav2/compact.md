@@ -57,7 +57,6 @@ aurora/
 │   │   ├── resources.py        → MCP resources
 │   │   ├── prompts.py          → MCP prompts
 │   │   └── external.py         → External MCP servers
-│   ├── parser/                 → Block parser (Orion)
 │   ├── db/                     → Database layer (SQLite)
 │   │   ├── connection.py       → Async SQLite
 │   │   ├── auth.py             → Auth guard middleware

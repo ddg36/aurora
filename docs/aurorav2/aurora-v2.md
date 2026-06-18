@@ -22,7 +22,6 @@ Aurora es el server. Un proceso Python/Litestar corriendo en `:7779` que unifica
 │  /db    → SQLite gateway            │
 │  /nexus → shell, fs, py             │
 │  /gemita→ LLM streaming WebSocket   │
-│  /parser→ bloques @@                │
 │  /browser→ Playwright               │
 │  /voz   → STT faster-whisper, TTS   │
 │  /mcp   → MCP protocol              │
@@ -74,7 +73,7 @@ Las extensiones ya no tienen UI propia. No usan aurora.js. No tienen `modules/`,
 aurora/extensions/ash/
   manifest.json     ← MV3, permisos mínimos
   background.js     ← service worker: Chrome APIs, routing mensajes
-  content.js        ← inyecta botones @@, observa DOM del LLM
+  content.js        ← observa DOM del LLM, parsea bloques ✦✦₃/✧✧✧
   index.html        ← <iframe src="http://localhost:7779/ui?ext=ash">
 
 aurora/extensions/bold/
@@ -220,25 +219,6 @@ src/
 
   voz/                        ← server-side speech — /voz/*
     router.py                 ← POST /voz/stt (faster-whisper), POST /voz/tts (edge-tts), GET /voz/voces
-
-  parser/                     ← bloques @@ — absorbe au-orion — /parser/*
-    router.py                 ← registra ParserController
-    index.py                  ← aurora_parse(text, context) → [NormalizedBlock]
-                                import: normalizer.py, validator.py, parsers/
-    normalizer.py             ← raw block → schemaVersion 1 JSON
-                                import: hash.py
-    validator.py              ← valida contrato mínimo
-    hash.py                   ← FNV-1a hash para IDs estables
-    parsers/
-      nexus.py                ← parser ✧✧✧ multilínea
-                                import: ../hash.py, utils.py
-      nx.py                   ← parser ✦✦₃ (bash)
-                                import: ../hash.py, utils.py
-      br.py                   ← parser @@br — flags: --launch, --nav, --map, --shot
-                                import: ../hash.py, utils.py
-      pg.py                   ← parser @@pg — local DOM
-                                import: ../hash.py, utils.py
-      utils.py                ← splitLeadingControlFlags, hashId FNV-1a
 
   browser/                    ← Playwright + browser-use — /browser/*
     router.py                 ← registra BrowserController
@@ -609,7 +589,7 @@ ui/
 5.  Sin dependencias transitivas en imports (3NF) — si A necesita C, importa C directo
 6.  Nuevo componente visual → ui/components/ — nunca inline en un módulo
 7.  Componente compartible entre módulos → ui/components/shared/
-8.  Lógica Python → src/nexus/, src/gemita/, src/parser/, src/browser/, src/voz/
+8.  Lógica Python → src/nexus/, src/gemita/, src/browser/, src/voz/
 9.  CSS → Twind en el componente. tokens.css para variables. Sin archivos .css por módulo.
 10. Datos → fetch /db/*. Shell/FS → fetch /nexus/*. LLM streaming → WebSocket /gemita.
 11. Extensiones son thin clients: content.js + background.js + index.html con iframe. Sin UI propia.
@@ -663,7 +643,7 @@ ui/
 | `src/nexus/` | ✅ | Portado de nexus.py standalone a /nexus/*: fs, shell, py, editor/run, approvals, tasks. nexus :7777 sigue vivo solo para extensiones |
 | `src/gemita/` | ✅ | Portado completo de gemita.py standalone. WS /gemita: config.py, protocol.py, providers.py, shell.py, tools.py (12 tools), roles.py, bucle.py (loop agéntico httpx streaming), router.py (chat como task asyncio + inbox queue). Probado end-to-end |
 | `src/voz/` | ✅ | POST /voz/stt (faster-whisper int8 CPU), POST /voz/tts (edge-tts → mp3), GET /voz/voces |
-| `src/parser/` | ✅ | Port de au-orion JS a Python: POST /parser/parse → bloques normalizados schemaVersion 1. parsers/ (nexus, nx/nxw, br, pg) |
+| `src/parser/` | ⚠️ Legacy | Desconectado — endpoint existe pero no es llamado. Parser real: gem-observer.js |
 | `src/browser/` | ⏳ | Pendiente — solo router.py + agent.py esqueleto |
 | `src/tools/` | ✅ | Sistema de tools: builtin, contract, policy, registry, router |
 | `src/mcp/` | ~ | MCP protocol — config, external, prompts, protocol, resources, router implementados parcialmente |
@@ -723,7 +703,7 @@ FASE 1 — Cimientos
   [x] src/voz/ — STT faster-whisper + TTS edge-tts server-side (/voz/*)
   [x] modules/local/ completo — voz, canvas, thinking, tools
   [x] src/nexus/ — absorbido nexus.py standalone (/nexus/* en :7779; :7777 queda solo para extensiones)
-  [x] src/parser/ — absorbido au-orion (POST /parser/parse)
+  [x] src/parser/ — legacy desconectado (endpoint existe, no es llamado)
   [x] 12 módulos UI funcionales — ajustes, prompts, wiki, stats, detective-tokens,
       toolkit, chain, scratchpad, editor, llmcloud, webnavigator, stylecatalog
   [x] aurora/extensions/ — import canónico de extensiones MV3 + registry

@@ -135,19 +135,9 @@ Usa sentinel (`__GEMITA_EOF__<uuid>`) para detectar fin de output sin cerrar el 
 
 ---
 
-## Parser endpoint: `src/parser/`
+## Parser: `src/parser/`
 
-| Archivo | Rol |
-|---------|-----|
-| `router.py` | `POST /parser/parse` → `aurora_parse(text, context)` |
-| `index.py` | Ejecuta todos los parsers, normaliza |
-| `parsers/nx.py` | `✦✦₃...✦✦₃` (bash/powershell) |
-| `parsers/nexus.py` | `✧✧✧...✧✧✧` |
-| `parsers/br.py` | `@@br...@@endbr` (browser actions) |
-| `parsers/pg.py` | `@@pg...@@endpg` (programming tasks) |
-| `normalizer.py` | Convierte bloques a formato normalizado `{action, target, params}` |
-
-**Estado:** endpoint existe, pero **no es llamado por ningún flujo activo**. Ni gem-observer.js ni Gemita lo usan. Está disponible para consumo externo.
+Legacy desconectado. Existe pero **no es llamado por ningún flujo activo**. El parser real es `gem-observer.js` que busca `✦✦₃` y `✧✧✧` en el DOM.
 
 ---
 
