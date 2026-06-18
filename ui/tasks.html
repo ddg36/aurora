@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aurora Tasks</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; min-height: 100vh; background: #0d1117; color: #e6edf3; font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace; font-size: 13px; }
+  body { padding: 16px; }
+  h1 { font-size: 16px; margin-bottom: 12px; color: #58a6ff; display: flex; align-items: center; gap: 8px; }
+  h1 span { color: #8b949e; font-size: 12px; font-weight: normal; }
+  .section { margin-bottom: 20px; }
+  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #8b949e; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .job { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 10px; margin-bottom: 6px; transition: border-color .2s; }
+  .job:hover { border-color: #58a6ff; }
+  .job.killed { border-color: #da3633; }
+  .job.done { border-color: #238636; }
+  .job.errored { border-color: #da3633; }
+  .job.running { border-color: #58a6ff; }
+  .job-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 4px; }
+  .job-status { font-size: 11px; padding: 2px 6px; border-radius: 3px; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+  .status-running { background: #1f6feb22; color: #58a6ff; }
+  .status-done { background: #23863622; color: #3fb950; }
+  .status-killed { background: #da363322; color: #f85149; }
+  .status-errored { background: #da363322; color: #f85149; }
+  .job-cmd { flex: 1; font-size: 13px; word-break: break-all; }
+  .job-meta { font-size: 11px; color: #8b949e; display: flex; gap: 12px; flex-wrap: wrap; }
+  .job-actions { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+  .btn { padding: 4px 10px; border: 1px solid #30363d; border-radius: 4px; cursor: pointer; font-size: 11px; background: #21262d; color: #e6edf3; font-family: inherit; }
+  .btn:hover { background: #30363d; }
+  .btn-kill { background: #da363322; border-color: #da3633; color: #f85149; }
+  .btn-kill:hover { background: #da363344; }
+  .btn-forget { background: transparent; border-color: transparent; color: #8b949e; }
+  .btn-forget:hover { color: #e6edf3; }
+  .output { margin-top: 8px; padding: 8px; background: #0d1117; border: 1px solid #21262d; border-radius: 4px; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow: auto; color: #7ee787; }
+  .output .stderr { color: #f85149; }
+  .empty { color: #8b949e; text-align: center; padding: 40px 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .empty svg { opacity: .4; }
+  .badge { font-size: 11px; background: #21262d; padding: 1px 6px; border-radius: 3px; color: #8b949e; }
+  .stream-line { display: block; }
+
+  @keyframes aurora-spin { to { transform: rotate(360deg); } }
+  .spinner { animation: aurora-spin 1s linear infinite; display: inline-block; vertical-align: middle; }
+  .spinner-sm { width: 14px; height: 14px; }
+</style>
+</head>
+<body>
+
+<h1>Aurora Tasks <span id="counts"></span></h1>
+
+<div class="section" id="running-section">
+  <div class="section-title">
+    <svg class="spinner spinner-sm" viewBox="0 0 20 20" fill="none" stroke="#58a6ff" stroke-width="2"><circle cx="10" cy="10" r="7" stroke-dasharray="44" stroke-dashoffset="30" stroke-linecap="round" opacity=".3"/><circle cx="10" cy="10" r="7" stroke-dasharray="44" stroke-dashoffset="10" stroke-linecap="round"/></svg>
+    Running
+  </div>
+  <div id="running-list"></div>
+</div>
+
+<div class="section" id="done-section">
+  <div class="section-title" id="done-title">
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#3fb950" stroke-width="2.5" stroke-linecap="round"><path d="M4 10l4 4 8-8"/></svg>
+    Completed
+  </div>
+  <div id="done-list"></div>
+</div>
+
+<script>
+const API = 'http://localhost:7779';
+let streamSources = {};
+
+async function loadTasks() {
+  try {
+    const r = await fetch(API + '/nexus/tasks');
+    const d = await r.json();
+    const running = Object.values(d.running || {});
+    const done = Object.values(d.done || {});
+    render(running, done);
+    document.getElementById('counts').textContent = `• ${running.length} running • ${done.length} done`;
+  } catch (e) {
+    document.getElementById('running-list').innerHTML = '<div class="empty">Server offline</div>';
+  }
+}
+
+function render(running, done) {
+  const rl = document.getElementById('running-list');
+  const dl = document.getElementById('done-list');
+
+  rl.innerHTML = running.length ? running.map(j => renderJob(j, true)).join('') : '<div class="empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="2.5"/><path d="M21 12a9 9 0 1 1-9-9" stroke-dasharray="56" stroke-dashoffset="40"/></svg>No tasks running</div>';
+  dl.innerHTML = done.length ? done.map(j => renderJob(j, false)).join('') : '<div class="empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8b949e" stroke-width="1.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>No completed tasks</div>';
+
+  running.forEach(j => startStream(j.id));
+  // Stop streams for completed jobs
+  Object.keys(streamSources).forEach(id => {
+    if (!running.find(j => j.id === id)) closeStream(id);
+  });
+}
+
+function renderJob(j, isRunning) {
+  const statusClass = j.status;
+  const statusLabel = j.status;
+  const showSpinner = isRunning ? `<svg class="spinner" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="10" cy="10" r="7" stroke-dasharray="44" stroke-dashoffset="30" stroke-linecap="round" opacity=".3"/><circle cx="10" cy="10" r="7" stroke-dasharray="44" stroke-dashoffset="10" stroke-linecap="round"/></svg>` : '';
+  const duration = j.duration != null ? j.duration.toFixed(1) + 's' : '...';
+  const meta = [`⏱ ${duration}`, j.pid ? `PID ${j.pid}` : '', j.exit_code != null ? `exit ${j.exit_code}` : ''].filter(Boolean).join(' · ');
+
+  return `<div class="job ${statusClass}" id="job-${j.id}">
+    <div class="job-head">
+      <span class="job-status status-${statusClass}">${showSpinner}${statusLabel}</span>
+      <span class="job-cmd">${escapeHtml(j.cmd)}</span>
+      <div class="job-actions">
+        ${isRunning ? `<button class="btn btn-kill" onclick="killJob('${j.id}')">✕ Kill</button>` : ''}
+        <button class="btn btn-forget" onclick="forgetJob('${j.id}')">✕</button>
+      </div>
+    </div>
+    <div class="job-meta">${meta}</div>
+    <div class="output" id="output-${j.id}"></div>
+  </div>`;
+}
+
+function startStream(jobId) {
+  if (streamSources[jobId]) return;
+  const outDiv = document.getElementById('output-' + jobId);
+  if (!outDiv) return;
+  const es = new EventSource(API + '/nexus/tasks/' + jobId + '/stream');
+  streamSources[jobId] = es;
+  es.onmessage = (e) => {
+    if (e.data === 'complete') { closeStream(jobId); return; }
+    outDiv.appendChild(document.createTextNode(e.data + '\n'));
+    outDiv.scrollTop = outDiv.scrollHeight;
+  };
+  es.onerror = () => closeStream(jobId);
+}
+
+function closeStream(jobId) {
+  if (streamSources[jobId]) { streamSources[jobId].close(); delete streamSources[jobId]; }
+}
+
+async function killJob(jobId) {
+  try {
+    const r = await fetch(API + '/nexus/tasks/' + jobId + '/kill', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) loadTasks();
+  } catch (e) { console.error(e); }
+}
+
+async function forgetJob(jobId) {
+  try {
+    await fetch(API + '/nexus/tasks/' + jobId + '/forget', { method: 'POST' });
+    closeStream(jobId);
+    loadTasks();
+  } catch (e) { console.error(e); }
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+loadTasks();
+setInterval(loadTasks, 2000);
+</script>
+</body>
+</html>

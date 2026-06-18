@@ -1,0 +1,6 @@
+/* AURORA/SKIN/BODY/SCROLLBARS — Scrollbars globales */
+
+::-webkit-scrollbar          { width: 6px; height: 6px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: var(--aurora-surface3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--aurora-accent); }

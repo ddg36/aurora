@@ -1,0 +1,18 @@
+[mcp.server]
+enabled = true
+name = "aurora"
+version = "0.1.0"
+
+[mcp.external.github]
+enabled = false
+type = "command"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = {}
+
+[mcp.external.filesystem]
+enabled = false
+type = "command"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+env = {}

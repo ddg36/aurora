@@ -1,0 +1,569 @@
+// TARGET_FILE: content.js
+// TARGET_FOLDER: bold_highlighter_ext
+
+let currentState = {
+    focusActive: false,
+    boldColor: '#2E8B57', 
+    tunnelActive: false,
+    sentenceActive: false,
+    bionicActive: false,
+    fixationStrength: 50,
+    scrollActive: false,
+    scrollSpeed: 50,
+    blurAmount: 4,
+    transitionTime: 0.3,
+    hudActive: true,
+    lastActiveIndex: -1 
+};
+
+// ESTADOS
+let isNavOpen = true; 
+let isRefOpen = false; 
+let isAiOpen = true;
+let collapsedStates = new Set(); 
+let isHoveringHUD = false;
+let scrollTimer;
+let isScrolling = false;
+let scrollCooldown = false;
+let isProcessingDOM = false; 
+let observerTimeout; 
+
+// --- 1. ESTILOS COMPLETOS ---
+function updateStyles() {
+    if (!chrome.runtime?.id) return;
+    let styleEl = document.getElementById('bold-dynamic-style');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'bold-dynamic-style';
+        (document.head || document.documentElement).appendChild(styleEl);
+    }
+    const s = currentState;
+
+    const css = `
+        /* BASE & BIÓNICA */
+        b, strong, .bold, .bionic-bold, [style*="font-weight: 700"] {
+            color: ${s.boldColor} !important;
+            transition: color 0.2s ease;
+        }
+        
+        /* MODO TÚNEL */
+        ${s.tunnelActive ? `
+            p, article, li, h1, h2, h3, h4, .textLayer span {
+                max-width: 65ch !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+            }
+            pre, code, .reference-block { max-width: 100% !important; }
+        ` : ''}
+
+        body, p, li, article, h1, h2, h3, div {
+            line-height: 1.7 !important;
+        }
+
+        /* --- HUD SIDEBAR --- */
+        #neural-hud {
+            position: fixed; top: 0; right: 0; width: 340px; height: 100vh;
+            background: #0f0f0f; border-left: 1px solid #333; z-index: 2147483647;
+            display: flex; flex-direction: column;
+            transform: translateX(${s.focusActive ? '0' : '100%'});
+            transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+            box-shadow: -5px 0 15px rgba(0,0,0,0.5); font-family: 'Segoe UI', sans-serif !important;
+        }
+
+        .hud-global-header {
+            padding: 12px; font-size: 10px; font-weight: 900; color: #444;
+            text-align: center; letter-spacing: 3px; background: #050505;
+            border-bottom: 1px solid #222; flex-shrink: 0;
+        }
+
+        /* MÓDULOS ACORDEÓN */
+        .hud-module { display: flex; flex-direction: column; border-bottom: 1px solid #222; overflow: hidden; flex-shrink: 0; }
+        #module-nav { flex: 1; min-height: 20%; } 
+        #module-ai { flex: 0 0 auto; max-height: 60%; } 
+
+        .hud-module-header {
+            padding: 10px 15px; background: #111; color: #888; font-size: 10px; font-weight: bold;
+            text-transform: uppercase; cursor: pointer; display: flex; justify-content: space-between;
+            align-items: center; transition: all 0.2s; user-select: none; border-left: 3px solid transparent;
+        }
+        .hud-module-header:hover { background: #161616; color: #fff; }
+        .hud-module-header.active { color: ${s.boldColor}; border-left: 3px solid ${s.boldColor}; background: #141414; }
+
+        .hud-module-content {
+            background: #0f0f0f; overflow-y: auto; overflow-x: hidden;
+            transition: all 0.3s ease; display: none;
+        }
+        .hud-module-content.open { display: block; height: 100%; padding-bottom: 10px; }
+        .hud-module-content::-webkit-scrollbar { width: 5px; }
+        .hud-module-content::-webkit-scrollbar-track { background: #0f0f0f; }
+        .hud-module-content::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+        /* ÍTEMS MAPA */
+        .hud-item { display: flex; align-items: center; padding: 5px 10px; cursor: pointer; color: #777; font-size: 13px; border-left: 2px solid transparent; transition: all 0.1s; }
+        .hud-item:hover { background: #1a1a1a; color: #fff; }
+        .hud-item.level-1 { font-weight: 700; color: #ccc; margin-top: 2px; }
+        .hud-item.level-2 { padding-left: 20px; }
+        .hud-item.level-3 { padding-left: 35px; font-size: 12px; }
+        .hud-toggle { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; margin-right: 5px; font-size: 9px; color: #555; transition: transform 0.2s; }
+        .hud-item.open .hud-toggle { transform: rotate(90deg); }
+        .hud-item.closed .hud-toggle { transform: rotate(0deg); }
+        .hud-toggle.invisible { visibility: hidden; }
+        .hud-item.active { color: ${s.boldColor} !important; border-left: 2px solid ${s.boldColor}; background: linear-gradient(90deg, ${s.boldColor}11, transparent); }
+        .hud-item.active-parent { border-left: 2px solid ${s.boldColor}44; }
+        .hud-item.hidden { display: none; }
+        .hud-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+
+        /* REFERENCIAS */
+        .hud-link-item { padding: 8px 15px; border-bottom: 1px solid #161616; font-size: 11px; color: #999; cursor: alias; word-break: break-all; display: flex; flex-direction: column; gap: 2px; }
+        .hud-link-item:hover { background: #181818; color: #fff; border-left: 2px solid ${s.boldColor}; }
+        .link-domain { color: ${s.boldColor}; font-weight: bold; font-size: 10px; }
+        .link-url { color: #555; font-size: 9px; }
+
+        /* NEURAL GRAPH & GHOST */
+        .neural-graph-container {
+            padding: 15px; height: 150px; background: #080808; 
+            border-bottom: 1px solid #222; position: relative; overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+            color: #444; font-size: 10px; font-style: italic;
+        }
+        .neural-node {
+            width: 10px; height: 10px; background: ${s.boldColor}; border-radius: 50%;
+            position: absolute; box-shadow: 0 0 10px ${s.boldColor};
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.5); } 100% { opacity: 0.5; transform: scale(1); } }
+
+        /* BOTÓN FANTASMA */
+        .neural-ghost-btn {
+            position: absolute;
+            left: -30px; top: 0; width: 20px; height: 20px;
+            background: #111; color: ${s.boldColor};
+            border: 1px solid ${s.boldColor}44; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; cursor: pointer; opacity: 0; transition: all 0.2s;
+            z-index: 999; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        .focus-target:hover .neural-ghost-btn { opacity: 1; left: -25px; }
+        .neural-ghost-btn:hover { background: ${s.boldColor}; color: #000; transform: scale(1.1); }
+        .neural-ghost-panel {
+            margin-top: 10px; padding: 15px; background: #111; border-left: 3px solid ${s.boldColor};
+            border-radius: 0 6px 6px 0; color: #ccc; font-family: 'Segoe UI', sans-serif; font-size: 13px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); animation: slideIn 0.3s ease; max-width: 600px;
+        }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .ghost-title { color: ${s.boldColor}; font-weight: bold; font-size: 11px; text-transform: uppercase; margin-bottom: 5px; display: block;}
+
+        /* --- ENFOQUE FRASE POR FRASE --- */
+        ${s.focusActive ? `
+            body { padding-right: 340px !important; transition: padding-right 0.3s ease; }
+            
+            /* LÓGICA DE ATENUACIÓN GLOBAL */
+            body:has(.focus-target:hover) .focus-target:not(:hover) {
+                opacity: 0.25 !important;
+                filter: blur(${s.blurAmount}px) grayscale(0.8) !important;
+                transition: all 0.4s ease;
+            }
+            .focus-target:hover {
+                opacity: 1 !important;
+                filter: none !important;
+                transform: scale(1.005);
+                transition: all 0.2s ease;
+                z-index: 100;
+                position: relative;
+            }
+
+            /* LÓGICA FRASE POR FRASE */
+            ${s.sentenceActive ? `
+                .focus-target:hover .sentence:not(:hover) {
+                    opacity: 0.4 !important; /* Atenuar frases no leídas */
+                    filter: blur(0.5px);
+                    transition: opacity 0.2s ease;
+                }
+                .sentence:hover {
+                    opacity: 1 !important;
+                    filter: none !important;
+                    text-shadow: 0 0 1px ${s.boldColor}44;
+                    background: rgba(255,255,255,0.02);
+                    border-radius: 2px;
+                }
+            ` : ''}
+        ` : 'body { padding-right: 0 !important; }'}
+
+        a.bionic-protected, .reference-text { color: #58a6ff !important; text-decoration: underline; font-weight: normal !important; }
+    `;
+    styleEl.textContent = css;
+}
+
+// --- 2. HUD & MÓDULOS ---
+let mapData = []; 
+let extractedLinks = []; 
+
+function createHUD() {
+    const oldHud = document.getElementById('neural-hud');
+    if (oldHud) oldHud.remove();
+    if (!currentState.focusActive) return;
+
+    const headers = Array.from(document.querySelectorAll('h1, h2, h3, h4'));
+    extractLinks(); 
+
+    const hud = document.createElement('div');
+    hud.id = 'neural-hud';
+    hud.addEventListener('mouseenter', () => { isHoveringHUD = true; });
+    hud.addEventListener('mouseleave', () => { isHoveringHUD = false; });
+    hud.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
+
+    const globalHeader = document.createElement('div');
+    globalHeader.className = 'hud-global-header';
+    globalHeader.innerText = "NEURAL SUITE";
+    hud.appendChild(globalHeader);
+
+    // MÓDULO NAVEGADOR
+    const navModule = createModule('NAVEGADOR', 'module-nav', isNavOpen, (isOpen) => { isNavOpen = isOpen; });
+    const navContent = navModule.querySelector('.hud-module-content');
+    if (headers.length > 0) {
+        mapData = []; 
+        headers.forEach((header, index) => {
+            if (header.innerText.trim().length < 2 || header.offsetParent === null) return;
+            const level = parseInt(header.tagName.substring(1));
+            const stateKey = header.innerText.substring(0, 20);
+            const isCollapsed = collapsedStates.has(stateKey);
+            const itemData = { id: index, key: stateKey, element: header, level: level, collapsed: isCollapsed, hasChildren: false, domElement: null, top: header.offsetTop };
+            const row = document.createElement('div');
+            row.className = `hud-item level-${level} ${isCollapsed ? 'closed' : 'open'}`;
+            row.dataset.id = index;
+            const toggle = document.createElement('span');
+            toggle.className = 'hud-toggle';
+            toggle.innerText = '▶'; 
+            toggle.onclick = (e) => { e.stopPropagation(); toggleSection(index); };
+            row.appendChild(toggle);
+            const text = document.createElement('span');
+            text.className = 'hud-text';
+            text.innerText = header.innerText.replace(/\s+/g, ' ').substring(0, 40);
+            row.appendChild(text);
+            row.onclick = () => customSmoothScroll(header.offsetTop - 80, true);
+            itemData.domElement = row;
+            mapData.push(itemData);
+            navContent.appendChild(row);
+        });
+        for (let i = 0; i < mapData.length; i++) {
+            const current = mapData[i];
+            if (i + 1 < mapData.length && mapData[i+1].level > current.level) current.hasChildren = true;
+            else current.domElement.querySelector('.hud-toggle').classList.add('invisible');
+        }
+        applyVisibilityLogic();
+    } else {
+        navContent.innerHTML = '<div style="padding:15px; color:#444; font-size:11px;">Sin estructura.</div>';
+    }
+    hud.appendChild(navModule);
+
+    // MÓDULO REFERENCIAS
+    const refModule = createModule(`FUENTES (${extractedLinks.length})`, 'module-ref', isRefOpen, (isOpen) => { isRefOpen = isOpen; });
+    const refContent = refModule.querySelector('.hud-module-content');
+    if (extractedLinks.length > 0) {
+        extractedLinks.forEach(link => {
+            const linkItem = document.createElement('div');
+            linkItem.className = 'hud-link-item';
+            let domain = ''; try { domain = new URL(link.href).hostname.replace('www.', ''); } catch(e) { domain = 'Link'; }
+            linkItem.innerHTML = `<span class="link-domain">🔗 ${domain}</span><span class="link-url">${link.text || link.href.substring(0, 30)+'...'}</span>`;
+            linkItem.onclick = () => window.open(link.href, '_blank');
+            refContent.appendChild(linkItem);
+        });
+    } else {
+        refContent.innerHTML = '<div style="padding:15px; color:#444; font-size:11px;">Sin enlaces.</div>';
+    }
+    hud.appendChild(refModule);
+
+    // MÓDULO NEURAL AI
+    const aiModule = createModule('NEURAL AI', 'module-ai', isAiOpen, (isOpen) => { isAiOpen = isOpen; });
+    const aiContent = aiModule.querySelector('.hud-module-content');
+    aiContent.innerHTML = `
+        <div class="ai-container" style="padding:15px; color:#888; font-size:11px;">
+            <div class="neural-graph-container">
+                <div class="neural-node" style="left:50%; top:50%"></div>
+                <span style="z-index:10; background:#000; padding:2px">🧠 Active Graph</span>
+            </div>
+            <div style="margin-top:10px; font-style:italic">
+                Usa el botón ✨ en el texto para activar la IA contextual.
+            </div>
+        </div>
+    `;
+    hud.appendChild(aiModule);
+
+    document.body.appendChild(hud);
+    updateHUDActiveState(true, false); 
+}
+
+function createModule(title, id, isOpen, callback) {
+    const container = document.createElement('div');
+    container.className = 'hud-module';
+    container.id = id;
+    const header = document.createElement('div');
+    header.className = `hud-module-header ${isOpen ? 'active' : ''}`;
+    header.innerHTML = `<span>${title}</span> <span class="arrow">${isOpen ? '▼' : '▶'}</span>`;
+    const content = document.createElement('div');
+    content.className = `hud-module-content ${isOpen ? 'open' : ''}`;
+    header.onclick = () => {
+        const isNowOpen = !content.classList.contains('open');
+        if (isNowOpen) { content.classList.add('open'); header.classList.add('active'); header.querySelector('.arrow').innerText = '▼'; }
+        else { content.classList.remove('open'); header.classList.remove('active'); header.querySelector('.arrow').innerText = '▶'; }
+        callback(isNowOpen); 
+    };
+    container.appendChild(header);
+    container.appendChild(content);
+    return container;
+}
+
+// --- 3. PROCESAMIENTO TOTAL (BIONIC + SENTENCE + GHOST) ---
+function processTextNodes() {
+    if (isProcessingDOM) return;
+    if (!currentState.bionicActive && !currentState.sentenceActive) return;
+    isProcessingDOM = true; 
+    observer.disconnect(); 
+
+    const blocks = document.querySelectorAll('p, li, article, h1, h2, h3, h4, .textLayer span, div[dir="auto"]');
+    
+    blocks.forEach(block => {
+        if (block.dataset.processed === "true") return;
+        if (block.innerText.length < 5 || block.querySelector('img')) return;
+        
+        block.classList.add('focus-target');
+        block.dataset.processed = "true"; 
+        if (block.innerText.includes('http') && block.innerText.length > 100) block.classList.add('reference-block'); 
+
+        // 1. TRANSFORMACIÓN DE TEXTO (PRIORIDAD ALTA)
+        if (currentState.sentenceActive) {
+            const rawText = block.innerText;
+            // Regex para partir frases respetando puntuación
+            const sentences = rawText.match(/[^.?!]+[.?!]+["']?|[^.?!]+$/g);
+            if (sentences) {
+                let newHTML = '';
+                sentences.forEach(s => {
+                    let processed = s;
+                    // Biónico DENTRO de la frase
+                    if (currentState.bionicActive && !s.includes('http')) {
+                        processed = applyBionicToText(s);
+                    }
+                    newHTML += `<span class="sentence">${processed}</span>`;
+                });
+                block.innerHTML = newHTML; // REEMPLAZO DESTRUCTIVO
+            }
+        } else if (currentState.bionicActive) {
+            // Si solo es biónico (sin frases)
+            const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null, false);
+            const nodes = [];
+            while(walker.nextNode()) nodes.push(walker.currentNode);
+            nodes.forEach(node => {
+                if (node.parentElement.closest('a')) return;
+                if (node.parentElement.tagName !== 'B' && node.nodeValue.trim().length > 2) {
+                    if (node.nodeValue.includes('http')) return; 
+                    const span = document.createElement('span');
+                    span.innerHTML = applyBionicToText(node.nodeValue);
+                    if (node.parentNode) node.parentNode.replaceChild(span, node);
+                }
+            });
+        }
+
+        // 2. INYECCIÓN DE BOTÓN FANTASMA (PRIORIDAD BAJA, POST-RENDER)
+        // Solo añadimos el botón DESPUÉS de haber modificado el HTML, para que no desaparezca
+        if (block.tagName === 'P' || block.tagName === 'LI') {
+            block.style.position = 'relative'; 
+            const ghostBtn = document.createElement('div');
+            ghostBtn.className = 'neural-ghost-btn';
+            ghostBtn.innerText = '✨';
+            ghostBtn.title = "Neural Explain";
+            ghostBtn.onclick = (e) => { e.stopPropagation(); toggleGhostPanel(block); };
+            block.prepend(ghostBtn);
+        }
+    });
+
+    setTimeout(() => { isProcessingDOM = false; observer.observe(document.body, { childList: true, subtree: true }); createHUD(); }, 100);
+}
+
+// LOGICA BOTON FANTASMA
+function toggleGhostPanel(block) {
+    const existing = block.querySelector('.neural-ghost-panel');
+    if (existing) { existing.remove(); return; }
+    const panel = document.createElement('div');
+    panel.className = 'neural-ghost-panel';
+    panel.innerHTML = `<span class="ghost-title">✨ ANÁLISIS NEURAL</span>Análisis del fragmento seleccionado... (Simulación)`;
+    block.appendChild(panel);
+}
+
+// LOGICA BIONICA
+function applyBionicToText(text) {
+    return text.split(' ').map(word => {
+        if (word.length < 2) return word;
+        if (word.startsWith('http') || word.startsWith('www')) return `<a href="${word}" class="bionic-protected">${word}</a>`;
+        const boldLen = Math.ceil(word.length * (currentState.fixationStrength / 100));
+        return `<b class="bionic-bold">${word.substring(0, boldLen)}</b>${word.substring(boldLen)}`;
+    }).join(' ');
+}
+
+// --- RESTO DE FUNCIONES (Links, Visibility, Scroll...) ---
+function extractLinks() {
+    extractedLinks = [];
+    const anchors = document.querySelectorAll('a[href^="http"]');
+    const uniqueUrls = new Set();
+    anchors.forEach(a => {
+        if (a.innerText.trim().length < 2) return;
+        if (uniqueUrls.has(a.href)) return;
+        uniqueUrls.add(a.href);
+        extractedLinks.push({ href: a.href, text: a.innerText.substring(0, 50) });
+        a.classList.add('bionic-protected');
+    });
+}
+function applyVisibilityLogic() {
+    let hideUntilLevel = 999;
+    for (let i = 0; i < mapData.length; i++) {
+        const item = mapData[i];
+        if (item.level > hideUntilLevel) item.domElement.classList.add('hidden');
+        else {
+            item.domElement.classList.remove('hidden');
+            hideUntilLevel = 999; 
+            if (item.collapsed && item.hasChildren) hideUntilLevel = item.level;
+        }
+    }
+}
+function toggleSection(index) {
+    const item = mapData.find(i => i.id === index);
+    if (!item || !item.hasChildren) return;
+    item.collapsed = !item.collapsed;
+    if (item.collapsed) collapsedStates.add(item.key);
+    else collapsedStates.delete(item.key);
+    if (item.collapsed) item.domElement.classList.replace('open', 'closed');
+    else item.domElement.classList.replace('closed', 'open');
+    applyVisibilityLogic();
+    updateHUDActiveState(true, false);
+}
+function updateHUDActiveState(force = false, allowScroll = true) {
+    const hud = document.getElementById('neural-hud');
+    if (!hud) return;
+    const viewLine = window.scrollY + (window.innerHeight * 0.25);
+    let activeIndex = -1;
+    for (let i = 0; i < mapData.length; i++) {
+        if (mapData[i].top <= viewLine) activeIndex = i;
+        else break;
+    }
+    if (!force && activeIndex === currentState.lastActiveIndex) return;
+    currentState.lastActiveIndex = activeIndex;
+    document.querySelectorAll('.hud-item').forEach(el => { el.classList.remove('active'); el.classList.remove('active-parent'); });
+    if (activeIndex !== -1) {
+        const activeItem = mapData[activeIndex];
+        const domEl = activeItem.domElement;
+        if (!domEl.classList.contains('hidden')) {
+            domEl.classList.add('active');
+            if (allowScroll && !isHoveringHUD && isNavOpen) domEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+            for (let i = activeIndex - 1; i >= 0; i--) {
+                const parent = mapData[i];
+                if (parent.level < activeItem.level && !parent.domElement.classList.contains('hidden')) {
+                    parent.domElement.classList.add('active-parent');
+                    if (allowScroll && !isHoveringHUD && isNavOpen) parent.domElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    break;
+                }
+            }
+        }
+    }
+}
+function customSmoothScroll(targetY, isFastTravel = false) {
+    if (isScrolling) return;
+    isScrolling = true;
+    const startY = window.scrollY;
+    const distance = targetY - startY;
+    let duration = isFastTravel ? Math.min(Math.abs(distance) / 2, 800) : Math.abs(distance) * (currentState.scrollSpeed / 20); 
+    const startTime = performance.now();
+    function animate(time) {
+        const elapsed = time - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const ease = isFastTravel ? 1 - Math.pow(1 - progress, 4) : 1 - (1 - progress) * (1 - progress); 
+        window.scrollTo(0, startY + (distance * ease));
+        if (progress < 1) requestAnimationFrame(animate);
+        else {
+            isScrolling = false;
+            if (!isFastTravel) {
+                scrollCooldown = true;
+                setTimeout(() => { scrollCooldown = false; }, 800);
+            }
+        }
+    }
+    requestAnimationFrame(animate);
+}
+document.addEventListener('mouseover', (e) => {
+    if (!chrome.runtime?.id || !currentState.focusActive) return;
+    const target = e.target.closest('.focus-target') || e.target.closest('p, li, h1, h2');
+    if (target) {
+        target.classList.add('focus-target');
+        if (currentState.scrollActive && !isScrolling && !scrollCooldown) {
+            clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(() => {
+                const rect = target.getBoundingClientRect();
+                const viewHeight = window.innerHeight;
+                const limitBottom = viewHeight * 0.90;
+                const limitTop = viewHeight * 0.15;
+                if (rect.height > viewHeight) return;
+                if (rect.bottom - limitBottom > 0) customSmoothScroll(window.scrollY + (rect.bottom - limitBottom) + 120);
+                else if (limitTop - rect.top > 0) customSmoothScroll(window.scrollY - (limitTop - rect.top) - 120);
+            }, 200);
+        }
+    }
+}, { passive: true });
+let ticking = false;
+document.addEventListener('scroll', () => {
+    if (!ticking && currentState.focusActive) {
+        window.requestAnimationFrame(() => {
+            updateHUDActiveState(false, true);
+            ticking = false;
+        });
+        ticking = true;
+    }
+}, { passive: true });
+const observer = new MutationObserver((mutations) => {
+    if (isProcessingDOM) return;
+    const significantChange = mutations.some(m => m.type === 'childList' && m.addedNodes.length > 0);
+    if (!significantChange) return;
+    clearTimeout(observerTimeout);
+    observerTimeout = setTimeout(() => {
+        if ((currentState.bionicActive || currentState.sentenceActive)) processTextNodes();
+        createHUD(); 
+    }, 1000);
+});
+const resizeObserver = new ResizeObserver(() => {
+    if (currentState.focusActive) {
+        clearTimeout(observerTimeout);
+        observerTimeout = setTimeout(createHUD, 300);
+    }
+});
+resizeObserver.observe(document.body);
+function loadSettings() {
+    if (!chrome.runtime?.id) return;
+    const apply = (res = {}) => {
+        currentState = { ...currentState, ...(res || {}) };
+        updateStyles();
+        createHUD();
+        if (currentState.bionicActive || currentState.sentenceActive) setTimeout(processTextNodes, 500);
+        observer.observe(document.body, { childList: true, subtree: true });
+    };
+
+    chrome.runtime.sendMessage({ type: 'AURORA_BOLD_GET_CONFIG' }, (reply) => {
+        if (reply?.ok) {
+            apply(reply.config);
+            return;
+        }
+        chrome.storage.sync.get(null, apply);
+    });
+}
+chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.action === "update") {
+        const needsProc = msg.settings.bionicActive || msg.settings.sentenceActive;
+        currentState = { ...currentState, ...msg.settings };
+        updateStyles();
+        setTimeout(createHUD, 300); 
+        if (needsProc) processTextNodes();
+        chrome.runtime.sendMessage({
+            type: 'AURORA_BOLD_SET_CONFIG',
+            enabled: true,
+            config: currentState,
+        });
+    }
+});
+loadSettings();

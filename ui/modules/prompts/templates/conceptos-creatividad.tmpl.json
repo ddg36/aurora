@@ -1,0 +1,328 @@
+{
+  "general": {
+    "personajes": [
+      "Un detective amnésico", "Un robot que siente emociones", "Un niño que puede ver el futuro",
+      "Una bruja moderna en la ciudad", "Un astronauta perdido en el tiempo", "Un fantasma que no sabe que murió",
+      "Un científico loco que quiere salvar el mundo", "Un viajero interdimensional", "Un vampiro vegano",
+      "Un hacker que descubre un secreto cósmico", "Un médico que puede curar con música",
+      "Un profesor que viaja a través de los sueños", "Una chef que cocina emociones",
+      "Un jardinero que habla con plantas", "Un músico sordo que compone sinfonías",
+      "Un arquitecto que diseña ciudades en otros mundos", "Un periodista que entrevista fantasmas",
+      "Un bibliotecario que vive en los libros", "Un pintor cuyas obras cobran vida",
+      "Un taxista que conoce los secretos de la ciudad", "Un soldado que odia la guerra"
+    ],
+    "escenarios": [
+      "Una estación espacial abandonada", "Un pueblo costero con secretos", "Una biblioteca infinita",
+      "Un metro subterráneo mágico", "Un laboratorio oculto bajo el ártico", "Una ciudad flotante en las nubes",
+      "Un bosque donde los árboles hablan", "Un casino interdimensional", "Un museo de arte del futuro",
+      "Una prisión de máxima seguridad para monstruos", "Un mercado negro de memorias",
+      "Un restaurante al final del universo", "Un hospital para criaturas mágicas",
+      "Un tren que viaja entre dimensiones", "Una academia para héroes caídos",
+      "Un santuario en el fondo del océano", "Un palacio hecho de cristal",
+      "Un desierto donde el tiempo no existe", "Una torre que alcanza las estrellas",
+      "Un valle donde viven los dioses olvidados", "Un jardín zen en el espacio"
+    ],
+    "conflictos": [
+      "Tienen 24 horas para evitar el apocalipsis", "Buscan un artefacto perdido que cambia la realidad",
+      "Deben resolver un asesinato sin dejar rastros", "Escapan de una organización que los caza",
+      "Descubren que su vida es una simulación", "Deben decidir entre salvar a uno o a muchos",
+      "Enfrentan su versión malvada de otro universo", "Compiten en un juego mortal por un deseo",
+      "Deben proteger a alguien que no quiere ser protegido",
+      "Descubren un secreto que podría destruir todo lo que aman",
+      "El héroe y el villano deben aliarse", "El tiempo se está borrando",
+      "Deben recuperar sus memorias robadas", "El amor prohibido entre enemigos",
+      "La profecía que debe cumplirse o evitarse", "El sacrificio que nadie quiere hacer",
+      "La traición del más cercano", "El legado familiar que es una maldición",
+      "El poder que corrompe absolutamente"
+    ],
+    "giros": [
+      "El villano es el héroe del pasado", "El mundo que conocen es falso", "El aliado es el traidor",
+      "El protagonista es el antagonista sin saberlo", "El tiempo se está invirtiendo",
+      "Los sueños son la realidad y la realidad es un sueño", "Todos están muertos excepto uno",
+      "El viaje es hacia adentro, no hacia afuera", "El final es el comienzo",
+      "Nada es lo que parece, incluyendo el lector", "El mentor es el enemigo",
+      "El objeto sagrado es una mentira", "El héroe nunca existió", "El destino era manipulado",
+      "El sacrificio fue en vano", "La victoria es la derrota", "El monstruo es humano",
+      "El humano es el monstruo", "El pasado no cambió, solo la perspectiva", "El futuro ya sucedió"
+    ],
+    "temas": [
+      "La identidad y el propósito", "El sacrificio y la redención", "El amor contra el deber",
+      "La tecnología contra la naturaleza", "La memoria y el olvido", "El poder y la corrupción",
+      "La esperanza contra la desesperación", "La vida y la muerte", "La verdad y las mentiras",
+      "La soledad y la conexión", "El destino contra el libre albedrío", "La familia y el legado",
+      "El crecimiento y la transformación", "El miedo y el coraje", "El perdón y la venganza"
+    ]
+  },
+  "libro": {
+    "personajes": [
+      "Un escritor que descubre que sus personajes cobran vida", "Un bibliotecario que puede entrar en los libros",
+      "Un editor que recibe manuscritos del futuro", "Un crítico literario que asesina autores",
+      "Un poeta que solo puede escribir en sueños", "Un historiador que descubre que la historia fue manipulada",
+      "Un traductor que cambia el significado de las traducciones", "Un autor que descubre que su vida es su propio libro",
+      "Un lector que puede cambiar el final de las historias", "Un profesor que enseña magia a través de la literatura"
+    ],
+    "escenarios": [
+      "Una biblioteca donde los libros son portales", "Una editorial que publica profecías",
+      "Una casa embrujada por personajes de novelas", "Un café donde los escritores compiten por contratos",
+      "Una ciudad donde la gente vive según los libros", "Un monasterio que guarda libros prohibidos",
+      "Una feria del libro interdimensional", "Una escuela para escritores de bestsellers",
+      "Un archivo secreto de manuscritos perdidos", "Una librería que solo vende libros del futuro"
+    ],
+    "conflictos": [
+      "Deben escribir un libro para salvar el mundo", "Un manuscrito predice la muerte del protagonista",
+      "Los personajes se rebelan contra su autor", "Una historia cambia la realidad",
+      "El editor quiere cambiar el final sagrado", "La pluma maldita escribe el destino",
+      "El autor debe elegir entre su arte y su vida", "Los lectores descubren que el libro es real",
+      "El último libro de una serie desaparece", "El manuscrito contiene un código secreto"
+    ],
+    "giros": [
+      "El protagonista es un personaje creado", "El autor es el villano", "El libro es una prisión",
+      "Los lectores son los dioses", "La historia ya fue escrita", "El final borra la existencia",
+      "El autor es un personaje de su propio libro", "La biblioteca es el universo",
+      "Los libros son memorias del futuro", "La pluma es el verdadero héroe"
+    ],
+    "temas": [
+      "El poder de las palabras", "La realidad contra la ficción", "La creatividad y la locura",
+      "El legado literario", "La verdad en la historia", "El arte como escape",
+      "La responsabilidad del creador", "La inmortalidad a través de las historias",
+      "El conocimiento prohibido", "La conexión entre autor y obra"
+    ]
+  },
+  "musica": {
+    "personajes": [
+      "Un músico sordo que compone sinfonías", "Una cantante cuya voz puede curar",
+      "Un DJ que controla el tiempo con música", "Un productor que graba sonidos del futuro",
+      "Un roadie que descubre secretos en las canciones", "Un crítico musical que asesina por reseñas",
+      "Un fan que vive en los conciertos", "Un baterista que puede ver el ritmo",
+      "Una violinista que toca para fantasmas", "Un compositor que escribe la banda sonora de la vida"
+    ],
+    "escenarios": [
+      "Un estudio de grabación embrujado", "Un festival de música interdimensional",
+      "Un club nocturno donde el tiempo se detiene", "Una sala de conciertos abandonada",
+      "Un bar donde las canciones cobran vida", "Una tienda de instrumentos mágicos",
+      "Un estudio en el fondo del océano", "Un escenario flotante en el cielo",
+      "Un festival en una ciudad fantasma", "Un estudio de grabación en el espacio"
+    ],
+    "conflictos": [
+      "Deben componer una canción que salve al mundo", "Una melodía contiene un código secreto",
+      "La música está prohibida por el gobierno", "El último acorde destruirá el mundo",
+      "El contrato discográfico es un pacto demoníaco", "La canción perfecta existe y todos la quieren",
+      "El músico debe elegir entre fama y alma", "La banda se separa antes del concierto final",
+      "El instrumento maldito exige sacrificios", "La canción revela un crimen del pasado"
+    ],
+    "giros": [
+      "La música es el lenguaje de los dioses", "El cantante es un alienígena", "La canción es una profecía",
+      "El instrumento es un ser vivo", "La banda es una célula de resistencia", "El concierto es un ritual",
+      "La música controla la realidad", "El silencio es el verdadero poder",
+      "La canción nunca existió", "El músico es el único que escucha la verdad"
+    ],
+    "temas": [
+      "El poder del sonido", "La expresión y la represión", "La fama y la identidad",
+      "La armonía y el caos", "El ritmo de la vida", "La memoria auditiva",
+      "La música como lenguaje universal", "El sacrificio por el arte",
+      "La conexión emocional", "El silencio y el ruido"
+    ]
+  },
+  "mundos": {
+    "personajes": [
+      "Un cartógrafo que mapea dimensiones", "Un arquitecto que construye mundos",
+      "Un explorador que descubre planetas habitados", "Un dios caído que busca su mundo",
+      "Un científico que terraforma planetas", "Un colonizador que adapta civilizaciones",
+      "Un astrónomo que escucha mensajes de estrellas", "Un piloto que navega agujeros negros",
+      "Un diplomático intergaláctico", "Un cazador de planetas"
+    ],
+    "escenarios": [
+      "Un planeta hecho de cristal", "Un mundo donde la gravedad es opcional",
+      "Una ciudad en un anillo de Saturno", "Un planeta habitado por plantas inteligentes",
+      "Un mundo donde el agua es gaseosa", "Un planeta con tres soles",
+      "Un mundo subterráneo", "Una estación espacial en un cometa",
+      "Un mundo donde la tecnología es magia", "Un planeta en guerra con su luna"
+    ],
+    "conflictos": [
+      "Deben salvar su planeta de colisión", "La colonia se está quedando sin oxígeno",
+      "Dos civilizaciones pelean por un planeta", "El planeta está evolucionando peligrosamente",
+      "El ecosistema colapsa sin la especie clave", "El gobierno oculta que el planeta está muriendo",
+      "Deben terraformar antes de que llegue la flota", "El planeta tiene una conciencia",
+      "La atmósfera se está volviendo tóxica", "El núcleo del planeta se está apagando"
+    ],
+    "giros": [
+      "El planeta es un organismo vivo", "La colonia es una simulación", "El planeta es un huevo",
+      "Los alienígenas son humanos del futuro", "El planeta es una prisión", "El espacio es un océano",
+      "Los planetas son semillas", "El universo está dentro de un átomo",
+      "La gravedad es una mentira", "El centro del planeta es el cielo"
+    ],
+    "temas": [
+      "La exploración y el descubrimiento", "La supervivencia en entornos extremos",
+      "La humanidad contra la naturaleza", "La colonización y la conquista",
+      "La adaptación y la evolución", "El misterio del universo", "La soledad cósmica",
+      "La responsabilidad planetaria", "El origen de la vida", "El destino de la humanidad"
+    ]
+  },
+  "terror": {
+    "personajes": [
+      "Un parapsicólogo que investiga casas embrujadas", "Un sobreviviente que regresa al lugar del crimen",
+      "Un detective que caza asesinos en serie", "Una niña que ve fantasmas",
+      "Un médico que trabaja en un manicomio", "Un guardia nocturno en un lugar abandonado",
+      "Un periodista que investiga crímenes no resueltos", "Un sacerdote que realiza exorcismos",
+      "Una médium que contacta con los muertos", "Un científico que estudia fenómenos paranormales"
+    ],
+    "escenarios": [
+      "Una casa embrujada en el bosque", "Un hospital psiquiátrico abandonado",
+      "Un hotel en medio de la nada", "Un pueblo con un secreto oscuro",
+      "Un sótano sin salida", "Un faro en una isla desierta", "Un cementerio de noche",
+      "Un laboratorio secreto", "Un túnel subterráneo", "Una casa de campo aislada"
+    ],
+    "conflictos": [
+      "Algo los está cazando uno por uno", "La casa no quiere que se vayan",
+      "El asesino los está observando", "El pasado regresa para cobrar venganza",
+      "Deben escapar antes del amanecer", "El manicomio es una prisión",
+      "El fantasma quiere contar su historia", "El experimento salió mal",
+      "La puerta está bloqueada", "El teléfono suena pero nadie responde"
+    ],
+    "giros": [
+      "El monstruo es humano", "El héroe es el asesino", "La casa es un organismo vivo",
+      "Todos están muertos", "El fantasma es el héroe", "El miedo es una enfermedad",
+      "La amenaza es imaginaria pero real", "El psicólogo es el paciente",
+      "La víctima es el villano", "El final es el principio del terror"
+    ],
+    "temas": [
+      "El miedo y el coraje", "La realidad contra la ilusión", "El pasado que regresa",
+      "La soledad y el aislamiento", "La locura y la razón", "La muerte y lo que viene después",
+      "La culpa y el castigo", "La naturaleza del mal", "La fragilidad de la mente",
+      "Lo desconocido y lo innombrable"
+    ]
+  },
+  "fantasia": {
+    "personajes": [
+      "Un mago sin poder", "Un dragón que quiere ser humano", "Un elfo que vive entre humanos",
+      "Un héroe predestinado que no quiere serlo", "Una bruja que cura maldiciones",
+      "Un caballero sin armadura", "Una princesa que rescata al príncipe", "Un enano que ama las alturas",
+      "Un orco que odia la violencia", "Una sirena que quiere caminar en tierra"
+    ],
+    "escenarios": [
+      "Un castillo en las nubes", "Un bosque encantado", "Una montaña de dragones",
+      "Una ciudad subterránea de elfos", "Un reino de hielo eterno", "Un desierto de magia",
+      "Una torre infinita", "Un mar de estrellas", "Un valle de unicornios", "Un reino de sombras"
+    ],
+    "conflictos": [
+      "La magia está desapareciendo", "Un dragón despierta", "El reino está en guerra",
+      "La profecía debe cumplirse", "El malvado busca el poder supremo",
+      "El héroe debe encontrar su destino", "El mundo está fragmentándose",
+      "Los dioses han abandonado el mundo", "El equilibrio está roto", "La oscuridad se expande"
+    ],
+    "giros": [
+      "El mago es el villano", "El dragón es el padre", "La profecía es falsa",
+      "El héroe es el villano reencarnado", "La magia es tecnología", "Los dioses son humanos",
+      "El mundo es un sueño", "El malvado es el verdadero héroe",
+      "La oscuridad es la luz", "El poder es una maldición"
+    ],
+    "temas": [
+      "El poder y la responsabilidad", "El destino contra el libre albedrío", "La luz y la oscuridad",
+      "El sacrificio y el honor", "La identidad y el propósito", "La magia y la naturaleza",
+      "La corona y el peso", "La amistad y la lealtad", "El bien y el mal", "El mito y la realidad"
+    ]
+  },
+  "scifi": {
+    "personajes": [
+      "Un cyborg que busca humanidad", "Un alienígena que vive en la Tierra",
+      "Un científico que clona recuerdos", "Un piloto de naves espaciales",
+      "Un android que sueña", "Un hacker que controla satélites", "Un astronauta perdido",
+      "Un ingeniero que construye IA", "Un médico espacial", "Un diplomático galáctico"
+    ],
+    "escenarios": [
+      "Una estación espacial", "Un planeta colonizado", "Una ciudad futurista",
+      "Un laboratorio de IA", "Una nave en el espacio profundo", "Un planeta alienígena",
+      "Una colonia en Marte", "Un portal interdimensional", "Una base lunar", "Un cibercafé del futuro"
+    ],
+    "conflictos": [
+      "La IA se rebela", "Los aliens invaden", "El colapso ecológico",
+      "La guerra interestelar", "La tecnología controla todo", "El tiempo se agota",
+      "El genoma humano es hackeado", "La simulación se rompe",
+      "El portal se abre", "La colonia está aislada"
+    ],
+    "giros": [
+      "La humanidad es una IA", "Los aliens somos nosotros", "El futuro es el pasado",
+      "La realidad es una simulación", "El espacio es falso", "La tecnología es magia",
+      "El humano es el alienígena", "El cyborg es el último humano",
+      "La nave es un organismo", "El tiempo es circular"
+    ],
+    "temas": [
+      "La tecnología y la ética", "La humanidad y la máquina", "El espacio y la soledad",
+      "La evolución y la involución", "La realidad y la simulación", "El progreso y el costo",
+      "La vida artificial", "El contacto alienígena", "El futuro de la humanidad",
+      "La conciencia y la existencia"
+    ]
+  },
+  "romance": {
+    "personajes": [
+      "Un solitario que encuentra el amor", "Una persona comprometida que conoce a su alma gemela",
+      "Un ex que regresa en el momento equivocado", "Un amigo secretamente enamorado",
+      "Un rival que termina enamorándose", "Un escritor de cartas de amor anónimas",
+      "Un organizador de bodas que no cree en el amor", "Un chef que cocina para conquistar",
+      "Un músico que escribe canciones de amor", "Un terapeuta de parejas que es solitario"
+    ],
+    "escenarios": [
+      "Un café donde se conocen por accidente", "Un viaje en tren nocturno",
+      "La boda de un amigo en común", "Una biblioteca universitaria",
+      "Un parque en otoño", "Una oficina corporativa", "Una playa al atardecer",
+      "Un restaurante con reserva equivocada", "Un aeropuerto con vuelo cancelado",
+      "Una ciudad nueva y desconocida"
+    ],
+    "conflictos": [
+      "El amor está prohibido por sus familias", "Deben elegir entre carrera y amor",
+      "El pasado de uno de ellos interfiere", "La familia no aprueba la relación",
+      "El ex regresa cuando todo iba bien", "El compromiso existente es un obstáculo",
+      "La distancia los separa inevitablemente", "El tiempo se acaba antes de confesarse",
+      "Un secreto puede destruirlo todo", "El destino parece estar siempre en contra"
+    ],
+    "giros": [
+      "El amor era planeado desde el inicio", "El ex resulta ser el mejor amigo del nuevo amor",
+      "El rival es en realidad el alma gemela", "El compromiso era una farsa",
+      "El pasado juntos es mejor de lo que recordaban", "El futuro los une aunque el presente los separa",
+      "El secreto que los une es el mismo", "La separación fue necesaria para madurar",
+      "El destino los guio aunque parecía crueldad"
+    ],
+    "temas": [
+      "El amor contra el deber", "El destino y la elección", "El pasado y el presente",
+      "La confianza y la traición", "El sacrificio por amor", "La redención romántica",
+      "La segunda oportunidad", "El crecimiento personal", "La vulnerabilidad emocional",
+      "La conexión del alma"
+    ]
+  },
+  "historia": {
+    "personajes": [
+      "Un historiador que viaja al pasado", "Un soldado que lucha en todas las guerras",
+      "Un rey que ve el futuro de su reino", "Una reina que debe salvar su dinastía",
+      "Un esclavo que lidera una rebelión", "Un monje que preserva el conocimiento",
+      "Un mercenario que cambia el curso de la historia", "Una profetisa que nadie cree",
+      "Un general que desobedece órdenes", "Un campesino que se convierte en emperador"
+    ],
+    "escenarios": [
+      "Un castillo en medio de una guerra", "Un templo antiguo con secretos",
+      "Un campo de batalla de la Edad Media", "Una corte real llena de conspiraciones",
+      "Un monasterio en las montañas", "Una ciudad asediada por ejércitos",
+      "Un mercado en la antigua Roma", "Un pueblo durante la Revolución Francesa",
+      "Un puerto durante la Edad de Oro", "Una fortaleza en la frontera"
+    ],
+    "conflictos": [
+      "Deben evitar una guerra civil", "La profecía anuncia el fin del reino",
+      "El rey ha sido reemplazado por un impostor", "El ejército enemigo tiene un arma secreta",
+      "El trono pertenece a otro legítimamente", "La princesa debe casarse por política",
+      "El pueblo se rebela contra la tiranía", "El imperio se está fragmentando",
+      "El tratado de paz es una trampa", "El heredero ha desaparecido"
+    ],
+    "giros": [
+      "El rey es el verdadero villano", "La guerra era una simulación política",
+      "El imperio nunca existió tal como se contó", "El héroe es descendiente del enemigo",
+      "La profecía fue inventada por el poder", "El trono es una maldición ancestral",
+      "La rebelión fue planeada por el propio rey", "El pasado ha sido reescrito sistemáticamente",
+      "La dinastía es falsa desde el origen", "El héroe es el último de su especie"
+    ],
+    "temas": [
+      "El poder y la responsabilidad", "El destino contra el libre albedrío",
+      "La lealtad y la traición", "El legado y la herencia", "La guerra y la paz",
+      "La tradición contra el progreso", "La verdad histórica contra la propaganda",
+      "El sacrificio por la patria", "El ciclo de la historia", "El peso de las decisiones"
+    ]
+  }
+}

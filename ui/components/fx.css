@@ -1,0 +1,246 @@
+/* UI/FX.CSS — Effect utilities: lo que Twind no puede expresar.
+   Solo color-mix, glow, semi-transparencias y estados visuales complejos. */
+
+/* ── Hover con acento ────────────────────────────────── */
+.fx-hover:hover {
+  border-color: color-mix(in srgb, var(--aurora-accent) 46%, var(--aurora-border));
+  background: color-mix(in srgb, var(--aurora-accent) 8%, transparent);
+}
+
+/* ── Estado activo/seleccionado ──────────────────────── */
+.fx-active {
+  border-color: color-mix(in srgb, var(--aurora-accent) 70%, var(--aurora-border)) !important;
+  color: var(--aurora-accent) !important;
+  background: color-mix(in srgb, var(--aurora-accent) 9%, transparent) !important;
+}
+
+/* ── Hover danger ────────────────────────────────────── */
+.fx-danger:hover {
+  border-color: var(--aurora-error);
+  background: color-mix(in srgb, var(--aurora-error) 10%, transparent);
+}
+
+/* ── Focus para inputs ───────────────────────────────── */
+.fx-focus:focus {
+  border-color: var(--aurora-accent);
+  outline: none;
+  box-shadow: var(--aurora-focus-ring);
+}
+
+/* ── Hover para items de lista ───────────────────────── */
+.fx-item:hover {
+  background: color-mix(in srgb, var(--aurora-accent) 8%, transparent);
+}
+
+/* ── Panel interactivo ───────────────────────────────── */
+.fx-panel:hover {
+  border-color: color-mix(in srgb, var(--aurora-accent) 32%, var(--aurora-border));
+  background: var(--aurora-surface-hover);
+}
+.fx-panel.fx-active {
+  border-color: color-mix(in srgb, var(--aurora-accent) 70%, var(--aurora-border));
+  background: color-mix(in srgb, var(--aurora-accent) 7%, transparent);
+}
+
+/* ── Chat messages ───────────────────────────────────── */
+.fx-msg-user {
+  background: color-mix(in srgb, var(--aurora-accent) 8%, var(--aurora-surface));
+  border-color: color-mix(in srgb, var(--aurora-accent) 24%, var(--aurora-border));
+  align-self: flex-end;
+  max-width: 88%;
+  border-bottom-right-radius: var(--aurora-radius-xs);
+}
+.fx-msg-assistant {
+  background: var(--aurora-field);
+  border-color: var(--aurora-border-quiet);
+  border-bottom-left-radius: var(--aurora-radius-xs);
+}
+.fx-msg-streaming {
+  border-color: color-mix(in srgb, var(--aurora-accent) 42%, var(--aurora-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--aurora-accent) 16%, transparent);
+}
+
+/* ── Scrollbar acentuado (nav, foot) ─────────────────── */
+.fx-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--aurora-accent) transparent;
+}
+.fx-scroll::-webkit-scrollbar       { height: 3px; width: 3px; }
+.fx-scroll::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--aurora-accent) 65%, var(--aurora-surface3)); border-radius: 3px; }
+.fx-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Título con glow animado ─────────────────────────── */
+.fx-title-glow { animation: title-glow 6s ease-in-out infinite; }
+
+/* ── Separador con edge glow ─────────────────────────── */
+.fx-edge-glow {
+  background: var(--aurora-border);
+  box-shadow: none;
+}
+
+/* ── Status bar — punto pulsante ─────────────────────── */
+.fx-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--aurora-edge);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--aurora-edge-glow);
+  animation: pulse 2s ease-in-out infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* ── Toast variants ──────────────────────────────────── */
+.fx-toast-success { border-color: rgba(34,197,94,.4); }
+.fx-toast-error   { border-color: rgba(239,68,68,.4); }
+.fx-toast-warning { border-color: rgba(245,158,11,.4); }
+
+/* ── Agentic tool activity ───────────────────────────── */
+.fx-tool-activity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  max-height: 42px;
+  padding: 5px 8px;
+  background: color-mix(in srgb, var(--aurora-surface-2) 86%, transparent);
+  border-top: 1px solid var(--aurora-border-quiet);
+  overflow: hidden;
+}
+.tool-activity-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.tool-activity-count {
+  max-width: 64px;
+  overflow: hidden;
+  color: var(--aurora-text-dim);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tool-activity-list {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--aurora-border-strong) transparent;
+}
+.tool-activity-list::-webkit-scrollbar { height: 4px; }
+.tool-activity-list::-webkit-scrollbar-thumb {
+  background: var(--aurora-border-strong);
+  border-radius: 999px;
+}
+.fx-tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 178px;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--aurora-border-quiet);
+  background: var(--aurora-field);
+  border-radius: 6px;
+  color: var(--aurora-text);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.fx-tool-chip[data-risk="high"]   { border-color: rgba(199,62,62,0.4); }
+.fx-tool-chip[data-risk="medium"] { border-color: rgba(251,191,36,0.28); }
+.fx-tool-chip[data-risk="low"]    { border-color: rgba(76,175,80,0.22); }
+.act-entry.act-ok { border-color: rgba(34,197,94,.62); }
+.act-entry.act-error { border-color: rgba(239,68,68,.72); }
+.act-entry.act-running { border-color: rgba(96,165,250,.62); }
+.act-icon,
+.act-ms {
+  flex: 0 0 auto;
+  color: var(--aurora-text-dim);
+}
+.act-name {
+  min-width: 34px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 650;
+}
+.act-args {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--aurora-text-dim);
+  text-overflow: ellipsis;
+}
+.act-clear {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 1px solid var(--aurora-border-quiet);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--aurora-text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+}
+.act-clear:hover {
+  border-color: var(--aurora-border-strong);
+  color: var(--aurora-text);
+}
+
+/* ── Chat/cloud surfaces ─────────────────────────────── */
+.fx-chat-shell {
+  min-height: 0;
+  background: var(--aurora-bg);
+}
+.fx-chat-scroll {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--aurora-border-strong) transparent;
+}
+.fx-composer {
+  border-top: 1px solid var(--aurora-border-quiet);
+  background: color-mix(in srgb, var(--aurora-surface) 90%, transparent);
+}
+.fx-cloud-pane {
+  min-height: 220px;
+  border: 1px solid var(--aurora-border-quiet);
+  border-radius: var(--aurora-radius);
+  background: var(--aurora-field);
+  overflow: hidden;
+}
+.fx-cloud-pane[data-expanded="true"] {
+  min-height: 0;
+  height: 100%;
+  border-radius: 0;
+}
+
+/* ── Animaciones reutilizables ───────────────────────── */
+.fx-sidebar-in { animation: sidebar-in 0.18s ease; }
+.fx-fadein     { animation: fadeIn 0.15s ease-out; }
+
+/* ── Sidebar item ────────────────────────────────────── */
+.fx-sidebar-item:hover {
+  background: var(--aurora-surface2);
+  border-color: var(--aurora-surface3);
+}
+.fx-sidebar-item.fx-active {
+  background: var(--aurora-surface2) !important;
+  border-color: var(--aurora-accent) !important;
+  color: var(--aurora-text) !important;
+}
+
+/* ── Header title (transparent hover) ────────────────── */
+.fx-header-hover:hover {
+  background: color-mix(in srgb, var(--aurora-accent) 12%, transparent);
+}

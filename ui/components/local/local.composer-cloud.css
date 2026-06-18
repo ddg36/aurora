@@ -1,0 +1,633 @@
+/* ══════════════════════════════════════════════════════
+   COMPOSER — contenedor unificado estilo ChatGPT
+   ══════════════════════════════════════════════════════ */
+
+.composer-box {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--surface3);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.composer-box:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.composer-textarea {
+  width: 100%;
+  min-height: 36px;
+  max-height: 160px;
+  resize: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px 14px 2px;
+  outline: none;
+  overflow-y: auto;
+}
+.composer-textarea::placeholder {
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+/* Vacío: textarea colapsado pero siempre interactivo */
+.composer-box:not(.composer-box--expanded) .composer-textarea {
+  min-height: 0;
+  height: 28px;
+  padding-top: 6px;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+/* Con texto o focus: textarea visible y expandible */
+.composer-box.composer-box--expanded .composer-textarea,
+.composer-box:focus-within .composer-textarea {
+  min-height: 36px;
+  height: auto;
+  padding-top: 10px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+}
+
+.composer-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.composer-icon-btn:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+}
+.composer-icon-btn--active {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+}
+
+.composer-send-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: black;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.12s, transform 0.1s;
+}
+.composer-send-btn:hover { opacity: 0.85; }
+.composer-send-btn:active { transform: scale(0.93); }
+.composer-send-btn:disabled { opacity: 0.25; cursor: default; }
+.composer-send-btn--stop {
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+}
+.composer-send-btn--stop:hover { background: rgba(239,68,68,0.12); opacity:1; }
+
+/* Menú + desplegable */
+.composer-plus-menu {
+  min-width: 150px;
+  background: var(--surface);
+  border: 1px solid var(--surface3);
+  border-radius: 12px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  z-index: 20;
+}
+.composer-plus-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  transition: background 0.1s;
+}
+.composer-plus-item:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* Mini cloud header */
+.cloud-mini-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--surface) 95%, var(--accent));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.cloud-mini-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.cloud-mini-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.cloud-mini-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s, color 0.1s;
+}
+.cloud-mini-btn:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--text); }
+.cloud-mini-btn--close:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+/* ══════════════════════════════════════════════════════
+   INPUT AREA (legacy)
+   ══════════════════════════════════════════════════════ */
+
+.chat-input-area textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.chat-input-area textarea::placeholder { color: var(--text-dim); opacity: 0.6; }
+
+/* Input tintado por HUD */
+[data-hud="luna"] .chat-input-area textarea:focus,
+[data-hud="nebula"] .chat-input-area textarea:focus {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent),
+    0 0 14px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+[data-hud="corners"] .chat-input-area textarea {
+  border-radius: 2px;
+}
+[data-hud="scanlines"] .chat-input-area textarea,
+[data-hud="circuit"] .chat-input-area textarea {
+  font-family: 'Consolas', 'Fira Mono', monospace;
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.btn-mic.listening {
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); }
+  50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 20%, transparent); }
+}
+
+.btn-mapper:hover {
+  transform: scale(1.05);
+}
+.btn-mapper:active {
+  transform: scale(0.95);
+}
+
+/* ── Cloud Backend Iframe ─────────────────────────────── */
+/* ── Cloud Panel — integrado encima del input ────────────── */
+.cloud-panel {
+  flex-shrink: 0;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  background: var(--surface);
+  overflow: hidden;
+  transition: height 0.25s ease;
+}
+
+/* Oculto pero SIEMPRE en el DOM — necesario para que Chrome inyecte el content script */
+.cloud-panel.cloud-panel-hidden {
+  height: 0 !important;
+  border-top: none;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+
+/* Hidden: solo el header, sin iframe */
+.cloud-panel.hidden-mode {
+  height: auto;
+}
+.cloud-panel.hidden-mode .cloud-panel-iframe-wrap {
+  display: none;
+}
+
+/* Mini: miniatura zoom del contenido */
+.cloud-panel.mini {
+  height: 72px;
+}
+.cloud-panel.mini .cloud-panel-iframe-wrap {
+  position: relative;
+  width: 100%;
+  height: 72px;
+  overflow: hidden;
+}
+.cloud-panel.mini iframe {
+  width: 500%;
+  height: 500%;
+  transform: scale(0.2);
+  transform-origin: top left;
+  border: none;
+  pointer-events: none;
+}
+
+/* Expandido: visible pero sin foco — el control siempre desde el chat local */
+.cloud-panel.expanded {
+  height: min(70vh, 620px);
+}
+.cloud-panel.expanded .cloud-panel-iframe-wrap {
+  width: 100%;
+  height: 100%;
+}
+.cloud-panel.expanded iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  pointer-events: auto; /* Permitir interacción cuando está expandido */
+}
+
+.cloud-panel-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  cursor: default;
+  pointer-events: all;
+}
+
+/* Full: overlay interno estable sobre el chat, dejando composer abajo. */
+.llama-view.cloud-expanded {
+  position: relative;
+}
+
+.llama-view.cloud-expanded .cloud-panel.expanded {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 116px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+  height: auto;
+  background: var(--surface);
+  border-top: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+}
+
+.llama-view.cloud-expanded .cloud-panel.expanded .cloud-panel-iframe-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.llama-view.cloud-expanded .cloud-panel.expanded iframe {
+  display: block;
+}
+
+.llama-view.cloud-expanded .chat-input-area {
+  position: relative;
+  z-index: 40;
+}
+
+.llama-view.cloud-expanded .cloud-stream-mirror {
+  position: relative;
+  z-index: 35;
+}
+
+.llama-view.canvas-open.cloud-expanded .chat-with-avatars,
+.llama-view.canvas-open.cloud-expanded .tool-activity-bar,
+.llama-view.canvas-open.cloud-expanded .nexus-confirm-banner,
+.llama-view.canvas-open.cloud-expanded .nexus-resultados-chips,
+.llama-view.canvas-open.cloud-expanded .image-preview-bar {
+  display: none;
+}
+
+.llama-view.canvas-open.cloud-expanded .cloud-panel {
+  grid-row: 4 / 8;
+  min-height: 0;
+}
+
+.llama-view.canvas-open.cloud-expanded {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto auto auto auto;
+}
+
+.cloud-stream-mirror {
+  flex: 0 0 auto;
+  max-height: 150px;
+  overflow: hidden;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--surface) 92%, black);
+}
+
+.cloud-stream-mirror-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 10px;
+  font-size: 10px;
+  color: var(--text-dim);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cloud-stream-mirror-body {
+  max-height: 116px;
+  overflow-y: auto;
+  padding: 8px 11px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text);
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface3) transparent;
+}
+
+.cloud-stream-mirror-body > :first-child { margin-top: 0; }
+.cloud-stream-mirror-body > :last-child { margin-bottom: 0; }
+
+.cloud-stream-mirror-wait {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.llama-view.canvas-open.cloud-expanded .cloud-stream-mirror {
+  grid-row: 8;
+}
+
+.llama-view.canvas-open.cloud-expanded .chat-control-buttons {
+  grid-row: 9;
+}
+
+.llama-view.canvas-open.cloud-expanded .chat-input-area {
+  grid-row: 10;
+}
+
+/* Input custom URL del menú contextual */
+.cloud-ctx-url-input {
+  background: var(--surface);
+  border: 1px solid var(--surface3);
+  color: var(--text);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  flex: 1;
+  min-width: 0;
+}
+.cloud-ctx-url-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── Panel Flotante Mapeador DOM ───────────────────────── */
+.mapeador-panel {
+  position: fixed;
+  bottom: 120px;
+  right: 20px;
+  width: 320px;
+  max-height: 400px;
+  background: var(--aurora-field);
+  border: 1px solid var(--aurora-border);
+  border-radius: var(--aurora-radius);
+  box-shadow: var(--aurora-shadow-md);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 12px;
+}
+.mapeador-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--aurora-border);
+  background: var(--aurora-surface-2);
+  flex-shrink: 0;
+}
+.mapeador-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.mapeador-count {
+  margin-left: auto;
+  margin-right: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--aurora-border);
+  border-radius: 999px;
+  color: var(--aurora-text-dim);
+  font-size: 10px;
+}
+.mapeador-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+.mapeador-close:hover {
+  background: var(--aurora-surface-hover);
+  color: var(--aurora-text);
+}
+.mapeador-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  max-height: 320px;
+}
+.mapeador-empty {
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: center;
+  padding: 16px;
+}
+.mapeador-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--aurora-radius-sm);
+  background: var(--aurora-field);
+  margin-bottom: 4px;
+  transition: background 0.15s;
+}
+.mapeador-item:hover {
+  background: var(--aurora-surface-hover);
+}
+.mapeador-checkbox {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--aurora-accent);
+}
+.mapeador-id {
+  background: var(--aurora-accent);
+  color: white;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+.mapeador-tipo {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  min-width: 45px;
+}
+.mapeador-texto {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mapeador-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.mapeador-action {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--aurora-border);
+  border-radius: var(--aurora-radius-sm);
+  background: var(--aurora-field);
+  color: var(--aurora-text-dim);
+  cursor: pointer;
+  font-size: 12px;
+}
+.mapeador-action:hover {
+  border-color: var(--aurora-accent);
+  color: var(--aurora-text);
+  background: color-mix(in srgb, var(--aurora-accent) 16%, transparent);
+}
+.mapeador-footer {
+  padding: 8px 10px;
+  border-top: 1px solid var(--aurora-border);
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+}
+.mapeador-agent {
+  flex: 1;
+  padding: 6px;
+  background: rgba(34, 197, 94, 0.18);
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  border-radius: 4px;
+  color: #bbf7d0;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.mapeador-agent:hover {
+  background: rgba(34, 197, 94, 0.26);
+  border-color: rgba(34, 197, 94, 0.65);
+}
+.mapeador-send {
+  flex: 1;
+  padding: 6px;
+  background: var(--aurora-accent);
+  border: 1px solid var(--aurora-accent);
+  border-radius: var(--aurora-radius-sm);
+  color: white;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.mapeador-send:hover {
+  background: color-mix(in srgb, var(--aurora-accent) 80%, transparent);
+  border-color: color-mix(in srgb, var(--aurora-accent) 80%, transparent);
+}
+.mapeador-clear {
+  flex: 1;
+  padding: 6px;
+  background: var(--aurora-field);
+  border: 1px solid var(--aurora-border);
+  border-radius: var(--aurora-radius-sm);
+  color: var(--aurora-text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.mapeador-clear:hover {
+  background: var(--aurora-surface-hover);
+  border-color: var(--aurora-border-strong);
+  color: var(--aurora-text);
+}
+
+.msg-speak-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+  opacity: 0.6;
+}
+.msg-speak-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  opacity: 1;
+}
+.msg-speak-btn:active {
+  transform: scale(0.95);
+}

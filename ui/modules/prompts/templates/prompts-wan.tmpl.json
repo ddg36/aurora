@@ -1,0 +1,167 @@
+[
+  {
+    "id": "wan_001",
+    "name": "Wan — reveal épico de personaje",
+    "category": "image",
+    "tags": ["wan", "t2v", "épico", "reveal", "personaje"],
+    "targetAI": "ask",
+    "content": "Extreme close-up of a warrior's gauntleted fist gripping a glowing sword hilt. Camera dollies back slowly and tilts up, revealing a lone armored figure standing at the edge of a cliff. Behind him: a vast battlefield engulfed in fire and smoke, armies clashing in the valley below. Golden rim-light from the setting sun, dramatic volumetric clouds, cinematic anamorphic bokeh.",
+    "negative": "morphing, warping, flickering, face deformation, blurry, low quality, jerky motion, unnatural movement",
+    "usos": 0,
+    "createdAt": 1700001001000
+  },
+  {
+    "id": "wan_002",
+    "name": "Wan — retrato femenino animado (I2V)",
+    "category": "image",
+    "tags": ["wan", "i2v", "retrato", "femenino", "sutil"],
+    "targetAI": "ask",
+    "content": "Camera slowly dollies out. Subject gently turns her head toward camera with a soft smile. Hair moves slightly in a gentle breeze. Warm golden hour light shifts subtly across her face. Shallow depth of field, cinematic.",
+    "negative": "morphing, face deformation, flickering, distortion, unnatural movement, jerky motion",
+    "usos": 0,
+    "createdAt": 1700001002000
+  },
+  {
+    "id": "wan_003",
+    "name": "Wan — chase urbano nocturno",
+    "category": "image",
+    "tags": ["wan", "t2v", "acción", "urbano", "noche"],
+    "targetAI": "ask",
+    "content": "Low angle tracking shot following a figure running through a rain-soaked alley at night. Camera maintains shoulder height, keeping pace with the runner. Neon signs reflect in wet pavement, motion blur on background lights. Handheld tremor adds urgency. Cool tones, high contrast, lens flare from street lights.",
+    "negative": "morphing, warping, flickering, face deformation, blurry, frozen, jerky motion, teleporting",
+    "usos": 0,
+    "createdAt": 1700001003000
+  },
+  {
+    "id": "wan_004",
+    "name": "Wan — paisaje amanecer con dolly",
+    "category": "image",
+    "tags": ["wan", "t2v", "paisaje", "naturaleza", "amanecer"],
+    "targetAI": "ask",
+    "content": "Wide shot of a misty mountain valley at dawn. Camera slowly dollies forward through tall grass in the foreground, approaching a wooden bridge over a stream. Morning light filters through pine trees on the hillside, creating god rays through the mist. Birds take flight in the middle distance. Warm golden tones, soft natural light, cinematic.",
+    "negative": "flickering, distortion, blurry, low quality, people, buildings, watermark",
+    "usos": 0,
+    "createdAt": 1700001004000
+  },
+  {
+    "id": "wan_005",
+    "name": "Wan — producto giratorio",
+    "category": "image",
+    "tags": ["wan", "t2v", "producto", "comercial"],
+    "targetAI": "ask",
+    "content": "Close-up of a luxury perfume bottle on a black marble surface. Slow 360-degree orbital shot circles the bottle while it remains perfectly still. Studio lighting with edge highlights catches the glass facets, creating prismatic reflections. Cool tones with subtle warm accent light from below. Tack-sharp focus, commercial product photography aesthetic.",
+    "negative": "flickering, distortion, blurry, low quality, glitch, watermark, overexposed",
+    "usos": 0,
+    "createdAt": 1700001005000
+  },
+  {
+    "id": "wan_006",
+    "name": "Wan — anime character idle animation",
+    "category": "image",
+    "tags": ["wan", "t2v", "anime", "personaje", "idle"],
+    "targetAI": "ask",
+    "content": "Anime style. A girl with long silver hair and blue eyes stands in a flower field. Static camera, eye-level. Her hair and dress move gently in a breeze. Petals drift across the frame. She blinks slowly and looks slightly to the side. Soft pastel colors, warm afternoon light, dreamy atmosphere.",
+    "negative": "morphing, flickering, distortion, face deformation, blurry, low quality, jerky motion, unnatural movement",
+    "usos": 0,
+    "createdAt": 1700001006000
+  },
+  {
+    "id": "wan_007",
+    "name": "Wan — acción explosiva con cámara",
+    "category": "image",
+    "tags": ["wan", "t2v", "acción", "explosión", "dramático"],
+    "targetAI": "ask",
+    "content": "Medium shot of a lone figure walking away as an explosion erupts behind them. Camera dollies back slowly while the figure continues forward. Debris and fire fill the background. Slow motion. Silhouette lighting, dramatic backlighting from the explosion, dust particles catching light. Cinematic, high contrast, teal-and-orange color grade.",
+    "negative": "morphing, warping, flickering, face deformation, blurry, frozen, glitch",
+    "usos": 0,
+    "createdAt": 1700001007000
+  },
+  {
+    "id": "wan_008",
+    "name": "Wan — naturaleza macro con movimiento",
+    "category": "image",
+    "tags": ["wan", "t2v", "naturaleza", "macro", "sutil"],
+    "targetAI": "ask",
+    "content": "Extreme close-up macro shot of a single red rose with dew drops. Camera slowly pulls back revealing more of the flower. A gentle breeze causes petals to tremble softly. Morning sunlight catches the dew drops creating tiny rainbow refractions. Shallow depth of field, soft bokeh background of green leaves. Peaceful, slow motion.",
+    "negative": "flickering, distortion, blurry, low quality, jerky motion, overexposed",
+    "usos": 0,
+    "createdAt": 1700001008000
+  },
+  {
+    "id": "wan_009",
+    "name": "Wan — ciudad cyberpunk desde drone",
+    "category": "image",
+    "tags": ["wan", "t2v", "scifi", "cyberpunk", "urbano", "drone"],
+    "targetAI": "ask",
+    "content": "Drone shot descending through a cyberpunk megacity at night. Camera starts above the cloud layer and slowly descends, revealing neon-lit skyscrapers stretching below. Flying vehicles weave between buildings. Holographic advertisements flicker on building facades. Rain falls through neon light beams. Teal-and-orange color grade, cinematic.",
+    "negative": "flickering, distortion, blurry, low quality, glitch, watermark, overexposed",
+    "usos": 0,
+    "createdAt": 1700001009000
+  },
+  {
+    "id": "wan_010",
+    "name": "Wan — personaje mirando al horizonte (I2V)",
+    "category": "image",
+    "tags": ["wan", "i2v", "épico", "contemplativo"],
+    "targetAI": "ask",
+    "content": "Camera very slowly cranes up from behind the subject. Subject remains still, gazing at the horizon. The landscape beyond gradually reveals itself as the camera rises. Wind moves their hair and clothes gently. Cinematic, wide shot.",
+    "negative": "morphing, flickering, face deformation, distortion, blurry, jerky motion, unnatural movement",
+    "usos": 0,
+    "createdAt": 1700001010000
+  },
+  {
+    "id": "wan_011",
+    "name": "Wan — tormenta sobre el mar",
+    "category": "image",
+    "tags": ["wan", "t2v", "naturaleza", "tormenta", "marino"],
+    "targetAI": "ask",
+    "content": "Wide shot of a raging stormy sea from a clifftop vantage point. Camera pans slowly left along the cliff edge. Massive waves crash against dark rocks below, sending white spray into the air. Dark storm clouds roil overhead, lightning flashes in the distance. Cold blue-grey tones, dramatic atmosphere. Cinematic, high contrast.",
+    "negative": "flickering, distortion, blurry, low quality, frozen, static, watermark",
+    "usos": 0,
+    "createdAt": 1700001011000
+  },
+  {
+    "id": "wan_012",
+    "name": "Wan — danza contemporánea",
+    "category": "image",
+    "tags": ["wan", "t2v", "danza", "arte", "movimiento"],
+    "targetAI": "ask",
+    "content": "A contemporary dancer performing in a large empty warehouse space. Camera circles slowly around her as she moves through flowing, expressive gestures. Shaft of harsh overhead light creates strong shadows. Dust particles float in the light beam. Black and white treatment. Wide shot, slow motion at key moments.",
+    "negative": "morphing, flickering, face deformation, blurry, low quality, jerky motion, unnatural movement, frozen",
+    "usos": 0,
+    "createdAt": 1700001012000
+  },
+  {
+    "id": "wan_013",
+    "name": "Wan — anime fight scene",
+    "category": "image",
+    "tags": ["wan", "t2v", "anime", "acción", "lucha"],
+    "targetAI": "ask",
+    "content": "Anime style fight scene. Two warriors clash in mid-air above a ruined city. Camera executes a fast orbital shot around the impact point. Energy shockwaves ripple outward on contact. Speed lines and motion blur on fast strikes. Dynamic camera angle, dramatic lighting from energy discharge. High contrast, vibrant colors.",
+    "negative": "morphing, warping, flickering, face deformation, blurry, frozen, low quality",
+    "usos": 0,
+    "createdAt": 1700001013000
+  },
+  {
+    "id": "wan_014",
+    "name": "Wan — interior acogedor con luz",
+    "category": "image",
+    "tags": ["wan", "t2v", "interior", "sutil", "atmosférico"],
+    "targetAI": "ask",
+    "content": "Slow dolly through a cozy autumn cottage interior. Fireplace crackling in the background, flames dancing. Books and warm blankets on an armchair. Rain visible through a window, drops running down the glass. Candles on a wooden table flicker gently. Camera moves at reading pace. Warm amber tones, cinematic, peaceful.",
+    "negative": "flickering artifacts, distortion, blurry, low quality, people, overexposed, glitch",
+    "usos": 0,
+    "createdAt": 1700001014000
+  },
+  {
+    "id": "wan_015",
+    "name": "Wan — amanecer time-lapse cinematográfico",
+    "category": "image",
+    "tags": ["wan", "t2v", "paisaje", "amanecer", "tiempo"],
+    "targetAI": "ask",
+    "content": "Cinematic time-lapse style wide shot of a desert landscape. Camera is completely static. Stars fade as dawn approaches, sky transitions from deep blue to purple to orange to gold. Long shadows of rock formations sweep across the sand as the sun rises. First rays of light catch dust in the air. Cinematic, warm tones, ultra wide angle.",
+    "negative": "flickering, distortion, blurry, low quality, overexposed, glitch, people, buildings",
+    "usos": 0,
+    "createdAt": 1700001015000
+  }
+]

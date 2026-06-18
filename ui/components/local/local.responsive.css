@@ -1,0 +1,139 @@
+/* ══════════════════════════════════════════════════════
+   CONTAINER QUERIES — Chat compacto según ancho del pane
+   Se activan solo cuando el Local está en split view y
+   el pane tiene container-type: inline-size declarado.
+   ══════════════════════════════════════════════════════ */
+
+/* ── COMPACTO (< 340px) ───────────────────────────────── */
+@container pane (max-width: 340px) {
+  .chat-container {
+    padding: 8px 10px;
+    gap: 7px;
+  }
+
+  .message {
+    font-size: 12px;
+    padding: 7px 10px;
+  }
+
+  .message-header { font-size: 9.5px; }
+  .message-header .role { font-size: 9.5px; }
+
+  /* Botones → AI y Duo más pequeños */
+  .chat-control-buttons {
+    padding: 4px 10px 0;
+    gap: 4px;
+  }
+  .btn-ask-ai,
+  .btn-duo {
+    height: 24px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+
+  /* Input más compacto */
+  .chat-input-area {
+    padding: 6px 10px 8px;
+    gap: 6px;
+  }
+  .chat-input-area textarea {
+    font-size: 11.5px;
+    min-height: 42px;
+    padding: 7px 9px;
+  }
+  .btn-primary,
+  .btn-stop {
+    height: 34px;
+    min-width: 34px;
+    font-size: 13px;
+    border-radius: 8px;
+  }
+
+  /* Tool activity bar compacta */
+  .tool-activity-bar {
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 30px;
+    max-height: 34px;
+    padding: 4px 7px;
+  }
+  .tool-activity-count { max-width: 46px; font-size: 9px; }
+  .fx-tool-chip { max-width: 138px; min-height: 20px; padding: 1px 6px; font-size: 9px; }
+  .act-clear { width: 20px; height: 20px; }
+}
+
+/* ── MUY COMPACTO (< 240px) ──────────────────────────── */
+@container pane (max-width: 240px) {
+  .chat-container { padding: 6px 8px; gap: 5px; }
+
+  .message {
+    font-size: 11.5px;
+    padding: 6px 8px;
+    border-radius: 7px;
+  }
+
+  /* Botones: solo icono/símbolo, sin texto label */
+  .btn-ask-ai  { font-size: 10px; padding: 0 6px; }
+  .btn-nexus-ai{ font-size: 10px; padding: 0 6px; }
+  .btn-duo     { font-size: 10px; padding: 0 6px; }
+
+  /* Input mínimo */
+  .chat-input-area {
+    padding: 4px 8px 7px;
+    gap: 4px;
+  }
+  .chat-input-area textarea {
+    font-size: 11px;
+    min-height: 36px;
+    padding: 5px 8px;
+    border-radius: 7px;
+  }
+  .btn-primary,
+  .btn-stop {
+    height: 30px;
+    min-width: 30px;
+    font-size: 12px;
+    border-radius: 7px;
+    padding: 0 8px;
+  }
+
+  /* Ocultar activity bar y tool panels para maximizar espacio */
+  .tool-activity-bar { display: none; }
+
+  /* Params e historial: scroll más agresivo */
+  .llama-params-panel  { padding: 7px 8px; font-size: 11px; }
+  .llama-history-panel { max-height: 140px; }
+  .llama-toolbar-panel { max-height: 110px; }
+  .param-label { width: 80px; font-size: 10px; }
+}
+
+/* ── MICRO (< 160px) — modo iconos puro ──────────────── */
+@container pane (max-width: 160px) {
+  .empty-chat { padding: 12px 6px; font-size: 11px; }
+  .empty-chat p { font-size: 12px; }
+
+  .chat-control-buttons { flex-direction: column; gap: 3px; padding: 3px 6px 0; }
+  .btn-ask-ai,
+  .btn-nexus-ai,
+  .btn-duo {
+    width: 100%;
+    height: 22px;
+    font-size: 9px;
+    padding: 0 4px;
+    text-align: center;
+  }
+
+  .chat-input-area { flex-direction: column; align-items: stretch; padding: 4px 6px 6px; gap: 4px; }
+  .chat-input-area textarea { min-height: 30px; font-size: 10px; }
+  .btn-primary,
+  .btn-stop {
+    height: 26px;
+    min-width: unset;
+    width: 100%;
+    border-radius: 6px;
+  }
+
+  /* Mensajes ultra compactos */
+  .message { font-size: 10.5px; padding: 5px 7px; border-radius: 5px; }
+  .message-header { display: none; } /* ocultar rol+tiempo en micro mode */
+}
+.chip-del:hover { color: var(--error, #ef4444); }

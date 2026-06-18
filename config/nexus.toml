@@ -1,0 +1,7 @@
+[nexus]
+host = "localhost"
+port = 7777
+
+[workspaces]
+ash   = "/home/deml/Downloads/core_instruction/au-ash"
+aihub = "/media/almacen/deml/Downloads/core_instruction/au-aihub"

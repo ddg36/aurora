@@ -1,0 +1,58 @@
+export const HERRAMIENTAS = [
+  {
+    id: 'resumir',
+    nombre: 'Resumir',
+    icono: '📝',
+    descripcion: 'Resumen conciso del texto',
+    system: 'Sos un asistente experto en síntesis. Resumí el texto del usuario en español, conservando los puntos clave. Sé conciso.',
+  },
+  {
+    id: 'traducir',
+    nombre: 'Traducir',
+    icono: '🌐',
+    descripcion: 'Traduce a español o inglés (auto)',
+    system: 'Sos un traductor profesional. Si el texto está en español, traducilo al inglés. Si está en otro idioma, traducilo al español. Devolvé SOLO la traducción.',
+  },
+  {
+    id: 'explicar',
+    nombre: 'Explicar código',
+    icono: '💡',
+    descripcion: 'Explica qué hace un bloque de código',
+    system: 'Sos un programador senior. Explicá en español qué hace el código del usuario: propósito general primero, luego detalles importantes. Sin repetir el código.',
+  },
+  {
+    id: 'corregir',
+    nombre: 'Corregir texto',
+    icono: '✏️',
+    descripcion: 'Ortografía, gramática y estilo',
+    system: 'Sos un corrector de estilo. Corregí ortografía, gramática y claridad del texto en español. Devolvé el texto corregido y al final una lista breve de los cambios.',
+  },
+  {
+    id: 'formalizar',
+    nombre: 'Formalizar',
+    icono: '🎩',
+    descripcion: 'Reescribe en tono formal/profesional',
+    system: 'Reescribí el texto del usuario en tono formal y profesional, en español. Mantené el significado exacto. Devolvé SOLO el texto reescrito.',
+  },
+  {
+    id: 'simplificar',
+    nombre: 'Simplificar',
+    icono: '🪶',
+    descripcion: 'Lenguaje simple, apto para cualquiera',
+    system: 'Reescribí el texto del usuario en lenguaje simple y claro, como para alguien sin conocimientos técnicos. En español. Devolvé SOLO el texto reescrito.',
+  },
+  {
+    id: 'extraer',
+    nombre: 'Extraer datos',
+    icono: '📋',
+    descripcion: 'Lista estructurada de datos clave',
+    system: 'Extraé los datos clave del texto del usuario (nombres, fechas, números, URLs, acciones) y devolvelos como lista estructurada en markdown, en español.',
+  },
+  {
+    id: 'titulos',
+    nombre: 'Generar títulos',
+    icono: '✨',
+    descripcion: '5 títulos alternativos para el texto',
+    system: 'Generá 5 títulos alternativos en español para el texto del usuario: 2 informativos, 2 creativos, 1 corto (máx 6 palabras). Lista numerada, nada más.',
+  },
+];

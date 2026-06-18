@@ -1,0 +1,16 @@
+/* AURORA / SKIN / INJECT — Biblioteca de componentes para inyección en páginas externas.
+   Usar via fetch() desde content scripts — nunca con @import en skin.css.
+
+   Orden de carga:
+   1. tokens    → variables CSS con fallbacks literales
+   2. buttons   → .inj-btn y variantes
+   3. dropdown  → .inj-dropdown montado en <html>
+   4. modal     → .inj-overlay + .inj-modal montados en <html>
+   5. panel     → .inj-panel + .inj-controls
+*/
+
+@import './tokens.css';
+@import './buttons.css';
+@import './dropdown.css';
+@import './modal.css';
+@import './panel.css';

@@ -1,0 +1,9 @@
+/* LOCAL — indice de estilos de la view Local.
+   Las piezas viven separadas para reducir blast radius al editar. */
+
+@import './local.messages.css';
+@import './local.tools.css';
+@import './local.composer-cloud.css';
+@import './local.panels.css';
+@import './local.responsive.css';
+@import './local.canvas.css';

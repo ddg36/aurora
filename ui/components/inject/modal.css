@@ -1,0 +1,144 @@
+/* INJECT / MODAL — Overlays y modales inyectados en páginas externas.
+   Montados en document.documentElement para escapar stacking contexts del host. */
+
+.inj-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: rgba(0,0,0,0.85) !important;
+  z-index: var(--inj-z-modal, 2147483647) !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  backdrop-filter: blur(12px);
+  animation: inj-fade-in 0.2s ease-out;
+}
+
+@keyframes inj-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.inj-modal {
+  background: var(--inj-surface, #0a0a0a) !important;
+  border: 1px solid var(--inj-border, rgba(255,255,255,0.08)) !important;
+  border-radius: var(--inj-radius-lg) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.04) !important;
+  font-family: var(--inj-font-sans) !important;
+  color: var(--inj-text, #fff) !important;
+  overflow: hidden !important;
+  animation: inj-modal-in 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes inj-modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Tamaños predefinidos */
+.inj-modal--md { width: 560px; max-height: 80vh; }
+.inj-modal--lg { width: 85%; max-width: 1000px; height: 85%; }
+
+/* Secciones internas */
+.inj-modal-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 14px 18px !important;
+  background: var(--inj-bg, #000) !important;
+  border-bottom: 1px solid var(--inj-border, rgba(255,255,255,0.08)) !important;
+  flex-shrink: 0 !important;
+}
+
+.inj-modal-body {
+  flex: 1 !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
+
+.inj-modal-footer {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 12px 18px !important;
+  background: var(--inj-bg, #000) !important;
+  border-top: 1px solid var(--inj-border, rgba(255,255,255,0.08)) !important;
+  flex-shrink: 0 !important;
+}
+
+/* Botón de cierre */
+.inj-modal-close {
+  background: none !important;
+  border: none !important;
+  color: var(--inj-text-muted, #6b6a7a) !important;
+  font-size: 22px !important;
+  cursor: pointer !important;
+  padding: 0 6px !important;
+  line-height: 1 !important;
+  margin-left: auto !important;
+  transition: color 0.15s, transform 0.15s !important;
+  border-radius: var(--inj-radius-sm) !important;
+}
+.inj-modal-close:hover {
+  color: var(--aurora-accent, #ef4444) !important;
+  transform: rotate(90deg) !important;
+}
+
+/* Input fields dentro del modal */
+.inj-input-group { flex: 1; }
+
+.inj-input-label {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--inj-text-muted, #6b6a7a);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  font-family: var(--inj-font-sans);
+}
+
+.inj-input {
+  width: 100% !important;
+  background: var(--inj-bg, #000) !important;
+  border: 1px solid var(--inj-border, rgba(255,255,255,0.08)) !important;
+  padding: 7px 11px !important;
+  border-radius: var(--inj-radius-sm) !important;
+  outline: none !important;
+  font-family: var(--inj-font-mono) !important;
+  font-size: 12px !important;
+  color: var(--inj-text, #fff) !important;
+  box-sizing: border-box !important;
+  transition: border-color 0.15s !important;
+}
+.inj-input:focus {
+  border-color: var(--aurora-accent, #ef4444) !important;
+}
+
+/* Editor de código */
+.inj-code-editor {
+  width: 100% !important;
+  height: 100% !important;
+  background: var(--inj-bg, #000) !important;
+  color: var(--inj-text, #fff) !important;
+  border: none !important;
+  padding: 18px !important;
+  font-family: var(--inj-font-mono) !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  resize: none !important;
+  outline: none !important;
+  white-space: pre !important;
+  overflow: auto !important;
+  box-sizing: border-box !important;
+  scrollbar-width: thin;
+  scrollbar-color: var(--inj-border, rgba(255,255,255,0.08)) transparent;
+}
+
+/* Stats bar */
+.inj-stats {
+  font-size: 11px;
+  color: var(--inj-text-muted, #6b6a7a);
+  font-family: var(--inj-font-mono);
+}

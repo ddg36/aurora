@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "extensions": [
+    {
+      "id": "aihub",
+      "source": "../../au-aihub",
+      "path": "aihub",
+      "manifest": "aihub/manifest.json",
+      "kind": "mv3-sidepanel-server",
+      "status": "active",
+      "notes": "Sidepanel → http://localhost:7779. Background = bridge chrome.* APIs al servidor."
+    },
+    {
+      "id": "homeaurora",
+      "source": "../../au-homeaurora",
+      "path": "homeaurora",
+      "manifest": "homeaurora/manifest.json",
+      "kind": "mv3-newtab-server",
+      "status": "active",
+      "notes": "New tab override → http://localhost:7779."
+    },
+    {
+      "id": "aurora-productivity",
+      "source": "aurora/extensions/aurora-productivity",
+      "path": "aurora-productivity",
+      "manifest": "aurora-productivity/manifest.json",
+      "kind": "mv3-sidepanel-server",
+      "status": "active",
+      "notes": "Productivity thin client: capture, research, tasks, clipboard, forms, meetings, tabs, prices."
+    },
+    {
+      "id": "ash",
+      "source": "../../au-ash",
+      "path": "ash",
+      "manifest": "ash/manifest.json",
+      "kind": "mv3-sidepanel",
+      "status": "imported"
+    },
+    {
+      "id": "bold",
+      "source": "../../au-bold",
+      "path": "bold",
+      "manifest": "bold/manifest.json",
+      "kind": "mv3-popup-content",
+      "status": "imported",
+      "dbBridge": true,
+      "uiMode": "aurora-iframe"
+    },
+    {
+      "id": "browsernebula",
+      "source": "../../au-browsernebula",
+      "path": "browsernebula",
+      "manifest": "browsernebula/manifest.json",
+      "kind": "mv3-sidepanel",
+      "status": "imported"
+    },
+    {
+      "id": "orion",
+      "source": "../../au-orion",
+      "path": "orion",
+      "manifest": "orion/manifest.json",
+      "kind": "mv3-background-parser",
+      "status": "imported"
+    },
+    {
+      "id": "pcp4",
+      "source": "../../au-pcp4",
+      "path": "pcp4",
+      "manifest": "pcp4/manifest.json",
+      "kind": "mv3-popup-content",
+      "status": "imported"
+    },
+    {
+      "id": "ytnoambient",
+      "source": "../../au-ytnoambient",
+      "path": "ytnoambient",
+      "manifest": "ytnoambient/manifest.json",
+      "kind": "mv3-content-script",
+      "status": "imported"
+    }
+  ],
+  "nonExtensionSources": [
+    {
+      "id": "rtxnvidia",
+      "source": "../../au-rtxnvidia",
+      "target": "aurora ui/backend modules",
+      "status": "pending-migration"
+    },
+    {
+      "id": "ytsounds",
+      "source": "../../au-ytsounds",
+      "target": "aurora backend/audio utility",
+      "status": "pending-classification"
+    }
+  ]
+}

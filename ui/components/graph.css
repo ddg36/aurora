@@ -1,0 +1,103 @@
+.aurora-graph-board {
+  position: relative;
+  min-width: 900px;
+  min-height: 620px;
+  margin: 0 auto;
+  border: 1px solid var(--aurora-border);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.14), transparent 35%),
+    rgba(255, 255, 255, 0.025);
+  overflow: hidden;
+}
+
+.aurora-graph-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.aurora-graph-edge {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 1.2;
+}
+
+.aurora-graph-node {
+  position: absolute;
+  min-width: 126px;
+  max-width: 170px;
+  border: 1px solid var(--aurora-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--aurora-surface) 76%, rgba(0, 0, 0, 0.38));
+  color: var(--aurora-text);
+  padding: 8px 9px;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.aurora-graph-node:hover {
+  transform: translateY(-2px);
+  border-color: var(--aurora-accent);
+  background: color-mix(in srgb, var(--aurora-accent) 12%, var(--aurora-surface));
+}
+
+.aurora-graph-node span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--aurora-text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.aurora-graph-node strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.aurora-graph-node-missing { border-color: rgba(244, 63, 94, 0.45); }
+.aurora-graph-node-external { border-color: rgba(56, 189, 248, 0.45); }
+.aurora-graph-node-code { border-color: color-mix(in srgb, var(--aurora-error, #ff8c42) 48%, var(--aurora-border)); }
+.aurora-graph-node-table { border-color: color-mix(in srgb, var(--aurora-accent) 48%, var(--aurora-border)); }
+.aurora-graph-node-task,
+.aurora-graph-node-task-done { border-color: color-mix(in srgb, var(--aurora-success, #6effa0) 48%, var(--aurora-border)); }
+
+.aurora-graph-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--aurora-text-muted);
+  font-size: 13px;
+}
+
+.aurora-details-card {
+  padding: 12px;
+}
+
+.aurora-details-card h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.aurora-details-card p {
+  color: var(--aurora-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.aurora-details-card ul {
+  padding-left: 18px;
+  margin: 10px 0 0;
+}
+
+.aurora-details-card li {
+  margin: 8px 0;
+  color: var(--aurora-text-muted);
+  font-size: 12px;
+}

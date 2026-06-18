@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Aurora Hub</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    iframe {
+      width: 100%; height: 100%; border: none; display: block;
+    }
+    #offline {
+      display: none; position: absolute; inset: 0;
+      background: #0a0a0a; color: #9a99a8;
+      flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+      font-family: system-ui, sans-serif; font-size: 13px; text-align: center; padding: 24px;
+    }
+    #offline.show { display: flex; }
+    #offline h2 { color: #fff; font-size: 15px; }
+    #offline code { font-size: 11px; background: #111; padding: 4px 8px; border-radius: 4px; color: #ef4444; }
+    #retry-btn {
+      margin-top: 8px; padding: 6px 16px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.05);
+      color: #fff; cursor: pointer; font-size: 12px;
+    }
+    #retry-btn:hover { background: rgba(255,255,255,.1); }
+  </style>
+</head>
+<body>
+  <iframe id="frame" src="http://localhost:7779/ui/"
+    allow="clipboard-read; clipboard-write; microphone; camera"></iframe>
+  <div id="offline">
+    <h2>Aurora offline</h2>
+    <p>El servidor Aurora no está corriendo.</p>
+    <code>python3 -m uvicorn src.main:app --port 7779</code>
+    <button id="retry-btn">Reintentar</button>
+  </div>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

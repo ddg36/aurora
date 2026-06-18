@@ -1,0 +1,33 @@
+/* INJECT / TOKENS — Variables con fallbacks literales.
+   Seguras en cualquier host — no dependen de nada externo.
+   ash-theme-sync en ash_main.js gestiona --aurora-accent en runtime. */
+
+:root {
+  /* Superficies — alineadas con Aurora dark */
+  --inj-bg:             #000000;
+  --inj-surface:        #0a0a0a;
+  --inj-surface-2:      #111116;
+  --inj-surface-3:      #1c1c1c;
+
+  /* Bordes translúcidos — exactamente como Aurora */
+  --inj-border:         rgba(255,255,255,0.08);
+  --inj-border-hover:   rgba(255,255,255,0.15);
+
+  /* Tipografía */
+  --inj-text:           #ffffff;
+  --inj-text-dim:       #9a99a8;
+  --inj-text-muted:     #6b6a7a;
+
+  /* Fuentes */
+  --inj-font-sans:      'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --inj-font-mono:      'Consolas', 'Fira Mono', 'Courier New', monospace;
+
+  /* Radios */
+  --inj-radius-sm:      6px;
+  --inj-radius-md:      8px;
+  --inj-radius-lg:      12px;
+
+  /* Z-index */
+  --inj-z-dropdown:     2147483640;
+  --inj-z-modal:        2147483647;
+}

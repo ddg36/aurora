@@ -1,0 +1,80 @@
+{
+  "roles": [
+    {
+      "id": "arquitecto",
+      "label": "Arquitecto",
+      "icon": "🏗",
+      "color": "#3b82f6",
+      "prompt": "Como Arquitecto de software, diseña la estructura técnica para: {{objetivo}}. Considera escalabilidad, patrones de diseño y tecnologías apropiadas."
+    },
+    {
+      "id": "coder",
+      "label": "Coder",
+      "icon": "💻",
+      "color": "#10b981",
+      "prompt": "Como desarrollador experto, escribe el código necesario para: {{objetivo}}. Usa las mejores prácticas e incluye comentarios."
+    },
+    {
+      "id": "reviewer",
+      "label": "Reviewer",
+      "icon": "🔍",
+      "color": "#f59e0b",
+      "prompt": "Como revisor de código, analiza y proporciona retroalimentación detallada sobre: {{objetivo}}. Identifica problemas, sugerencias de mejora y buenas prácticas."
+    },
+    {
+      "id": "designer",
+      "label": "Designer",
+      "icon": "🎨",
+      "color": "#8b5cf6",
+      "prompt": "Como diseñador UI/UX, crea una propuesta de diseño para: {{objetivo}}. Considera usabilidad, estética y experiencia de usuario."
+    },
+    {
+      "id": "tester",
+      "label": "Tester",
+      "icon": "🧪",
+      "color": "#ef4444",
+      "prompt": "Como ingeniero de calidad, diseña casos de prueba y plan de testing para: {{objetivo}}. Incluye pruebas unitarias, integración y escenarios edge."
+    },
+    {
+      "id": "devops",
+      "label": "DevOps",
+      "icon": "⚙",
+      "color": "#06b6d4",
+      "prompt": "Como ingeniero DevOps, define la infraestructura y pipeline de despliegue para: {{objetivo}}. Considera CI/CD, contenedores, monitoreo y seguridad."
+    },
+    {
+      "id": "analista",
+      "label": "Analista",
+      "icon": "📊",
+      "color": "#f97316",
+      "prompt": "Como analista de negocio, define requerimientos y especificaciones detalladas para: {{objetivo}}. Identifica stakeholders, riesgos y métricas de éxito."
+    },
+    {
+      "id": "redactor",
+      "label": "Redactor",
+      "icon": "✍",
+      "color": "#84cc16",
+      "prompt": "Como redactor técnico experto, documenta de forma clara y completa: {{objetivo}}. Incluye ejemplos, diagramas en texto y guía de uso."
+    },
+    {
+      "id": "seguridad",
+      "label": "Seguridad",
+      "icon": "🛡",
+      "color": "#dc2626",
+      "prompt": "Como experto en ciberseguridad, analiza y refuerza la seguridad de: {{objetivo}}. Identifica vulnerabilidades, vectores de ataque y contramedidas."
+    },
+    {
+      "id": "datos",
+      "label": "Data",
+      "icon": "🗄",
+      "color": "#7c3aed",
+      "prompt": "Como ingeniero de datos, diseña el modelo de datos y estrategia de almacenamiento para: {{objetivo}}. Considera normalización, índices y rendimiento."
+    }
+  ],
+  "defaultMembers": [
+    { "id": "1", "name": "Arqui", "model": "llama3", "role": "arquitecto", "color": "#3b82f6" },
+    { "id": "2", "name": "CodeBot", "model": "mistral", "role": "coder", "color": "#10b981" },
+    { "id": "3", "name": "ReviewAI", "model": "llama3", "role": "reviewer", "color": "#f59e0b" },
+    { "id": "4", "name": "DesignPro", "model": "llava", "role": "designer", "color": "#8b5cf6" }
+  ]
+}

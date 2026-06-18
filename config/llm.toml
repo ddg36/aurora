@@ -1,0 +1,7 @@
+[gemita]
+host = "localhost"
+port = 7778
+
+[llama]
+base_url = "http://localhost:11434"
+default_model = ""

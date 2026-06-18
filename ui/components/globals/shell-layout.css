@@ -1,0 +1,56 @@
+/* UI/GLOBALS/SHELL-LAYOUT — Cascada de flex-1 / min-height: 0 para que
+   las views llenen el espacio disponible debajo del topbar.
+
+   Twind no puede expresar selectores descendientes globales (`> *`),
+   por eso esta cascada vive como CSS global. */
+
+.aurora-view-scope {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.aurora-view-scope > * {
+  flex: 1;
+  min-height: 0;
+}
+
+/* TabHost — host reusable para views internas de un módulo */
+.aurora-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.aurora-host > div:not([style*="display:none"]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.aurora-host > div[style*="display:none"] { display: none !important; }
+
+/* IFRAME Support — permite que iframes se renderizen correctamente dentro de flex containers */
+.aurora-host > div:has(> iframe),
+.aurora-view-scope > div:has(> iframe) {
+  overflow: visible !important;
+  display: block !important;
+  flex: 1;
+  min-height: 0;
+}
+
+iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}

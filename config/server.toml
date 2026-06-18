@@ -1,0 +1,11 @@
+[server]
+host = "0.0.0.0"
+port = 7779
+reload = true
+
+[db]
+path_linux  = "/media/almacen/deml/Downloads/core_instruction/databases/aihub/aihub.db"
+path_windows = "D:\\Downloads\\core_instruction\\databases\\aihub\\aihub.db"
+
+[cors]
+origins = ["*"]

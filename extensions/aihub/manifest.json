@@ -1,0 +1,104 @@
+{
+  "manifest_version": 3,
+  "name": "Aurora Hub",
+  "version": "2.1.0",
+  "description": "Aurora v2 — hub unificado de contenido, tareas y automatización.",
+  "permissions": [
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback",
+    "sidePanel",
+    "tabs",
+    "scripting",
+    "activeTab",
+    "storage",
+    "clipboardWrite",
+    "clipboardRead",
+    "tabCapture",
+    "windows",
+    "debugger",
+    "downloads",
+    "notifications"
+  ],
+  "host_permissions": [
+    "http://localhost:7779/*",
+    "ws://localhost:7779/*",
+    "http://127.0.0.1:7779/*",
+    "http://localhost:7777/*",
+    "http://127.0.0.1:7777/*",
+    "http://localhost:8088/*",
+    "*://*.youtube.com/*",
+    "*://chat.openai.com/*",
+    "*://chatgpt.com/*",
+    "*://gemini.google.com/*",
+    "*://claude.ai/*",
+    "*://copilot.microsoft.com/*",
+    "*://*.perplexity.ai/*",
+    "*://grok.com/*",
+    "*://kimi.moonshot.cn/*",
+    "https://*/*",
+    "<all_urls>"
+  ],
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Aurora Hub"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+  },
+  "externally_connectable": {
+    "ids": ["*"]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://gemini.google.com/*",
+        "*://chat.openai.com/*",
+        "*://chatgpt.com/*",
+        "*://claude.ai/*",
+        "*://grok.com/*",
+        "*://*.perplexity.ai/*",
+        "*://copilot.microsoft.com/*",
+        "*://kimi.moonshot.cn/*"
+      ],
+      "js": ["content-scripts/ai-bridge.js", "content-scripts/gem-observer.js"],
+      "all_frames": true,
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-scripts/main.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content-scripts/yt-captures.js"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content-scripts/yt-noambient.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-scripts/bold-hud.js"],
+      "run_at": "document_end"
+    }
+  ]
+}

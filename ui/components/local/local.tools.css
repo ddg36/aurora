@@ -1,0 +1,318 @@
+/* ══════════════════════════════════════════════════════
+   MENSAJES DE HERRAMIENTAS (todos los HUDs)
+   ══════════════════════════════════════════════════════ */
+
+@import '../tokens.css';
+
+.message.tool-call {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 5px;
+  min-height: 24px;
+  margin: 1px 0;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--aurora-surface-2) 72%, transparent);
+  border: 1px solid var(--aurora-border-quiet);
+  border-left: 2px solid color-mix(in srgb, var(--aurora-accent) 45%, transparent);
+  border-radius: 6px;
+  font-size: 10px;
+  font-family: var(--aurora-font-mono);
+  opacity: 0.72;
+}
+.tool-call-icon { flex-shrink: 0; color: var(--accent); font-size: 10px; }
+.tool-call-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+
+.message.tool-result {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 5px;
+  min-height: 22px;
+  margin: 1px 0;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--aurora-field) 78%, transparent);
+  border: 1px solid var(--aurora-border-quiet);
+  border-left: 2px solid var(--aurora-border-strong);
+  border-radius: 6px;
+  font-size: 10px;
+  font-family: var(--aurora-font-mono);
+  opacity: 0.58;
+}
+.tool-result-icon    { flex-shrink: 0; color: var(--text-dim); }
+.tool-result-name    { max-width: 128px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: var(--text-muted); flex-shrink: 0; }
+.tool-result-content { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ══════════════════════════════════════════════════════
+   ACTIVITY BAR — Tool calls en vuelo
+   ══════════════════════════════════════════════════════ */
+
+.act-entry.act-ok      { border-color: rgba(34,197,94,.62); }
+.act-entry.act-error   { border-color: rgba(239,68,68,.72); }
+.act-entry.act-running { border-color: rgba(96,165,250,.62); animation: pulse 1s infinite; }
+
+/* ── Banner de confirmación Nexus MEDIUM/HIGH ──────── */
+.nexus-confirm-banner {
+  margin: 4px 8px 0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid;
+  animation: nexus-confirm-in 0.15s ease;
+}
+@keyframes nexus-confirm-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.nexus-confirm-banner.risk-medium {
+  background: rgba(245,158,11,0.1);
+  border-color: rgba(245,158,11,0.4);
+}
+.nexus-confirm-banner.risk-high {
+  background: rgba(239,68,68,0.1);
+  border-color: rgba(239,68,68,0.5);
+}
+.nexus-confirm-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nexus-confirm-risk {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.risk-medium .nexus-confirm-risk { background: rgba(245,158,11,0.2); color: #f59e0b; }
+.risk-high   .nexus-confirm-risk { background: rgba(239,68,68,0.2);  color: #ef4444; }
+.nexus-confirm-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+.nexus-confirm-cmd {
+  font-family: monospace;
+  font-size: 11px;
+  background: rgba(0,0,0,0.3);
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+.nexus-confirm-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.nexus-confirm-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.nexus-confirm-cancel, .nexus-confirm-ok {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid;
+  transition: background 0.1s;
+}
+.nexus-confirm-cancel {
+  background: transparent;
+  border-color: var(--surface3);
+  color: var(--text-muted);
+}
+.nexus-confirm-cancel:hover { background: rgba(255,255,255,0.05); }
+.nexus-confirm-ok {
+  background: rgba(34,197,94,0.15);
+  border-color: rgba(34,197,94,0.5);
+  color: #22c55e;
+}
+.nexus-confirm-ok:hover { background: rgba(34,197,94,0.25); }
+
+/* ── Chips de resultados Nexus modo manual ─────────── */
+.nexus-resultados-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px 0;
+}
+.nexus-resultado-chip-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.nexus-resultado-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(139,92,246,0.12);
+  border: 1px solid rgba(139,92,246,0.35);
+  border-radius: 8px;
+  padding: 3px 6px 3px 8px;
+  font-size: 11px;
+  color: #8b5cf6;
+}
+.nexus-chip-label {
+  flex: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+.nexus-chip-label:hover { opacity: 0.8; }
+.nexus-resultado-chip button {
+  background: none;
+  border: none;
+  color: #8b5cf6;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.nexus-resultado-chip button:hover { opacity: 1; }
+.nexus-chip-preview {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(139,92,246,0.25);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 8px 10px;
+  margin: 0;
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+/* ── Menú contextual ⬡ Nexus ──────────────────────── */
+.nexus-ai-ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 260px;
+  max-width: 320px;
+  background: var(--surface2);
+  border: 1px solid rgba(139,92,246,0.4);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nexus-ai-ctx-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(139,92,246,0.2);
+  margin-bottom: 2px;
+}
+.nexus-ai-ctx-mode-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.nexus-ai-ctx-mode-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(139,92,246,0.3);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.nexus-ai-ctx-mode-btn.active {
+  background: rgba(139,92,246,0.25);
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+  font-weight: 700;
+}
+.nexus-ai-ctx-turnos-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid rgba(139,92,246,0.2);
+  flex-wrap: wrap;
+}
+.nexus-ai-ctx-header {
+  font-size: 10px;
+  font-weight: 700;
+  color: #8b5cf6;
+  padding: 6px 8px 4px;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(139,92,246,0.2);
+  margin-bottom: 2px;
+}
+.nexus-ai-ctx-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 8px;
+  text-align: center;
+  line-height: 1.4;
+}
+.nexus-ai-ctx-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  transition: background 0.1s;
+}
+.nexus-ai-ctx-item:hover { background: rgba(139,92,246,0.1); }
+.nexus-ai-ctx-name {
+  font-size: 11px;
+  color: var(--text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nexus-ai-ctx-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.nexus-ai-ctx-actions button {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(139,92,246,0.4);
+  background: transparent;
+  color: #8b5cf6;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.nexus-ai-ctx-actions button:hover { background: rgba(139,92,246,0.2); }
+.nexus-ai-ctx-actions button:last-child {
+  border-color: rgba(var(--accent-rgb, 139,92,246),0.4);
+  color: var(--accent);
+}
+
+/* ── Typewriter cursor ───────────────────────────────────── */
+.typewriter-cursor {
+  display: inline-block;
+  color: var(--accent);
+  animation: typewriter-blink 0.8s infinite;
+  margin-left: 2px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+@keyframes typewriter-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}

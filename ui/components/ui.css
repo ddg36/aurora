@@ -1,0 +1,31 @@
+
+/* UI/UI.CSS — Aurora v2 design kit entry point */
+
+@import './tokens.css';
+
+@import './globals/keyframes.css';
+
+@import './globals/reset.css';
+
+@import './globals/scrollbars.css';
+
+@import './globals/shell-layout.css';
+
+@import './fx.css';
+
+@import './markdown.css';
+@import './graph.css';
+
+@import './globals/utilities-lite.css';
+
+@import './local/local.css';
+
+@import './scratchpad/scratchpad.css';
+
+@import '../modules/inicio/inicio.css';
+
+@import '../modules/prompts/prompts.css';
+@import '../modules/prompts/prompts-ui.css';
+@import '../modules/md-reader/md-reader.css';
+
+@import './globals/theme-mode.css';

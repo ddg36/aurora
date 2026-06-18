@@ -1,0 +1,70 @@
+/* AURORA/SKIN/THEMES/VARIABLES — Variables CSS del sistema. Tema por defecto: Dark Elegant */
+
+:root {
+  /* ── Superficies — fijas ──────────────────────────────── */
+  --aurora-bg:       #000000;
+  --aurora-surface:  #0a0a0a;
+  --aurora-surface-1: #0a0a0a;
+  --aurora-surface-2: #111116;
+  --aurora-surface3: #1c1c1c;
+  --aurora-surface-hover: rgba(255,255,255,0.045);
+  --aurora-field: rgba(255,255,255,0.035);
+
+  /* ── Tipografía — fija ────────────────────────────────── */
+  --aurora-text:       #ffffff;
+  --aurora-text-muted: #9a99a8;
+  --aurora-text-dim:   #6b6a7a;
+
+  /* ── Glass — fijo ─────────────────────────────────────── */
+  --aurora-glass:           rgba(255,255,255,0.03);
+  --aurora-glass-highlight: rgba(255,255,255,0.06);
+  --aurora-glass-shadow:    rgba(13,12,34,0.5);
+
+  /* ── Estados — fijos ──────────────────────────────────── */
+  --aurora-warning: #fbbf24;
+  --aurora-error:   #c73e3e;
+  --aurora-success: #4caf50;
+
+  /* ── Forma / tipo — fijos ─────────────────────────────── */
+  --aurora-radius-xs: 3px;
+  --aurora-radius-sm: 6px;
+  --aurora-radius:    8px;
+  --aurora-radius-md: 8px;
+  --aurora-radius-lg: 12px;
+  --aurora-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
+  --aurora-font-mono: 'Consolas', 'Fira Mono', 'Courier New', monospace;
+
+  /* ── Bordes ──────────────────────────────────────────────── */
+  --aurora-border:       rgba(255,255,255,0.08);
+  --aurora-border-quiet: rgba(255,255,255,0.055);
+  --aurora-border-strong: rgba(255,255,255,0.14);
+  --aurora-shadow-sm:    0 1px 2px rgba(0,0,0,0.28);
+  --aurora-shadow-md:    0 10px 30px rgba(0,0,0,0.32);
+  --aurora-focus-ring:   0 0 0 2px color-mix(in srgb, var(--aurora-accent) 16%, transparent);
+
+  /* ── Acento — defaults, ui/themes/manager.js los sobreescribe ─ */
+  --aurora-accent:      #ef4444;
+  --aurora-surface2:    #2b0000;
+  --aurora-edge:        #ef4444;
+  --aurora-edge-dim:    #7f0000;
+  --aurora-edge-glow:   rgba(239,68,68,0.2);
+  --aurora-text-bright: #ef4444;
+  --aurora-accent-dim:  #7f0000;
+  --aurora-accent-glow: rgba(239,68,68,0.2);
+  --aurora-glow:        rgba(239,68,68,0.2);
+
+  /* ── Legacy aliases — compatibilidad con módulos migrados ── */
+  --accent:      var(--aurora-accent);
+  --surface:     var(--aurora-surface);
+  --surface2:    var(--aurora-surface2);
+  --surface3:    var(--aurora-surface3);
+  --text:        var(--aurora-text);
+  --text-dim:    var(--aurora-text-dim);
+  --text-muted:  var(--aurora-text-muted);
+  --text-bright: var(--aurora-text-bright);
+  --error:       var(--aurora-error);
+  --font-sans:   var(--aurora-font-sans);
+  --font-mono:   var(--aurora-font-mono);
+  --border:      var(--aurora-border);
+  --radius:      var(--aurora-radius);
+}

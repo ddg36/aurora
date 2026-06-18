@@ -1,0 +1,53 @@
+/* INJECT / DROPDOWN — Menús flotantes inyectados en páginas externas.
+   El JS debe montarlos en document.documentElement con position:fixed
+   para escapar cualquier overflow:hidden o stacking context del host. */
+
+.inj-dropdown {
+  display: none;
+  position: fixed;
+  background: var(--inj-surface, #0a0a0a);
+  border: 1px solid var(--inj-border, rgba(255,255,255,0.08));
+  border-radius: var(--inj-radius-md);
+  min-width: 180px;
+  z-index: var(--inj-z-dropdown, 2147483640);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04);
+  overflow: hidden;
+  font-family: var(--inj-font-sans);
+  padding: 4px;
+}
+
+.inj-dropdown--open { display: block; }
+
+.inj-dropdown-item {
+  display: block;
+  padding: 7px 12px;
+  color: var(--inj-text-dim, #9a99a8);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  box-sizing: border-box;
+  border-radius: var(--inj-radius-sm);
+  transition: background 0.1s, color 0.1s;
+}
+
+.inj-dropdown-item:hover {
+  background: var(--inj-surface-2, #111116);
+  color: var(--inj-text, #fff);
+}
+
+.inj-dropdown-item--active {
+  color: var(--aurora-accent, #ef4444);
+  background: color-mix(in srgb, var(--aurora-accent, #ef4444) 10%, transparent);
+  font-weight: 600;
+}
+.inj-dropdown-item--active:hover {
+  background: color-mix(in srgb, var(--aurora-accent, #ef4444) 16%, transparent);
+}
+
+.inj-dropdown-separator {
+  display: block;
+  height: 1px;
+  background: var(--inj-border, rgba(255,255,255,0.08));
+  margin: 4px 0;
+}

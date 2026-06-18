@@ -1,0 +1,604 @@
+/* ═══════════════════════════════════════════════════════
+   LOCAL — Chat con Gemita/llama
+   Base visual mejorada + variantes por HUD activo
+   ═══════════════════════════════════════════════════════ */
+
+/* ── Thinking dentro del mensaje ───────────────────────── */
+.message-thinking {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--surface3);
+}
+
+.thinking-toggle-inline {
+  background: var(--surface3);
+  border: none;
+  color: var(--text-dim);
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.thinking-toggle-inline:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.thinking-content-inline {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--surface);
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.thinking-content-inline pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: 'Courier New', monospace;
+}
+
+/* ── Protocol messages (@@ en historial) ─────────────────── */
+.protocol-message {
+  margin: 6px 0;
+  border-left: 2px solid var(--aurora-accent, #7c6af7);
+  padding-left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.protocol-message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.protocol-host-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--aurora-accent, #7c6af7);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.protocol-time {
+  font-size: 10px;
+  color: var(--text-dim, #666);
+}
+
+.protocol-block {
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.protocol-block-label {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.protocol-block-body {
+  margin: 0;
+  padding: 6px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* nexus ok — estilo terminal verde */
+.protocol-block.nexus-ok {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+.protocol-block.nexus-ok .protocol-block-label {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+.protocol-block.nexus-ok .protocol-block-body {
+  color: #a7f3d0;
+}
+
+/* nexus error — rojo */
+.protocol-block.nexus-err {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+.protocol-block.nexus-err .protocol-block-label {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+.protocol-block.nexus-err .protocol-block-body {
+  color: #fca5a5;
+}
+
+/* nexus pending — amarillo */
+.protocol-block.nexus-pending {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+.protocol-block.nexus-pending .protocol-block-label {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+.protocol-block.nexus-pending .protocol-block-body {
+  color: #fde68a;
+}
+
+/* message — burbuja normal del asistente */
+.protocol-block.message-block {
+  background: var(--surface2, rgba(255,255,255,0.05));
+  border: 1px solid var(--surface3, rgba(255,255,255,0.08));
+}
+.protocol-block.message-block .protocol-block-label {
+  background: var(--surface3, rgba(255,255,255,0.06));
+  color: var(--aurora-accent, #7c6af7);
+}
+.protocol-block.message-block .protocol-block-body {
+  color: var(--text, #e2e8f0);
+  font-family: inherit;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+
+/* ══════════════════════════════════════════════════════
+   BASE — Layout
+   ══════════════════════════════════════════════════════ */
+
+.llama-view {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Área de mensajes ─────────────────────────────────── */
+.chat-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface3) transparent;
+}
+
+/* ── Estado vacío ─────────────────────────────────────── */
+.empty-chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+  padding: 32px;
+  user-select: none;
+  opacity: 0.6;
+}
+.empty-chat p { margin: 0; font-size: 15px; }
+.empty-chat .hint { font-size: 11px; margin-top: 4px; }
+
+/* ══════════════════════════════════════════════════════
+   BASE — Mensajes
+   ══════════════════════════════════════════════════════ */
+
+.message {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  border: 1px solid var(--aurora-border-quiet);
+  background: var(--aurora-field);
+  max-width: 100%;
+  word-break: break-word;
+  position: relative;
+  animation: msg-in 0.18s ease-out both;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  flex-shrink: 0;
+}
+
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.message.user {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  align-self: flex-end;
+  max-width: 88%;
+  border-bottom-right-radius: 3px;
+}
+
+.message.assistant {
+  background: var(--aurora-field);
+  border-color: var(--aurora-border);
+  border-bottom-left-radius: 3px;
+}
+
+.message.streaming {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.message.loading { opacity: 0.6; }
+
+.message.direct-ai {
+  border-left: 2px solid var(--aurora-accent);
+  padding-left: 12px;
+}
+
+/* ── Cabecera del mensaje ─────────────────────────────── */
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.message-header .role {
+  font-weight: 700;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+.message-header .time { margin-left: auto; opacity: 0.5; }
+
+/* ── Contenido ────────────────────────────────────────── */
+.message-content { color: var(--text); }
+.message-content p { margin: 0 0 7px; }
+.message-content p:last-child { margin-bottom: 0; }
+
+.message-content pre {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 11px;
+  margin: 6px 0;
+}
+.message-content code {
+  background: rgba(255,255,255,0.07);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-family: 'Consolas', 'Fira Mono', monospace;
+}
+.message-content pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* ── Indicadores ──────────────────────────────────────── */
+.streaming-dot {
+  color: var(--accent);
+  animation: blink 0.8s infinite;
+}
+.typing-indicator {
+  color: var(--text-dim);
+  font-size: 12px;
+  animation: blink 1.2s ease-in-out infinite;
+}
+
+/* ── Thumb imagen en mensaje ──────────────────────────── */
+.msg-image-thumb {
+  max-height: 80px;
+  max-width: 120px;
+  border-radius: 5px;
+  margin-top: 6px;
+  object-fit: cover;
+  display: block;
+  opacity: 0.9;
+}
+
+/* ══════════════════════════════════════════════════════
+   HUD — LUNA
+   Mensajes nacarados con glow suave del acento
+   ══════════════════════════════════════════════════════ */
+
+[data-hud="luna"] .chat-container {
+  background: radial-gradient(
+    ellipse at top left,
+    color-mix(in srgb, var(--accent) 4%, transparent) 0%,
+    transparent 60%
+  );
+}
+
+[data-hud="luna"] .message {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+[data-hud="luna"] .message.user {
+  background: color-mix(in srgb, var(--accent) 12%, rgba(255,255,255,0.04));
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    0 0 14px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+[data-hud="luna"] .message.assistant {
+  border-left: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+[data-hud="luna"] .message.streaming {
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--accent) 22%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+[data-hud="luna"] .message-header .role {
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-muted));
+}
+
+[data-hud="luna"] .empty-chat {
+  text-shadow: 0 0 20px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ══════════════════════════════════════════════════════
+   HUD — NEBULA
+   Gradientes cósmicos, polvo estelar en los bordes
+   ══════════════════════════════════════════════════════ */
+
+[data-hud="nebula"] .chat-container {
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--accent) 3%, transparent) 0%,
+    transparent 70%
+  );
+}
+
+[data-hud="nebula"] .message {
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,0.03) 0%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 100%
+  );
+  border-color: color-mix(in srgb, var(--accent) 15%, rgba(255,255,255,0.05));
+}
+
+[data-hud="nebula"] .message.user {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 12%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 6%, transparent) 100%
+  );
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow: 0 2px 16px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+[data-hud="nebula"] .message.assistant::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: -1px; right: -1px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 40%, transparent) 50%,
+    transparent
+  );
+  border-radius: 10px 10px 0 0;
+}
+
+[data-hud="nebula"] .message.streaming {
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--accent) 20%, transparent),
+    0 0 4px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ══════════════════════════════════════════════════════
+   HUD — SCANLINES
+   Estética CRT, fuente mono, overlay de líneas
+   ══════════════════════════════════════════════════════ */
+
+[data-hud="scanlines"] .message {
+  border-radius: 4px;
+  font-family: 'Consolas', 'Fira Mono', monospace;
+  font-size: 11.5px;
+  border-color: color-mix(in srgb, var(--accent) 20%, rgba(255,255,255,0.04));
+  background: rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+
+[data-hud="scanlines"] .message::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0,0,0,0.08) 3px,
+    rgba(0,0,0,0.08) 4px
+  );
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+[data-hud="scanlines"] .message.user {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  color: color-mix(in srgb, var(--accent) 80%, #fff);
+}
+
+[data-hud="scanlines"] .message-header .role {
+  color: var(--accent);
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+
+[data-hud="scanlines"] .chat-container {
+  background: rgba(0,0,0,0.3);
+}
+
+/* ══════════════════════════════════════════════════════
+   HUD — CORNERS
+   Esquinas tácticas, sin border-radius, look militar
+   ══════════════════════════════════════════════════════ */
+
+[data-hud="corners"] .message {
+  border-radius: 2px;
+  border-color: rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.4);
+  position: relative;
+}
+
+/* Bracket top-left */
+[data-hud="corners"] .message::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: -1px;
+  width: 12px; height: 12px;
+  border-top: 1.5px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  border-left: 1.5px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  pointer-events: none;
+}
+
+/* Bracket bottom-right */
+[data-hud="corners"] .message::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; right: -1px;
+  width: 12px; height: 12px;
+  border-bottom: 1.5px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  border-right: 1.5px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  pointer-events: none;
+}
+
+[data-hud="corners"] .message.user {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, rgba(0,0,0,0.4));
+}
+
+[data-hud="corners"] .message.user::before,
+[data-hud="corners"] .message.user::after {
+  border-color: var(--accent);
+  opacity: 0.9;
+}
+
+[data-hud="corners"] .message-header .role {
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  font-size: 9.5px;
+  color: color-mix(in srgb, var(--accent) 70%, var(--text-muted));
+}
+
+/* ══════════════════════════════════════════════════════
+   HUD — PULSE RINGS
+   Mensajes con aura pulsante, energía radiante
+   ══════════════════════════════════════════════════════ */
+
+[data-hud="pulse-rings"] .message {
+  border-radius: 8px;
+  transition: box-shadow 0.3s;
+}
+
+[data-hud="pulse-rings"] .message.user {
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--accent) 20%, transparent),
+    0 0 2px  color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+[data-hud="pulse-rings"] .message.streaming {
+  animation: msg-in 0.18s ease-out both, pr-message-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes pr-message-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px  color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 45%, transparent),
+                0 0  4px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+}
+
+[data-hud="pulse-rings"] .chat-container {
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--accent) 3%, transparent) 0%,
+    transparent 65%
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   HUD — CIRCUIT
+   Trazos de circuito, tech, eléctrico
+   ══════════════════════════════════════════════════════ */
+
+[data-hud="circuit"] .message {
+  border-radius: 4px;
+  background: rgba(0,0,0,0.45);
+  border-color: color-mix(in srgb, var(--accent) 18%, rgba(255,255,255,0.04));
+  font-family: 'Consolas', 'Fira Mono', monospace;
+  font-size: 12px;
+}
+
+[data-hud="circuit"] .message.user {
+  background: color-mix(in srgb, var(--accent) 8%, rgba(0,0,0,0.45));
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+[data-hud="circuit"] .message.assistant::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 3px; height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 60%, transparent) 30%,
+    color-mix(in srgb, var(--accent) 30%, transparent) 70%,
+    transparent 100%
+  );
+  border-radius: 4px 0 0 4px;
+}
+
+[data-hud="circuit"] .message.streaming {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 30%, transparent);
+  animation: msg-in 0.18s ease-out both, circuit-flicker 3s linear infinite;
+}
+
+@keyframes circuit-flicker {
+  0%, 96%, 100% { opacity: 1; }
+  97%            { opacity: 0.92; }
+  98%            { opacity: 1; }
+  99%            { opacity: 0.95; }
+}
+
+[data-hud="circuit"] .message-header .role {
+  color: var(--accent);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}

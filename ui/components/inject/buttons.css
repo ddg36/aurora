@@ -1,0 +1,107 @@
+/* INJECT / BUTTONS — Botones inyectables en páginas externas.
+   Estilo alineado con Aurora: bordes sutiles, hover con color-mix, acento en borde+texto.
+   Clase base: .inj-btn
+   Modificadores: --accent --gray --success --warning --danger --sm --icon */
+
+.inj-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3px;
+  padding: 6px 12px;
+  border: 1px solid var(--inj-border, rgba(255,255,255,0.08));
+  border-radius: var(--inj-radius-sm);
+  background: var(--inj-surface-2, #111116);
+  color: var(--inj-text, #fff);
+  font-family: var(--inj-font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: normal;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  text-decoration: none;
+  vertical-align: middle;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.inj-btn:hover {
+  border-color: var(--aurora-accent, #ef4444);
+  background: color-mix(in srgb, var(--aurora-accent, #ef4444) 10%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--aurora-accent, #ef4444) 35%, transparent);
+}
+
+.inj-btn:active { opacity: 0.85; }
+
+.inj-btn:disabled,
+.inj-btn.inj-btn--disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+/* Variante acento — borde y texto del color del tema, fondo sutil */
+.inj-btn--accent {
+  border-color: var(--aurora-accent, #ef4444);
+  color: var(--aurora-accent, #ef4444);
+  background: color-mix(in srgb, var(--aurora-accent, #ef4444) 8%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--aurora-accent, #ef4444) 25%, transparent);
+}
+.inj-btn--accent:hover {
+  background: color-mix(in srgb, var(--aurora-accent, #ef4444) 16%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--aurora-accent, #ef4444) 45%, transparent);
+}
+
+/* Variante gray — sin acento, solo tono neutro */
+.inj-btn--gray {
+  border-color: var(--inj-border, rgba(255,255,255,0.08));
+  color: var(--inj-text-dim, #9a99a8);
+}
+.inj-btn--gray:hover {
+  border-color: var(--inj-border-hover, rgba(255,255,255,0.15));
+  color: var(--inj-text, #fff);
+  background: var(--inj-surface-3, #1c1c1c);
+}
+
+/* Variantes de estado */
+.inj-btn--success {
+  border-color: rgba(76,175,80,0.4);
+  color: var(--aurora-success, #4caf50);
+  background: rgba(76,175,80,0.08);
+  cursor: default;
+}
+.inj-btn--warning {
+  border-color: rgba(251,191,36,0.4);
+  color: var(--aurora-warning, #fbbf24);
+  background: rgba(251,191,36,0.08);
+}
+.inj-btn--danger {
+  border-color: rgba(199,62,62,0.4);
+  color: var(--aurora-error, #c73e3e);
+  background: rgba(199,62,62,0.08);
+}
+.inj-btn--danger:hover {
+  background: rgba(199,62,62,0.15);
+  border-color: var(--aurora-error, #c73e3e);
+}
+
+/* Tamaños */
+.inj-btn--sm   { padding: 4px 9px; font-size: 0.7rem; }
+.inj-btn--icon { padding: 6px 9px; }
+
+/* Grupos de botones (split button) */
+.inj-btn-group { display: inline-flex; }
+.inj-btn-group .inj-btn { margin: 3px 0; border-radius: 0; border-left-width: 0; }
+.inj-btn-group .inj-btn:first-child {
+  border-radius: var(--inj-radius-sm) 0 0 var(--inj-radius-sm);
+  border-left-width: 1px;
+  margin-left: 3px;
+}
+.inj-btn-group .inj-btn:last-child {
+  border-radius: 0 var(--inj-radius-sm) var(--inj-radius-sm) 0;
+  margin-right: 3px;
+}
+
+/* Pulso de atención */
+@keyframes inj-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--aurora-accent, #ef4444) 40%, transparent); }
+  70%  { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.inj-btn--pulse { animation: inj-pulse 2s infinite; }
