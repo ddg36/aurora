@@ -157,9 +157,9 @@
           delete kv['action']
           try {
             let data = await _bgFetch('/nexus/' + action, kv)
-            outputs.push('✧ ' + action + ' → ' + (data.ok ? '✓' : 'Error: ' + (data.error || '')) + '\n' + action + ' ' + (data.ok ? 'ok' : 'no') + ' ' + _rnd(data.ok ? _NEX_OK : _NEX_NO))
+            outputs.push('✦ aurora terminal : ' + action + ' → ' + (data.ok ? '✓' : 'Error: ' + (data.error || '')) + '\n' + action + ' ' + (data.ok ? 'ok' : 'no') + ' ' + _rnd(data.ok ? _NEX_OK : _NEX_NO))
           } catch (e) {
-            outputs.push('✧ ' + action + ' → Error: ' + e.message + '\n' + action + ' no ' + _rnd(_NEX_NO))
+            outputs.push('✦ aurora terminal : ' + action + ' → Error: ' + e.message + '\n' + action + ' no ' + _rnd(_NEX_NO))
           }
         }
       }
