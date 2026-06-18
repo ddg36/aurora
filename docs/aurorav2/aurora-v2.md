@@ -230,9 +230,9 @@ src/
     validator.py              ← valida contrato mínimo
     hash.py                   ← FNV-1a hash para IDs estables
     parsers/
-      nexus.py                ← parser @@nexus multilínea
+      nexus.py                ← parser ✧✧✧ multilínea
                                 import: ../hash.py, utils.py
-      nx.py                   ← parser @@nx (bash) y @@nxw (PowerShell)
+      nx.py                   ← parser ✦✦₃ (bash)
                                 import: ../hash.py, utils.py
       br.py                   ← parser @@br — flags: --launch, --nav, --map, --shot
                                 import: ../hash.py, utils.py

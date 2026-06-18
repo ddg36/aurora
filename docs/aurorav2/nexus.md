@@ -97,7 +97,7 @@ Flujo:
 4. Para cada bloque nexus: parsea `action= key=value`, hace `_bgFetch('/nexus/' + action, kv)`
 5. Inyecta el resultado como placeholder en el chat
 
-**No usa `@@nx` ni `@@nexus`.** Usa `✦✦✦` (shell) y `✧✧✧` (nexus).
+**No usa `@@nx` ni `@@nexus`.** Usa `✦✦₃` (shell) y `✧✧✧` (nexus).
 
 ---
 
@@ -141,7 +141,7 @@ Usa sentinel (`__GEMITA_EOF__<uuid>`) para detectar fin de output sin cerrar el 
 |---------|-----|
 | `router.py` | `POST /parser/parse` → `aurora_parse(text, context)` |
 | `index.py` | Ejecuta todos los parsers, normaliza |
-| `parsers/nx.py` | `✦✦✦...✦✦✦` (bash) y `@@nxw...@@endnxw` (powershell) |
+| `parsers/nx.py` | `✦✦₃...✦✦₃` (bash/powershell) |
 | `parsers/nexus.py` | `✧✧✧...✧✧✧` |
 | `parsers/br.py` | `@@br...@@endbr` (browser actions) |
 | `parsers/pg.py` | `@@pg...@@endpg` (programming tasks) |
