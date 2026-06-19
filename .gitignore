@@ -21,3 +21,4 @@ src/db/aurora.db
 *.db-wal
 .qwen/
 *.bak-*
+.mi-utilidad/
