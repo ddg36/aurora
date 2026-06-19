@@ -1,6 +1,6 @@
 # Nexus — Arquitectura Actual (v2)
 
-> Última actualización: 2026-06-17
+> Última actualización: 2026-06-19
 
 ---
 
@@ -9,23 +9,164 @@
 Sistema de ejecución unificado para el ecosistema Aurora v2. Consiste en:
 
 1. **Servidor HTTP** modular en `src/nexus/` (puerto `:7779`)
-2. **Extensiones Chrome** en `extensions/aihub/` que parsean bloques `✦✦✦` / `✧✧✧` en LLMs cloud y los ejecutan contra el servidor
+2. **Extensiones Chrome** en `extensions/aihub/` que parsean bloques `✦✦₃` / `✧✧✧` en LLMs cloud y los ejecutan contra el servidor
 3. **Gemita** — agente LLM vía WebSocket (`/gemita`) con tools que invocan shell persistente o Nexus
 
+---
+
+## nx vs nexus: Diferencias
+
+| | **nx (✦✦₃)** | **nexus (✧✧✧)** |
+|---|---|---|
+| **Formato** | Bash/PowerShell directo | JSON estructurado |
+| **Ejemplo** | `ls /home` | `{"path": "/home"}` |
+| **Comandos** | Shell nativo del SO | Tools definidas en servidor |
+| **Output** | Texto del shell (crudo) | Texto plano controlado |
+| **Uso ideal** | Comandos del sistema (git, docker, etc.) | Operaciones de archivos/datos |
+| **Cross-platform** | No (bash Linux, PowerShell Windows) | Sí (Python en servidor) |
+
+### Ejemplos
+
+**nx — Shell directo:**
 ```
-LLM Cloud Chat                Aurora Sidepanel (Gemita)
-     │                              │
-  gem-observer.js               RunBashTool / NexusRunTool
-  (parsea ✦✦✦ / ✧✧✧)               │
-     │                         ShellBash persistente
-  background.js (proxy)         o HTTP :7779/nexus/shell/run
-     │                              │
-  POST :7779/nexus/shell/run         │
-     └──────┬───────────────┬────────┘
-            ▼               ▼
-     src/nexus/shell.py   src/gemita/shell.py
-     (Job.run async)      (ShellBash sync)
+✦✦₃
+git status
+✦✦₃
 ```
+
+```
+✦✦₃
+Get-ChildItem C:\Users -Name
+✦✦₃
+```
+
+**nexus — Tools estructuradas:**
+```
+✧✧✧
+{"path": "src/main.py", "offset": 1, "limit": 10}
+✧✧✧
+```
+
+```
+✧✧✧
+{"path": "src/main.py", "oldString": "def old():", "newString": "def new():"}
+✧✧✧
+```
+
+---
+
+## Nexus Tools (POST /nexus/*)
+
+### Endpoints disponibles
+
+| Endpoint | Método | Descripción | Formato |
+|----------|--------|-------------|---------|
+| `/nexus/help` | GET | Lista tools disponibles | Sin body |
+| `/nexus/read` | POST | Leer archivo con números de línea | `{"path", "offset", "limit"}` |
+| `/nexus/edit` | POST | Editar archivo (find-and-replace) | `{"path", "oldString", "newString"}` |
+| `/nexus/write` | POST | Escribir archivo | `{"path", "content"}` |
+| `/nexus/grep` | POST | Buscar patrones en archivos | `{"pattern", "path", "max"}` |
+| `/nexus/glob` | POST | Buscar archivos por nombre | `{"pattern", "path"}` |
+| `/nexus/shell` | POST | Ejecutar comando del sistema | `{"cmd", "cwd", "timeout"}` |
+
+### Formatos detallados
+
+#### read — Leer archivo
+```json
+{
+  "path": "src/main.py",
+  "offset": 10,
+  "limit": 20
+}
+```
+- `path`: ruta al archivo (requerido)
+- `offset`: línea inicial (default: 1)
+- `limit`: número de líneas a leer (default: todas)
+
+**Output:**
+```
+10: import os
+11: import sys
+12: def main():
+13:     print("hello")
+```
+
+#### edit — Editar archivo
+```json
+{
+  "path": "src/main.py",
+  "oldString": "    def mi_funcion():\n        x = 10",
+  "newString": "    def mi_funcion_modificada():\n        x = 20"
+}
+```
+- `path`: ruta al archivo (requerido)
+- `oldString`: texto exacto a reemplazar (requerido)
+- `newString`: texto de reemplazo (requerido)
+
+**Notas:**
+- Preserva indentación automáticamente
+- Soporta multi-línea con `\n`
+- Si hay múltiples coincidencias, solo reemplaza la primera
+
+#### write — Escribir archivo
+```json
+{
+  "path": "src/nuevo.py",
+  "content": "def hello():\n    print('hola')"
+}
+```
+- `path`: ruta al archivo (requerido)
+- `content`: contenido del archivo (requerido)
+- Crea directorios padres automáticamente
+
+#### grep — Buscar patrones
+```json
+{
+  "pattern": "def main",
+  "path": "src",
+  "max": 50
+}
+```
+- `pattern`: texto a buscar (requerido)
+- `path`: directorio donde buscar (default: '.')
+- `max`: máximo de resultados (default: 40)
+
+**Output:**
+```
+main.py:5: def main():
+utils.py:10: def main_helper():
+```
+
+#### glob — Buscar archivos
+```json
+{
+  "pattern": "*.py",
+  "path": "src"
+}
+```
+- `pattern`: patrón glob (requerido)
+- `path`: directorio donde buscar (default: '.')
+
+**Output:**
+```
+main.py
+utils.py
+router.py
+```
+
+#### shell — Ejecutar comando
+```json
+{
+  "cmd": "git status",
+  "cwd": "/path/to/repo",
+  "timeout": 30
+}
+```
+- `cmd`: comando a ejecutar (requerido)
+- `cwd`: directorio de trabajo (default: workspace)
+- `timeout`: tiempo máximo en segundos (default: 30)
+
+**Output:** Texto plano del stdout/stderr
 
 ---
 
@@ -41,8 +182,9 @@ src/nexus/
   tasks.py       — Job async runner, SSE streaming, kill/forget
   approvals.py   — sistema de aprobaciones para comandos destructivos
   editor.py      — POST /nexus/editor/run — ejecuta código (py, js, sh) en sandbox
-  fs.py          — operaciones de archivo
+  fs.py          — operaciones de archivo (legacy)
   py.py          — gestión de entornos Python (venvs, pip)
+  run.py         — POST /nexus/* — tools estructuradas (read, edit, write, grep, glob, shell, help)
   workspace.py   — path safety, sandbox
   router.py      — agrega todas las rutas en NEXUS_ROUTES
 ```
@@ -50,18 +192,52 @@ src/nexus/
 ### Rutas activas
 
 ```
+# Tools estructuradas (nexus mode)
+GET  /nexus/help       — lista tools disponibles
+POST /nexus/read       — leer archivo
+POST /nexus/edit       — editar archivo
+POST /nexus/write      — escribir archivo
+POST /nexus/grep       — buscar patrones
+POST /nexus/glob       — buscar archivos
+POST /nexus/shell      — ejecutar comando
+
+# Shell legacy (nx mode)
 POST /nexus/shell/run   — ejecuta comando shell (Job.run async)
 POST /nexus/shell/exec  — alias de shell/run
+
+# Tasks
 GET  /nexus/tasks       — lista jobs (running + done)
 POST /nexus/tasks/{id}/kill    — mata job en ejecución
 POST /nexus/tasks/{id}/forget  — elimina job del historial
 GET  /nexus/tasks/{id}/stream  — SSE streaming de output
+
+# Editor
 POST /nexus/editor/run — ejecuta código Python/JS/Shell en sandbox
+
+# Python
+GET  /nexus/py/status        — estado del venv
+POST /nexus/py/run           — ejecuta script .py
+POST /nexus/py/venv-create   — crea venv
+POST /nexus/py/pip-install   — instala paquetes
+GET  /nexus/py/pip-list      — lista paquetes instalados
+
+# File system legacy
+GET  /nexus/fs/list     — listar archivos
+GET  /nexus/fs/read     — leer archivo
+GET  /nexus/fs/head     — primeras N líneas
+GET  /nexus/fs/stat     — metadata de archivo
+GET  /nexus/fs/tree     — árbol de directorios
+GET  /nexus/fs/grep     — buscar en archivos
+POST /nexus/fs/write    — escribir archivo
+POST /nexus/fs/patch    — find-and-replace
+POST /nexus/fs/delete   — eliminar archivo
+POST /nexus/fs/move     — mover/renombrar
+POST /nexus/fs/mkdir    — crear directorio
 ```
 
 ### Registro global
 
-En `src/main.py:94`:
+En `src/main.py`:
 ```
 ROUTES = [...] + GEMITA_ROUTES + NEXUS_ROUTES + PARSER_ROUTES + EXT_ROUTES + ...
 ```
@@ -83,21 +259,28 @@ Service Worker principal. Puente entre extension API y servidor Aurora (`:7779`)
 
 ### content-scripts/gem-observer.js
 
-Se inyecta en páginas de LLMs cloud (ChatGPT, Claude, Grok). **Parser real dentro del repo**.
+Se inyecta en páginas de LLMs cloud (ChatGPT, Claude, Grok, Gemini). **Parser real dentro del repo**.
 
 ```
-const RE_SHELL = /✦✦✦\n([\s\S]*?)\n✦✦✦/g    → shell commands
-const RE_NEXUS = /✧✧✧\n([\s\S]*?)\n✧✧✧/g   → nexus actions
+const RE_SHELL = /✦✦₃\n([\s\S]*?)\n✦✦₃/g    → nx mode (shell)
+const RE_NEXUS = /✧✧✧\n([\s\S]*?)\n✧✧✧/g   → nexus mode (tools)
 ```
 
-Flujo:
-1. Observa el DOM del chat en busca de nuevos mensajes del asistente
-2. Extrae texto y busca bloques `✦✦✦...✦✦✦` y `✧✧✧...✧✧✧`
-3. Para cada bloque shell: `_bgFetch('/nexus/shell/run', {cmd})` → background.js proxy → servidor
-4. Para cada bloque nexus: parsea `action= key=value`, hace `_bgFetch('/nexus/' + action, kv)`
-5. Inyecta el resultado como placeholder en el chat
+**Flujo nx (✦✦₃):**
+1. Detecta bloque `✦✦₃...✦✦₃`
+2. Extrae comando shell
+3. Envía a `_bgFetch('/nexus/shell/run', {cmd})`
+4. Muestra resultado (texto crudo del shell)
 
-**No usa `@@nx` ni `@@nexus`.** Usa `✦✦₃` (shell) y `✧✧✧` (nexus).
+**Flujo nexus (✧✧✧):**
+1. Detecta bloque `✧✧✧...✧✧✧`
+2. Extrae JSON
+3. Envía a `_bgFetch('/nexus/{tool}', json)`
+4. Muestra resultado (texto plano controlado)
+
+**Formato de salida:**
+- nx: texto crudo del shell
+- nexus: `✦ aurora terminal : {tool} → ✓` + resultado
 
 ---
 
@@ -163,6 +346,7 @@ IS_WIN = platform.system() == 'Windows'
 | `shell.py:ejecutar_shell()` | `bash -lc {cmd}` | `powershell -NoProfile -NonInteractive -Command {cmd}` |
 | `gemita/shell.py:ShellBash` | `/bin/bash --norc --noprofile` | `powershell -NoProfile -NonInteractive -Command -` |
 | `editor.py:_runner()` sh | `bash {path}` | `powershell -File {path}` |
+| `run.py:nexus_shell()` | `bash -c {cmd}` | `powershell -Command {cmd}` |
 
 ### Process kill
 
@@ -205,42 +389,57 @@ Funciona igual en ambos OS: escribe `echo __GEMITA_EOF__<uuid>` y lee stdout has
 
 ## Resumen de caminos de ejecución
 
-### Camino 1: Cloud LLM → gem-observer.js (✦✦✦)
+### Camino 1: Cloud LLM → gem-observer.js (✦✦₃ — nx mode)
 
 ```
-LLM escribe: ✦✦✦
-             comando
-             ✦✦✦
+LLM escribe: ✦✦₃
+             ls /home
+             ✦✦₃
 
-gem-observer.js:101-117
+gem-observer.js
   → RE_SHELL.exec(text) extrae cmd
-  → _bgFetch('/nexus/shell/run', {cmd})         ← línea 128
-  → chrome.runtime.sendMessage({type:'PROXY_FETCH'})  ← línea 170
-  → background.js handler PROXY_FETCH            ← línea 352
-  → fetch('http://localhost:7779/nexus/shell/run')
-  → src/nexus/shell.py :: shell_run()            ← línea 39
-  → ejecutar_shell_async()
-  → create_job().run()
+  → _bgFetch('/nexus/shell/run', {cmd})
+  → background.js PROXY_FETCH
+  → POST :7779/nexus/shell/run
+  → src/nexus/shell.py :: shell_run()
   → bash -lc '{cmd}'  o  powershell -Command '{cmd}'
+  → resultado texto crudo
 ```
 
-### Camino 2: Aurora Sidepanel → Gemita WebSocket
+### Camino 2: Cloud LLM → gem-observer.js (✧✧✧ — nexus mode)
+
+```
+LLM escribe: ✧✧✧
+             {"path": "src/main.py", "offset": 1, "limit": 10}
+             ✧✧✧
+
+gem-observer.js
+  → RE_NEXUS.exec(text) extrae JSON
+  → parsea JSON, extrae tool del path
+  → _bgFetch('/nexus/{tool}', json)
+  → background.js PROXY_FETCH
+  → POST :7779/nexus/{tool}
+  → src/nexus/run.py :: nexus_{tool}()
+  → texto plano controlado
+```
+
+### Camino 3: Aurora Sidepanel → Gemita WebSocket
 
 ```
 Usuario envía mensaje → WS /gemita
-  → gemita/router.py :: websocket_handler        ← línea 89
-  → bucle.manejar_chat()                         ← línea 89
+  → gemita/router.py :: websocket_handler
+  → bucle.manejar_chat()
   → LLM responde invocando tool
   → catalog.get(name).execute(args, context)
 
-RunBashTool:  context['shell'].ejecutar(cmd)     ← tools.py:61
+RunBashTool:  context['shell'].ejecutar(cmd)
               → ShellBash (bash/powershell persistente)
 
-NexusRunTool: POST {nexus_url}/{workspace}/run-shell  ← tools.py:93
+NexusRunTool: POST {nexus_url}/{workspace}/run-shell
               → (mismo destino que Camino 1)
 ```
 
-### Camino 3: POST /nexus/shell/run directo (API)
+### Camino 4: POST /nexus/shell/run directo (API)
 
 ```
 Cualquier cliente → POST :7779/nexus/shell/run {cmd, cwd, origin}
@@ -258,11 +457,12 @@ Cualquier cliente → POST :7779/nexus/shell/run {cmd, cwd, origin}
 | Archivo | Rol |
 |---------|-----|
 | `src/nexus/config.py` | Constantes cross-platform, IS_WIN, DESTRUCTIVE, clip |
-| `src/nexus/shell.py` | `POST /nexus/shell/run` — ejecución shell |
+| `src/nexus/run.py` | **Tools estructuradas**: read, edit, write, grep, glob, shell, help |
+| `src/nexus/shell.py` | `POST /nexus/shell/run` — ejecución shell legacy |
 | `src/nexus/tasks.py` | `Job` async runner, kill, SSE stream |
 | `src/nexus/approvals.py` | Aprobaciones para comandos destructivos |
 | `src/nexus/editor.py` | `POST /nexus/editor/run` — sandbox code runner |
-| `src/nexus/fs.py` | Operaciones de archivo |
+| `src/nexus/fs.py` | Operaciones de archivo legacy |
 | `src/nexus/py.py` | Gestión de entornos Python |
 | `src/nexus/workspace.py` | Path safety, sandbox |
 | `src/gemita/shell.py` | `ShellBash` — shell persistente por sesión |
@@ -270,7 +470,7 @@ Cualquier cliente → POST :7779/nexus/shell/run {cmd, cwd, origin}
 | `src/gemita/bucle.py` | Loop del agente, invoca tools |
 | `src/gemita/router.py` | WebSocket `/gemita` endpoint |
 | `extensions/aihub/background.js` | Service Worker: proxy fetch, NEXUS_EXECUTE, WS bus |
-| `extensions/aihub/content-scripts/gem-observer.js` | **Parser real** de `✦✦✦`/`✧✧✧` en DOM de LLMs cloud |
+| `extensions/aihub/content-scripts/gem-observer.js` | **Parser real** de `✦✦₃`/`✧✧✧` en DOM de LLMs cloud |
 | `extensions/aihub/background/browser-cabin.js` | Content script injection, utilidades de background |
 | `src/main.py` | Bootstrap, registro de rutas |
 | `src/parser/` | Parser endpoint (desconectado, disponible para consumo externo) |
