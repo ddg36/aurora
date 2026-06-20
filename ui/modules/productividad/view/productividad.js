@@ -5,6 +5,7 @@ import {
   Button, Chip, ChipGroup, Empty, Input, Panel, PanelBody, PanelHeader,
   Select, Status, Textarea,
 } from '../../../components/index.js';
+import { JsonBlock } from '../../../components/shared/JsonBlock.js';
 import {
   actualizarTask,
   capturarPagina,
@@ -34,10 +35,6 @@ import {
 } from '../scripts/productividad.js';
 
 const SECTIONS = ['Capture', 'Research', 'Tasks', 'Clipboard', 'Forms', 'Meetings', 'Tabs', 'Prices'];
-
-function JsonBlock({ value }) {
-  return html`<pre class="max-h-[260px] overflow-auto whitespace-pre-wrap rounded-md border border-aurora-border bg-aurora-bg p-3 text-xs text-aurora-text-dim">${JSON.stringify(value, null, 2)}</pre>`;
-}
 
 function SectionNav({ active, setActive }) {
   return html`

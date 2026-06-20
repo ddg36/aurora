@@ -1,10 +1,15 @@
+import { getCreativityIdeas } from '../../../components/shared/builder-api.js';
+
 let _conceptos = null;
 
 async function cargarConceptos() {
   if (_conceptos) return _conceptos;
   try {
-    const res = await fetch(new URL('../templates/conceptos-creatividad.tmpl.json', import.meta.url));
-    _conceptos = res.ok ? await res.json() : {};
+    const items = await getCreativityIdeas();
+    _conceptos = {};
+    for (const item of items) {
+      _conceptos[item.tematica] = item.datos;
+    }
   } catch {
     _conceptos = {};
   }

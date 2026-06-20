@@ -12,4 +12,3 @@ export { Empty }                                       from './Empty.js';
 export { Chip, ChipGroup }                             from './Chip.js';
 export { Input, Textarea, Select }                     from './Input.js';
 export { ChatMessage, ChatList }                       from './ChatMessage.js';
-export { IframeContainer }                             from './IframeContainer.js';

@@ -25,7 +25,6 @@
 @import '../modules/inicio/inicio.css';
 
 @import '../modules/prompts/prompts.css';
-@import '../modules/prompts/prompts-ui.css';
 @import '../modules/md-reader/md-reader.css';
 
 @import './globals/theme-mode.css';

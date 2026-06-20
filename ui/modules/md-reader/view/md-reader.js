@@ -445,16 +445,20 @@ export default function MDReader() {
     Toast.show('Nota creada', 'success');
   }
 
+  function reparse(text) {
+    const fileIndex = makeFileIndex(files.length ? files : [{ path: activePath, name: posixBasename(activePath), type: 'file', size: text.length }]);
+    const headingIndex = new Map(Array.from(texts.entries()).map(([p, t]) => [p, indexHeadings(t)]));
+    headingIndex.set(activePath, indexHeadings(text));
+    const parsed = renderMarkdown(text, activePath, fileIndex, headingIndex);
+    setRendered(parsed);
+    setDocGraph(parsed.parsed);
+  }
+
   async function guardarActual() {
     if (!activePath) return;
     await escribir(activePath, content);
     setRawDirty(false);
-    const fileIndex = makeFileIndex(files.length ? files : [{ path: activePath, name: posixBasename(activePath), type: 'file', size: content.length }]);
-    const headingIndex = new Map(Array.from(texts.entries()).map(([p, t]) => [p, indexHeadings(t)]));
-    headingIndex.set(activePath, indexHeadings(content));
-    const parsed = renderMarkdown(content, activePath, fileIndex, headingIndex);
-    setRendered(parsed);
-    setDocGraph(parsed.parsed);
+    reparse(content);
     await loadWorkspace(root);
     Toast.show('Archivo guardado', 'success');
   }
@@ -471,12 +475,7 @@ export default function MDReader() {
     setRawDirty(true);
     await escribir(activePath, next);
     setRawDirty(false);
-    const fileIndex = makeFileIndex(files.length ? files : [{ path: activePath, name: posixBasename(activePath), type: 'file', size: next.length }]);
-    const headingIndex = new Map(Array.from(texts.entries()).map(([p, t]) => [p, indexHeadings(t)]));
-    headingIndex.set(activePath, indexHeadings(next));
-    const parsed = renderMarkdown(next, activePath, fileIndex, headingIndex);
-    setRendered(parsed);
-    setDocGraph(parsed.parsed);
+    reparse(next);
     await loadWorkspace(root);
   }
 

@@ -3,11 +3,11 @@ const { useState, useEffect, useCallback, useRef, useMemo } = globalThis.preactH
 
 import {
   getActiveTab, capturarTexto, capturarScreenshot,
-  capturarYoutube, extraerProductos,
+  capturarYoutube,
   resumirTranscript, puntosClave, traducirTranscript, notasEstudio,
   inyectarTextoEnAI,
 } from '../scripts/bridge.js';
-import { historialCaptura, cargarHistorialCaptura, agregarAlHistorial, eliminarDelHistorial, limpiarHistorial, obtenerDetalleCaptura, buscarEnHistorial } from '../scripts/historial.js';
+import { historialCaptura, cargarHistorialCaptura, agregarAlHistorial } from '../scripts/historial.js';
 import { copiarTexto } from '../../../components/shared/clipboard.js';
 import { Toast } from '../../../components/shared/toast.js';
 import {
@@ -16,7 +16,6 @@ import {
   ChipGroup,
   Dropdown,
   DropdownItem,
-  Empty,
   List,
   ListItem,
   ListActions,
@@ -28,76 +27,9 @@ import {
   Textarea,
 } from '../../../components/index.js';
 import { renderMarkdown } from '../../../modules/md-reader/scripts/parser.js';
-
-// ── Utilidades transcript ──────────────────────────────────────
-function extractTimestamps(text) {
-  const re = /\[(\d+):(\d{2})\]\s*([^\n]+)/g;
-  const chapters = [];
-  let m;
-  while ((m = re.exec(text)) !== null) {
-    const totalSec = parseInt(m[1]) * 60 + parseInt(m[2]);
-    chapters.push({
-      seconds: totalSec,
-      timestamp: `[${m[1]}:${m[2]}]`,
-      title: m[3].trim().slice(0, 120),
-    });
-  }
-  return chapters;
-}
-
-function getVideoId(url) {
-  if (!url) return null;
-  try {
-    const params = new URLSearchParams(new URL(url).search);
-    return params.get('v');
-  } catch { return null; }
-}
-
-function jumpToTimestamp(text, timestampStr) {
-  const m = timestampStr.match(/(\d+):(\d{2})/);
-  if (!m) return;
-  const sec = parseInt(m[1]) * 60 + parseInt(m[2]);
-  const videoId = getVideoId(tab?.url);
-  if (videoId) {
-    window.open(`https://www.youtube.com/watch?v=${videoId}&t=${sec}`, '_blank');
-  }
-}
-
-function searchMatches(text, query) {
-  if (!query || !text) return [];
-  const lower = text.toLowerCase();
-  const q = query.toLowerCase();
-  const found = [];
-  let idx = 0;
-  while ((idx = lower.indexOf(q, idx)) !== -1 && found.length < 100) {
-    found.push({ start: idx, end: idx + query.length });
-    idx += query.length;
-  }
-  return found;
-}
-
-function contextAround(text, pos, contextLen = 60) {
-  const start = Math.max(0, pos - contextLen);
-  const end = Math.min(text.length, pos + 60);
-  let ctx = text.slice(start, end);
-  if (start > 0) ctx = '…' + ctx;
-  if (end < text.length) ctx = ctx + '…';
-  return ctx;
-}
-
-// ── Clasificador de URL ──────────────────────────────────────
-function classifyUrl(url) {
-  if (!url) return { tipo: 'desconocido' };
-  try {
-    const u = new URL(url);
-    if (u.hostname.includes('youtube.com')) {
-      if (u.pathname.startsWith('/watch') || u.hostname === 'youtu.be')
-        return { tipo: 'youtube-video' };
-      return { tipo: 'youtube' };
-    }
-    return { tipo: 'web' };
-  } catch { return { tipo: 'desconocido' }; }
-}
+import { extractTimestamps, jumpToTimestamp, searchMatches, classifyUrl } from './transcript-utils.js';
+import { ToolResultPanel } from './tool-result-panel.js';
+import { Historial } from './historial-panel.js';
 
 // ── Chips de tab ─────────────────────────────────────────────
 function TabChips({ tab, tipo }) {
@@ -235,134 +167,6 @@ function ChapterPanel({ chapters, isOpen, onToggle, onJump }) {
   `;
 }
 
-// ── Panel de resultado de herramienta ────────────────────────
-function ToolResultPanel({ result, onCopy, onClose, followUps, onAskFollowUp, chatBusy, chatStreaming, chatCurrentQuestion, screenshotDataUrl }) {
-  if (!result) return null;
-  const [collapsed, setCollapsed] = useState(false);
-  const [preview, setPreview] = useState(true);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [question, setQuestion] = useState('');
-  const [includeImage, setIncludeImage] = useState(false);
-  const inputRef = useRef(null);
-
-  const handleSubmit = () => {
-    if (!question.trim() || chatBusy) return;
-    onAskFollowUp(question.trim(), includeImage ? screenshotDataUrl : null);
-    setQuestion('');
-    inputRef.current?.focus();
-  };
-
-  const renderedHtml = useMemo(() => result ? renderMarkdown(result, 'resultado.md').html : '', [result]);
-
-  return html`
-    <${Panel}>
-      <${PanelHeader}>
-        <button
-          type="button"
-          class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-aurora-text-dim hover:text-aurora-text transition-colors"
-          onClick=${() => setCollapsed(c => !c)}
-        >
-          <span class="text-[9px] opacity-50 transition-transform ${collapsed ? '' : 'rotate-90'}">▶</span>
-          Resultado
-          <span class="text-[9px] font-normal opacity-40">${result.length.toLocaleString()} chars</span>
-        </button>
-        <${ListActions}>
-          ${!collapsed && html`<${Button} size="sm" onClick=${() => setPreview(p => !p)}>${preview ? '📝' : '👁'}</${Button}>`}
-          ${!collapsed && html`<${Button} size="sm" onClick=${onCopy}>📋 Copiar</${Button}>`}
-          <${Button} size="sm" onClick=${onClose}>✕</${Button}>
-        </${ListActions}>
-      </${PanelHeader}>
-
-      ${!collapsed && html`
-        ${preview ? html`
-          <${PanelBody} noPadding class="overflow-y-auto">
-            <div class="markdown-body p-3 text-[11px] leading-relaxed" dangerouslySetInnerHTML=${{ __html: renderedHtml }} />
-          </${PanelBody}>
-        ` : html`
-          <${PanelBody} noPadding class="overflow-y-auto">
-            <pre class="min-h-[60px] p-3 text-[11px] leading-relaxed whitespace-pre-wrap font-mono text-aurora-text">${result}</pre>
-          </${PanelBody}>
-        `}
-
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 px-3 py-1.5 text-[10px] text-aurora-text-muted border-t border-aurora-border hover:bg-aurora-surface-hover transition-colors"
-          onClick=${() => setChatOpen(o => !o)}
-        >
-          <span>💬 Conversar sobre esto</span>
-          <span class="ml-auto text-[9px] opacity-50">${chatOpen ? '▲' : '▼'}</span>
-        </button>
-
-        ${chatOpen && html`
-          <div class="border-t border-aurora-border">
-            ${followUps.map(fu => html`
-              <div class="px-3 py-2 border-b border-aurora-border/50 last:border-b-0">
-                <div class="flex items-start gap-2 mb-1.5">
-                  <span class="text-[10px] mt-0.5">❓</span>
-                  <span class="text-[10px] font-medium text-aurora-text">${fu.question}</span>
-                </div>
-                <div class="flex items-start gap-2">
-                  <span class="text-[10px] mt-0.5">🤖</span>
-                  <span class="text-[11px] text-aurora-text whitespace-pre-wrap">${fu.answer}</span>
-                </div>
-              </div>
-            `)}
-
-            ${chatBusy && html`
-              <div class="px-3 py-2 border-b border-aurora-border/50">
-                <div class="flex items-start gap-2">
-                  <span class="text-[10px] mt-0.5">❓</span>
-                  <span class="text-[10px] font-medium text-aurora-text">${chatCurrentQuestion}</span>
-                </div>
-                <div class="flex items-start gap-2 mt-1.5">
-                  <span class="text-[10px] mt-0.5">🤖</span>
-                  <span class="text-[11px] text-aurora-text whitespace-pre-wrap">${chatStreaming}</span>
-                  <span class="inline-block w-1.5 h-3 bg-aurora-accent animate-pulse ml-0.5"></span>
-                </div>
-              </div>
-            `}
-
-            ${screenshotDataUrl && !chatBusy && html`
-              <label class="flex items-center gap-1.5 px-3 py-1.5 border-b border-aurora-border bg-aurora-surface cursor-pointer hover:bg-aurora-surface-hover transition-colors text-[10px] text-aurora-text-muted select-none">
-                <input
-                  type="checkbox"
-                  checked=${includeImage}
-                  onChange=${() => setIncludeImage(i => !i)}
-                  class="accent-aurora-accent"
-                />
-                <span>📷 Incluir screenshot</span>
-                ${includeImage && html`
-                  <img src=${screenshotDataUrl} class="ml-auto h-7 w-auto rounded border border-aurora-border" />
-                `}
-              </label>
-            `}
-
-            <div class="flex items-center gap-2 px-3 py-2 bg-aurora-surface">
-              <input
-                ref=${inputRef}
-                type="text"
-                class="flex-1 bg-aurora-surface-2 border border-aurora-border rounded-md px-2 py-1.5 text-[11px] text-aurora-text placeholder-aurora-text-dim outline-none focus:border-aurora-accent transition-colors"
-                placeholder=${chatBusy ? 'Esperando respuesta…' : 'Preguntá sobre esto…'}
-                value=${chatBusy ? '' : question}
-                disabled=${chatBusy}
-                onInput=${(e) => setQuestion(e.target.value)}
-                onKeyDown=${(e) => { if (e.key === 'Enter') handleSubmit(); }}
-              />
-              <${Button} size="sm" disabled=${!question.trim() || chatBusy} onClick=${handleSubmit}>
-                ${chatBusy ? '…' : 'Enviar'}
-              </${Button}>
-            </div>
-          </div>
-        `}
-
-        <${PanelFooter}>
-          <span class="ml-auto text-[9px] text-aurora-text-dim">${result.length.toLocaleString()} caracteres</span>
-        </${PanelFooter}>
-      `}
-    </${Panel}>
-  `;
-}
-
 // ── Toolbar de herramientas LLM ──────────────────────────────
 function ToolbarHerramientas({ isYT, onResumir, onPuntos, onNotas, onTraducir, onSendChat, busy }) {
   return html`
@@ -381,7 +185,7 @@ function ToolbarHerramientas({ isYT, onResumir, onPuntos, onNotas, onTraducir, o
 }
 
 // ── Resultado texto con toolbar ──────────────────────────────
-function ResultadoTexto({ content, onChange, onCopy, onClear, tipoCaptura, toolResult, setToolResult, onSendChat, toolFollowUps, onAskFollowUp, chatBusy, chatStreaming, chatCurrentQuestion, onClearToolFollowUps, screenshotDataUrl }) {
+function ResultadoTexto({ content, onChange, onCopy, onClear, tipoCaptura, toolResult, setToolResult, onSendChat, toolFollowUps, onAskFollowUp, chatBusy, chatStreaming, chatCurrentQuestion, onClearToolFollowUps, screenshotDataUrl, tabUrl }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [matches, setMatches] = useState([]);
   const [matchIndex, setMatchIndex] = useState(-1);
@@ -419,7 +223,7 @@ function ResultadoTexto({ content, onChange, onCopy, onClear, tipoCaptura, toolR
   };
 
   const handleJump = (timestampStr) => {
-    jumpToTimestamp(content, timestampStr);
+    jumpToTimestamp(content, timestampStr, tabUrl);
   };
 
   const handleSearch = (q) => {
@@ -603,112 +407,6 @@ function ResultadoScreenshot({ dataUrl, onCopiar, onAbrir, onExtraerTexto, onLim
       <${PanelBody} noPadding class="p-2">
         <img src=${dataUrl} alt="screenshot" class="block h-auto w-full rounded-md" />
       </${PanelBody}>
-    </${Panel}>
-  `;
-}
-
-// ── Historial colapsable mejorado ──────────────────────────
-function Historial({ open, onToggle, onSelectItem }) {
-  const [items, setItems] = useState(historialCaptura.value);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState(null);
-  const [busySearch, setBusySearch] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    cargarHistorialCaptura().then(() => setItems(historialCaptura.value));
-  }, [open]);
-
-  useEffect(() => {
-    if (!searchQuery) {
-      setSearchResults(null);
-      return;
-    }
-    setBusySearch(true);
-    buscarEnHistorial(searchQuery).then(results => {
-      setSearchResults(results);
-      setBusySearch(false);
-    });
-  }, [searchQuery]);
-
-  const limpiar = async () => {
-    if (!confirm('¿Limpiar todo el historial?')) return;
-    await limpiarHistorial();
-    setItems([]);
-    setSearchResults(null);
-    setSearchQuery('');
-    Toast.show('Historial limpiado', 'success');
-  };
-
-  const eliminar = async (id) => {
-    await eliminarDelHistorial(id);
-    setItems(prev => prev.filter(it => it.id !== id));
-  };
-
-  const handleSelect = async (item) => {
-    if (item.content) {
-      onSelectItem(item);
-    } else {
-      const detalle = await obtenerDetalleCaptura(item.id);
-      if (detalle) onSelectItem(detalle);
-    }
-  };
-
-  const visibles = searchResults || items.slice(0, 10);
-
-  return html`
-    <${Panel}>
-      <button
-        type="button"
-        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-aurora-text-muted transition-colors hover:bg-aurora-surface-hover"
-        onClick=${onToggle}
-      >
-        <span>🕘 Historial</span>
-        <span class="rounded-full bg-aurora-accent/15 px-2 py-0.5 text-[9px] font-bold text-aurora-accent">${items.length}</span>
-        <span class="ml-auto text-[9px] opacity-50">${open ? '▲' : '▼'}</span>
-      </button>
-      ${open && html`
-        <${PanelBody} noPadding class="p-1">
-          <div class="px-1 pb-1">
-            <input
-              type="text"
-              class="w-full bg-aurora-surface-2 border border-aurora-border rounded-md px-2 py-1 text-xs text-aurora-text placeholder-aurora-text-dim outline-none focus:border-aurora-accent transition-colors"
-              placeholder="Buscar en historial…"
-              value=${searchQuery}
-              onInput=${(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          ${searchResults && html`
-            <div class="px-3 py-1 text-[9px] text-aurora-text-muted border-b border-aurora-border">
-              ${searchResults.length} resultado(s) para "${searchQuery}"
-            </div>
-          `}
-          ${items.length === 0 && html`<${Empty}>Sin capturas guardadas.</${Empty}>`}
-          <${List}>
-            ${visibles.map(it => html`
-              <${ListItem}
-                key=${it.id}
-                name=${(it.title || it.url || '').slice(0, 38)}
-                sub=${it.chars ? `${it.chars.toLocaleString()}c · ${new Date(it.ts).toLocaleDateString()}` : it.tipo}
-                onClick=${() => handleSelect(it)}
-              >
-                <${ListActions}>
-                  <span class="rounded bg-aurora-accent/10 px-1.5 py-0.5 text-[9px] font-bold text-aurora-accent">${it.tipo}</span>
-                  <${Button} size="sm" onClick=${() => eliminar(it.id)}>✕</${Button}>
-                </${ListActions}>
-              </${ListItem}>
-            `)}
-          </${List}>
-          ${searchResults && searchResults.length > 10 && html`<div class="px-3 py-2 text-center text-[10px] text-aurora-text-dim">Mostrando 10 de ${searchResults.length}</div>`}
-          ${items.length > 10 && !searchResults && html`<div class="px-3 py-2 text-center text-[10px] text-aurora-text-dim">+${items.length - 10} más</div>`}
-          ${busySearch && html`<div class="px-3 py-2 text-center text-[10px] text-aurora-text-dim">Buscando…</div>`}
-          ${items.length > 0 && html`
-            <${PanelFooter}>
-              <${Button} variant="danger" class="w-full" onClick=${limpiar}>🗑 Limpiar historial</${Button}>
-            </${PanelFooter}>
-          `}
-        </${PanelBody}>
-      `}
     </${Panel}>
   `;
 }
@@ -1035,6 +733,7 @@ export default function Captura() {
             chatCurrentQuestion=${chatCurrentQuestion}
             onClearToolFollowUps=${() => setToolFollowUps([])}
             screenshotDataUrl=${preview}
+            tabUrl=${tab?.url}
           />
         `}
 

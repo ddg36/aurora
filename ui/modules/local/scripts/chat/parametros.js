@@ -1,7 +1,5 @@
 import { signal } from '../../../../store.js';
-
-const BASE = globalThis.__AURORA_BASE__ || 'http://localhost:7779';
-const hdrs = () => globalThis.__AURORA_HDRS__?.() || { 'Content-Type': 'application/json' };
+import { BASE, hdrs } from '../../../../components/shared/api.js';
 
 export const params = signal({
   temperatura: 0.7,

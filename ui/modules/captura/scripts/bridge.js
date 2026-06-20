@@ -16,12 +16,6 @@ export async function getActiveTab() {
   return res.tab;
 }
 
-export async function listarTabs() {
-  const res = await bgRequest({ type: 'LIST_TABS' });
-  if (!res?.success) throw new Error(res?.error || 'Error listando tabs');
-  return res.tabs;
-}
-
 export async function capturarTexto() {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -72,30 +66,6 @@ export async function capturarYoutube(tipo = 'withoutTimestamps') {
       throw new Error(err.message || 'Error extrayendo YouTube');
     }
   }
-}
-
-export async function extraerProductos() {
-  const res = await bgRequest({ type: 'EXTRACT_PRODUCTS_ACTIVE_TAB' });
-  if (!res?.success) throw new Error(res?.error || 'Error extrayendo productos');
-  return res.data;
-}
-
-export async function runJS(code) {
-  const res = await bgRequest({ type: 'RUN_JS', code });
-  if (!res?.success) throw new Error(res?.error || 'Error ejecutando JS');
-  return res.result;
-}
-
-export async function debuggerEval(code, tabId) {
-  const res = await bgRequest({ type: 'DEBUGGER_EVAL', code, tabId });
-  if (!res?.success) throw new Error(res?.error || 'Error en debugger eval');
-  return res.result;
-}
-
-export async function debuggerScreenshot(tabId) {
-  const res = await bgRequest({ type: 'DEBUGGER_SCREENSHOT', tabId });
-  if (!res?.success) throw new Error(res?.error || 'Error en debugger screenshot');
-  return res.dataUrl;
 }
 
 export async function inyectarTextoEnAI(tabId, text, send = false) {

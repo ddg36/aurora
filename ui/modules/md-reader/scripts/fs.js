@@ -1,61 +1,17 @@
 import { getJSON, postJSON } from '../../../components/shared/api.js';
+import { SKIP_DIRS, asegurarRaiz, listar, leer, escribir, crearDir, stat } from '../../../components/shared/fs.js';
+import { posixDirname, sanitizeMissingName } from './parser.js';
 
 export const MD_ROOT = 'nexus/workspaces/aihub';
 
-export const SKIP_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', 'dist', 'build', 'coverage', 'cloud']);
-
-export async function asegurarRaiz() {
-  await postJSON('/nexus/fs/mkdir', { path: MD_ROOT });
-}
-
-export async function listar(path = MD_ROOT) {
-  const out = await getJSON(`/nexus/fs/list?path=${encodeURIComponent(path)}`);
-  return out.entries || [];
-}
-
-export async function leer(path) {
-  const out = await getJSON(`/nexus/fs/read?path=${encodeURIComponent(path)}`);
-  return out.content || '';
-}
-
-export async function escribir(path, content) {
-  return postJSON('/nexus/fs/write', { path, content });
-}
-
-export async function borrar(path) {
-  return postJSON('/nexus/fs/delete', { path });
-}
-
-export async function crearDir(path) {
-  return postJSON('/nexus/fs/mkdir', { path });
-}
-
-export async function mover(from, to) {
-  return postJSON('/nexus/fs/move', { from, to });
-}
-
-export async function stat(path) {
-  const out = await getJSON(`/nexus/fs/stat?path=${encodeURIComponent(path)}`);
-  return out.ok ? out : null;
-}
-
-export async function tree(path = MD_ROOT, depth = 5) {
-  const out = await getJSON(`/nexus/fs/tree?path=${encodeURIComponent(path)}&depth=${depth}`);
-  return out.content || '';
-}
-
-function dirname(path) {
-  const parts = String(path || '').split('/').filter(Boolean);
-  parts.pop();
-  return parts.join('/');
-}
+export { SKIP_DIRS, asegurarRaiz, listar, leer, escribir, crearDir, stat };
 
 function shellQuote(value) {
   return "'" + String(value || '').replace(/'/g, "'\\''") + "'";
 }
 
 export async function abrirEnExplorador(path = MD_ROOT) {
-  const target = /\.md$/i.test(path) ? dirname(path) : path;
+  const target = /\.md$/i.test(path) ? posixDirname(path) : path;
   return postJSON('/nexus/shell/run', {
     cmd: `xdg-open ${shellQuote(target || '.')}`,
     cwd: MD_ROOT,
@@ -110,12 +66,4 @@ export async function crearMissingNote(target, baseDir = MD_ROOT) {
   const path = dir.endsWith('/') ? `${dir}${name}` : `${dir}/${name}`;
   await escribir(path, `# ${name.replace(/\.md$/i, '')}\n\n`);
   return path;
-}
-
-function sanitizeMissingName(value) {
-  return String(value || 'Nueva nota')
-    .replace(/[\\/:*?"<>|]/g, '-')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 120) || 'Nueva nota';
 }

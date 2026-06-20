@@ -2,6 +2,7 @@ const { html } = globalThis;
 const { useEffect, useMemo, useState } = globalThis.preactHooks;
 
 import { Button, Chip, ChipGroup, Empty, List, ListItem, Panel, PanelBody, PanelHeader, Select, Status, Textarea } from '../../../components/index.js';
+import { JsonBlock } from '../../../components/shared/JsonBlock.js';
 import { cargarHealth } from '../scripts/services.js';
 import { cargarTools, ejecutarTool } from '../scripts/tools.js';
 import { cargarMcpClientConfig, cargarMcpStatus, llamarMcp } from '../scripts/mcp.js';
@@ -10,12 +11,6 @@ const SECTIONS = ['Services', 'LLM', 'Tools', 'MCP'];
 
 function tone(ok) {
   return ok ? 'ok' : 'err';
-}
-
-function JsonBlock({ value }) {
-  return html`
-    <pre class="max-h-[260px] overflow-auto whitespace-pre-wrap rounded-md border border-aurora-border bg-aurora-bg p-3 text-xs text-aurora-text-dim">${JSON.stringify(value, null, 2)}</pre>
-  `;
 }
 
 function Shell({ active, setActive }) {

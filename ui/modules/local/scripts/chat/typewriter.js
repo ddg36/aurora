@@ -1,8 +1,6 @@
 import { signal } from '../../../../store.js';
+import { BASE, hdrs } from '../../../../components/shared/api.js';
 import { renderMarkdownLight } from './renderizar.js';
-
-const BASE = globalThis.__AURORA_BASE__ || 'http://localhost:7779';
-const hdrs = () => globalThis.__AURORA_HDRS__?.() || { 'Content-Type': 'application/json' };
 
 const CHAR_DELAY = 8;
 

@@ -1,6 +1,6 @@
 // UI/THEMES/LIB — Helpers para backgrounds y HUDs (class components).
 
-function hexToRgb(hex) {
+export function hexToRgb(hex) {
   return [
     parseInt(hex.slice(1, 3), 16),
     parseInt(hex.slice(3, 5), 16),
@@ -49,18 +49,16 @@ export function readThemeColors() {
   }
 }
 
-// Singleton: un solo lector de --aurora-accent compartido por todos los watchers.
-// Evita N observers + N intervals para el mismo valor CSS.
+// ponytail: simplified accent watcher — single MutationObserver + setInterval fallback
 const _shared = (() => {
   const listeners = new Set();
-  let   observer  = null;
-  let   headObs   = null;
-
+  let observer = null;
+  let interval = null;
   const FALLBACK = '#8b5cf6';
 
   function readFromDOM() {
     try {
-      const cs  = getComputedStyle(document.documentElement);
+      const cs = getComputedStyle(document.documentElement);
       const raw = (cs.getPropertyValue('--aurora-accent').trim()
                 || cs.getPropertyValue('--accent').trim());
       if (!raw) return null;
@@ -84,41 +82,27 @@ const _shared = (() => {
   function read() {
     const next = readFromDOM();
     if (!next) return;
-    // Solo notifica si el color realmente cambió
     if (next.rgb[0] === state.rgb[0] && next.rgb[1] === state.rgb[1] && next.rgb[2] === state.rgb[2]) return;
     state = next;
     for (const fn of listeners) fn(state);
   }
 
-  function attachStyleObserver() {
-    const styleEl = document.getElementById('aurora-tema-vars');
-    if (!styleEl || headObs?._target === styleEl) return;
-    headObs?.disconnect();
-    headObs = new MutationObserver(read);
-    headObs._target = styleEl;
-    headObs.observe(styleEl, { childList: true, characterData: true, subtree: true });
-  }
-
   function ensureObserver() {
     if (observer) return;
-    observer = new MutationObserver(() => { attachStyleObserver(); read(); });
+    observer = new MutationObserver(read);
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['data-theme', 'data-tema', 'style', 'class'],
+      subtree: true,
     });
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ['data-tema', 'data-theme', 'style', 'class'],
-    });
-    // Observa <head> para detectar cuando aurora-tema-vars aparece por primera vez
-    observer.observe(document.head, { childList: true });
-    attachStyleObserver();
+    // Fallback: poll every 2s in case MutationObserver misses CSS variable changes
+    interval = setInterval(read, 2000);
   }
 
   function teardownIfEmpty() {
     if (listeners.size > 0) return;
     observer?.disconnect(); observer = null;
-    headObs?.disconnect();  headObs  = null;
+    if (interval) { clearInterval(interval); interval = null; }
   }
 
   return {
@@ -135,19 +119,16 @@ const _shared = (() => {
   };
 })();
 
-// Tracker del --accent. API idéntica a la anterior — sin cambios en los backgrounds.
 export function createAccentWatcher(_defaultHex = '#8b5cf6') {
-  // Lee el color actual del DOM ahora mismo, sin esperar a start().
-  // Si el DOM aún no tiene el valor, usa el estado del singleton (que ya lo leyó).
-  const initial    = _shared.state;
+  const initial = _shared.state;
   const localState = { hex: initial.hex, rgb: initial.rgb };
-  const onUpdate   = (s) => { localState.hex = s.hex; localState.rgb = s.rgb; };
+  const onUpdate = (s) => { localState.hex = s.hex; localState.rgb = s.rgb; };
 
   return {
     state: localState,
     get rgb() { return localState.rgb; },
     get hex() { return localState.hex; },
-    start()   { _shared.subscribe(onUpdate); },
-    stop()    { _shared.unsubscribe(onUpdate); },
+    start() { _shared.subscribe(onUpdate); },
+    stop()  { _shared.unsubscribe(onUpdate); },
   };
 }

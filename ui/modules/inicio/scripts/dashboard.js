@@ -1,4 +1,7 @@
 import { getJSON } from '../../../components/shared/api.js';
+import { cargarHealth } from '../../../components/shared/api-helpers.js';
+
+export { cargarHealth };
 
 export async function pingAurora() {
   try {
@@ -11,14 +14,6 @@ export async function pingAurora() {
 export async function cargarDashboardStats() {
   try {
     return await getJSON('/db/stats');
-  } catch {
-    return null;
-  }
-}
-
-export async function cargarHealth() {
-  try {
-    return await getJSON('/health');
   } catch {
     return null;
   }

@@ -8,7 +8,7 @@ import {
 } from '../scripts/chat/mensajes.js';
 import { chats, chatActualId, cargarChats, crearChat, eliminarChat, autoGuardar, fmtFecha, exportarChat } from '../scripts/chat/historial.js';
 import { params, modeloSeleccionado, cargarParametros, guardarParametros, cargarModelo, guardarModelo } from '../scripts/chat/parametros.js';
-import { instruccion, cargarInstruccion, guardarInstruccion } from '../scripts/chat/instrucciones.js';
+import { instruccion, cargarInstruccion } from '../scripts/chat/instrucciones.js';
 import { pendingImage, pendingImageDataUrl, setPendingImage, clearPendingImage } from '../scripts/chat/vision.js';
 import {
   grabando, transcribiendo, autoVoz, vozSeleccionada, voces,
@@ -30,6 +30,7 @@ import { sendToGemita, fetchModels, connectGemita, cancelarMensaje } from '../..
 import { CanvasPanel } from '../../../components/local.views/canvas.js';
 import { nexusOnline } from '../../../store.js';
 import { getJSON, patchJSON } from '../../../components/shared/api.js';
+import { ParamsPanel } from './params-panel.js';
 
 const Toast = () => globalThis.Toast || { show() {}, setStatus() {} };
 
@@ -468,8 +469,6 @@ export function Local() {
   const quickActionsClass = 'message-quick-actions flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-aurora-border opacity-50 transition-opacity';
   const actionChipClass = 'action-chip inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold rounded-full bg-aurora-surface border border-aurora-border text-aurora-text-dim cursor-pointer whitespace-nowrap transition hover:border-aurora-accent hover:text-aurora-text active:scale-95';
   const panelTopClass = 'shrink-0 border-b border-aurora-border bg-black bg-opacity-20';
-  const paramRowClass = 'param-row flex items-center gap-2';
-  const paramLabelClass = 'param-label w-[100px] shrink-0 text-[11px] text-aurora-text-dim';
   const panelButtonClass = 'px-2 py-1 text-[11px] rounded border border-aurora-border bg-aurora-surface text-aurora-text-dim cursor-pointer hover:border-aurora-accent hover:text-aurora-text';
   const toolbarHeaderClass = 'toolbar-section-header flex items-center gap-1.5 px-1.5 py-1 rounded text-[11px] text-aurora-text-dim cursor-pointer select-none transition hover:bg-aurora-surface hover:text-aurora-text';
   const toolbarChipClass = 'toolbar-tool-chip flex items-center gap-1 px-2 py-1 rounded-full text-[10px] bg-aurora-surface border border-aurora-border text-aurora-text-dim cursor-pointer transition hover:border-aurora-accent hover:text-aurora-text';
@@ -513,46 +512,13 @@ export function Local() {
       </div>
 
       ${mostrarParametros && html`
-        <div class=${'llama-params-panel ' + panelTopClass + ' px-3.5 py-2.5 text-xs'}>
-          <div class="params-grid flex flex-col gap-2 mb-2">
-            ${[
-              { clave: 'temperatura', label: 'Temperatura', min: 0, max: 2,   step: 0.05 },
-              { clave: 'top_p',       label: 'Top P',       min: 0, max: 1,   step: 0.05 },
-              { clave: 'top_k',       label: 'Top K',       min: 1, max: 100, step: 1    },
-            ].map(({ clave, label, min, max, step }) => html`
-              <label class=${paramRowClass}>
-                <span class=${paramLabelClass}>${label}</span>
-                <input class="flex-1" type="range" min=${min} max=${max} step=${step}
-                  value=${parametrosVal[clave] ?? 0.7}
-                  onInput=${e => setParametro(clave, e.target.value)} />
-                <span class="param-val w-9 text-right text-[11px] font-semibold text-aurora-accent">${parametrosVal[clave] ?? 0.7}</span>
-              </label>
-            `)}
-            <label class=${paramRowClass}>
-              <span class=${paramLabelClass}>Seed</span>
-              <input class="w-[72px]" type="number" min="-1" value=${parametrosVal.seed}
-                onInput=${e => setParametro('seed', e.target.value)} />
-            </label>
-            <label class=${paramRowClass}>
-              <span class=${paramLabelClass}>Ctx (tokens)</span>
-              <input class="w-[72px]" type="number" min="512" step="512" value=${parametrosVal.num_ctx}
-                onInput=${e => setParametro('num_ctx', e.target.value)} />
-            </label>
-          </div>
-          <div class="params-actions flex gap-1.5 mb-2">
-            <button class=${panelButtonClass} onClick=${() => { guardarParametros({}); Toast().setStatus('◉ Parámetros guardados'); }}>Guardar</button>
-            <button class=${panelButtonClass} onClick=${restablecerParametros}>Restablecer</button>
-          </div>
-          <div class="params-instruccion">
-            <label class="block mb-1 text-[11px] text-aurora-text-dim">Instrucción de sistema</label>
-            <textarea class="w-full resize-none text-[11px] bg-aurora-surface border border-aurora-border rounded text-aurora-text p-1.5" rows="3"
-              placeholder="Instrucción base para el modelo…"
-              value=${instruccionVal}
-              onInput=${e => { instruccion.value = e.target.value; }}
-              onBlur=${e => guardarInstruccion(e.target.value)}
-            ></textarea>
-          </div>
-        </div>
+        <${ParamsPanel}
+          parametrosVal=${parametrosVal}
+          setParametro=${setParametro}
+          restablecerParametros=${restablecerParametros}
+          instruccionVal=${instruccionVal}
+          guardarParametros=${guardarParametros}
+        />
       `}
 
       ${mostrarHistorial && html`

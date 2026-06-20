@@ -4,16 +4,9 @@
 
 import { themeMode } from '../../store.js';
 import { THEMES } from './index.js';
+import { hexToRgb } from './lib.js';
 
 let _styleEl = null;
-
-function hexToRgb(hex) {
-  return [
-    parseInt(hex.slice(1, 3), 16),
-    parseInt(hex.slice(3, 5), 16),
-    parseInt(hex.slice(5, 7), 16),
-  ];
-}
 
 function mixHex(a, b, t) {
   const ar = hexToRgb(a);

@@ -223,12 +223,6 @@ console.warn("[Aurora v2] auth init failed", err);
 
 });
 
-await import("./components/globals.js").catch(err => {
-
-console.warn("[Aurora v2] components globals unavailable", err);
-
-});
-
 const [{ App }, store, extBridge] = await Promise.all([
 
 import("./app.js?v=v2-visual-variants-1"),
@@ -269,5 +263,3 @@ store.nexusOnline.value = false;
 ping();
 
 setInterval(ping, 30000);
-
-console.log("[Aurora v2] clean runtime: components/ui.css + app.js + signals");

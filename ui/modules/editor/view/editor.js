@@ -3,34 +3,7 @@ const { useState, useEffect, useRef } = globalThis.preactHooks;
 import { EDITOR_ROOT, listar, leer, escribir, detectarLang, ejecutar } from '../scripts/runner.js';
 import { setViewActions, clearViewActions } from '../../../components/footer/registry.js';
 import { crearAutosave } from '../../../components/shared/autosave.js';
-
-function Nodo({ entry, nivel, abierto, onToggle, onAbrir, seleccion }) {
-  const esDir = entry.type === 'dir';
-  return html`
-    <div>
-      <div
-        class=${`flex items-center gap-1 px-1 py-0.5 rounded cursor-pointer text-xs
-          ${seleccion === entry.path ? 'bg-white/15' : 'hover:bg-white/5'}`}
-        style=${`padding-left:${nivel * 12 + 4}px`}
-        onClick=${() => esDir ? onToggle(entry.path) : onAbrir(entry.path)}
-      >
-        <span class="opacity-60">${esDir ? (abierto[entry.path] ? '▾' : '▸') : '·'}</span>
-        <span class=${esDir ? 'text-white/80' : 'text-white/60'}>${entry.name}</span>
-      </div>
-      ${esDir && abierto[entry.path] && html`
-        <${Rama} path=${entry.path} nivel=${nivel + 1} abierto=${abierto} onToggle=${onToggle} onAbrir=${onAbrir} seleccion=${seleccion} />
-      `}
-    </div>
-  `;
-}
-
-function Rama({ path, nivel, abierto, onToggle, onAbrir, seleccion }) {
-  const [entries, setEntries] = useState([]);
-  useEffect(() => { listar(path).then(setEntries).catch(() => setEntries([])); }, [path, abierto[path]]);
-  return html`${entries.map(e => html`
-    <${Nodo} key=${e.path} entry=${e} nivel=${nivel} abierto=${abierto} onToggle=${onToggle} onAbrir=${onAbrir} seleccion=${seleccion} />
-  `)}`;
-}
+import { FileTree } from '../../../components/shared/FileTree.js';
 
 export default function Editor() {
   const [raiz, setRaiz] = useState([]);
@@ -109,9 +82,7 @@ export default function Editor() {
           <span class="text-xs font-semibold flex-1">⌨ Editor</span>
           <button onClick=${nuevo} title="Nuevo archivo" class="text-xs px-1.5 rounded hover:bg-white/10">＋</button>
         </div>
-        ${raiz.map(e => html`
-          <${Nodo} key=${e.path} entry=${e} nivel=${0} abierto=${abierto} onToggle=${toggle} onAbrir=${abrir} seleccion=${archivo} />
-        `)}
+        <${FileTree} entries=${raiz} abierto=${abierto} onToggle=${toggle} onOpen=${abrir} seleccion=${archivo} loadChildren=${listar} />
         ${raiz.length === 0 && html`<div class="text-xs text-white/30 p-2">Sandbox vacío</div>`}
       </aside>
 

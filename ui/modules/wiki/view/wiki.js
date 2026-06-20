@@ -5,34 +5,7 @@ import { renderMarkdown } from '../../../components/shared/markdown.js';
 import { crearAutosave } from '../../../components/shared/autosave.js';
 import { setViewActions, clearViewActions } from '../../../components/footer/registry.js';
 import { getJSON } from '../../../components/shared/api.js';
-
-function Nodo({ entry, nivel, abierto, onToggle, onAbrir, seleccion }) {
-  const esDir = entry.type === 'dir';
-  return html`
-    <div>
-      <div
-        class=${`flex items-center gap-1 px-1 py-0.5 rounded cursor-pointer text-xs
-          ${seleccion === entry.path ? 'bg-white/15' : 'hover:bg-white/5'}`}
-        style=${`padding-left:${nivel * 12 + 4}px`}
-        onClick=${() => esDir ? onToggle(entry.path) : onAbrir(entry.path)}
-      >
-        <span class="opacity-60">${esDir ? (abierto[entry.path] ? '▾' : '▸') : '·'}</span>
-        <span class=${esDir ? 'text-white/80' : 'text-white/60'}>${entry.name}</span>
-      </div>
-      ${esDir && abierto[entry.path] && html`
-        <${Rama} path=${entry.path} nivel=${nivel + 1} abierto=${abierto} onToggle=${onToggle} onAbrir=${onAbrir} seleccion=${seleccion} />
-      `}
-    </div>
-  `;
-}
-
-function Rama({ path, nivel, abierto, onToggle, onAbrir, seleccion }) {
-  const [entries, setEntries] = useState([]);
-  useEffect(() => { listar(path).then(setEntries).catch(() => setEntries([])); }, [path, abierto[path]]);
-  return html`${entries.map(e => html`
-    <${Nodo} key=${e.path} entry=${e} nivel=${nivel} abierto=${abierto} onToggle=${onToggle} onAbrir=${onAbrir} seleccion=${seleccion} />
-  `)}`;
-}
+import { FileTree } from '../../../components/shared/FileTree.js';
 
 export default function Wiki() {
   const [raiz, setRaiz] = useState([]);
@@ -149,9 +122,7 @@ export default function Wiki() {
           <button onClick=${nuevoArchivo} title="Nuevo archivo" class="text-xs px-1.5 rounded hover:bg-white/10">＋</button>
           <button onClick=${nuevaCarpeta} title="Nueva carpeta" class="text-xs px-1.5 rounded hover:bg-white/10">📁</button>
         </div>
-        ${raiz.map(e => html`
-          <${Nodo} key=${e.path} entry=${e} nivel=${0} abierto=${abierto} onToggle=${toggle} onAbrir=${abrir} seleccion=${archivo} />
-        `)}
+        <${FileTree} entries=${raiz} abierto=${abierto} onToggle=${toggle} onOpen=${abrir} seleccion=${archivo} loadChildren=${listar} />
         ${raiz.length === 0 && html`<div class="text-xs text-white/30 p-2">Wiki vacía</div>`}
       </aside>
 

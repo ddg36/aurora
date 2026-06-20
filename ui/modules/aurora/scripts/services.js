@@ -1,5 +1,1 @@
-import { getJSON } from '../../../components/shared/api.js';
-
-export async function cargarHealth() {
-  return getJSON('/health');
-}
+export { cargarHealth } from '../../../components/shared/api-helpers.js';
