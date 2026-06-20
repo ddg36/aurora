@@ -51,10 +51,6 @@ DEFAULT_PROVIDERS = [
 ]
 
 
-def _provider_models(models: list[LLMModel], provider_id: str) -> list[str]:
-    return [m.name for m in models if m.provider_id == provider_id]
-
-
 async def discover_providers(timeout_s: float = 0.5) -> list[dict]:
     timeout = httpx.Timeout(timeout_s, connect=0.5, read=timeout_s)
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -103,7 +99,6 @@ _vision_cache_ts: float = 0
 _models_cache: list[LLMModel] | None = None
 _models_cache_ts: float = 0
 _CACHE_TTL: float = 30.0
-_refresh_task: asyncio.Task | None = None
 
 
 async def _probe_vision(chat_url: str, model_name: str) -> bool:
@@ -167,11 +162,10 @@ async def _refresh_models() -> list[LLMModel]:
                 ))
 
         if to_probe:
-            async def _probe_one(p: LLMProvider, m: str) -> tuple[str, bool]:
-                ok = await _probe_vision(p.chat_url, m)
-                return m, ok
+            async def _probe(p: LLMProvider, m: str) -> tuple[str, bool]:
+                return m, await _probe_vision(p.chat_url, m)
 
-            outcomes = await asyncio.gather(*[_probe_one(p, m) for p, m in to_probe])
+            outcomes = await asyncio.gather(*[_probe(p, m) for p, m in to_probe])
             for m, ok in outcomes:
                 _vision_cache[m] = ok
                 if ok:

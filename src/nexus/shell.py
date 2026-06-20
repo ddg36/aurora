@@ -51,14 +51,10 @@ async def shell_run(data: dict) -> dict:
     return r
 
 
-@post('/nexus/shell/exec')
-async def shell_exec(data: dict) -> dict:
-    return await shell_run(data)
+SHELL_ROUTES = [shell_run]
 
 
-SHELL_ROUTES = [shell_run, shell_exec]
-
-# Backwards compat: sync wrapper for approvals
+# ponytail: sync wrapper used only by approvals.py — deduplicates block/destructive/safe checks
 def ejecutar_shell(cmd: str, cwd: str = '.', timeout: int | None = None, approved: bool = False) -> dict:
     import subprocess
     cmd = (cmd or '').strip()
@@ -76,10 +72,7 @@ def ejecutar_shell(cmd: str, cwd: str = '.', timeout: int | None = None, approve
         cwd_path = safe(cwd)
     except PermissionError as e:
         return {'ok': False, 'error': str(e)}
-    if IS_WIN:
-        run_args = ['powershell', '-NoProfile', '-NonInteractive', '-Command', cmd]
-    else:
-        run_args = ['bash', '-lc', cmd]
+    run_args = ['powershell', '-NoProfile', '-NonInteractive', '-Command', cmd] if IS_WIN else ['bash', '-lc', cmd]
     try:
         result = subprocess.run(run_args, cwd=str(cwd_path), capture_output=True, text=True,
                                 timeout=timeout or 600)

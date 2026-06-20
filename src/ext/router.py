@@ -33,8 +33,8 @@ _pending:  dict[str, asyncio.Future] = {}
 
 # Tab activa actual (última notificada por la extensión)
 _active_tab: dict = {}
-# Callbacks suscritos al cambio de tab (p.ej. SSE)
-_tab_subs: list = []
+# Cola para SSE —只有一个消费者
+_tab_queue: asyncio.Queue = asyncio.Queue(maxsize=64)
 
 
 @dataclass
@@ -77,17 +77,6 @@ async def ext_cmd(cmd: str, params: dict | None = None, timeout: float = 10.0) -
 
 def get_active_tab() -> dict:
     return dict(_active_tab)
-
-
-def subscribe_tab_change(cb) -> None:
-    _tab_subs.append(cb)
-
-
-def unsubscribe_tab_change(cb) -> None:
-    try:
-        _tab_subs.remove(cb)
-    except ValueError:
-        pass
 
 
 # ─── WebSocket ────────────────────────────────────────────
@@ -169,11 +158,10 @@ def _update_active_tab(data: dict) -> None:
     global _active_tab
     _active_tab = data
     log.info("ext tab change tipo=%s url=%.60s", data.get("tipo"), data.get("url", ""))
-    for cb in list(_tab_subs):
-        try:
-            cb(data)
-        except Exception:
-            pass
+    try:
+        _tab_queue.put_nowait(data)
+    except asyncio.QueueFull:
+        pass
 
 
 @post("/ext/capture")
@@ -182,12 +170,6 @@ async def ext_capture(data: dict) -> dict:
     chars = len(data.get("content", ""))
     log.info("ext capture tipo=%s chars=%d (usar /db/ext-capturas para persistencia)", data.get("tipo"), chars)
     return {"ok": True, "id": str(uuid.uuid4())[:8], "chars": chars}
-
-
-@get("/ext/captures")
-async def ext_captures() -> dict:
-    """Deprecated. Usar GET /db/ext-capturas."""
-    return {"ok": True, "deprecated": True, "capturas": [], "msg": "Usar /db/ext-capturas"}
 
 
 @post("/ext/tab-change")
@@ -218,27 +200,17 @@ async def ext_tab_stream() -> Stream:
     SSE — pushea tab activa al cliente cuando cambia.
     Evento inicial inmediato con estado actual, luego solo on-demand.
     """
-    queue: asyncio.Queue = asyncio.Queue()
-
-    def on_change(data: dict) -> None:
-        queue.put_nowait(data)
-
-    subscribe_tab_change(on_change)
-
     async def generator():
-        try:
-            # Evento inicial con estado actual
-            yield f"data: {json.dumps(_active_tab)}\n\n".encode()
-            # Luego solo cuando cambia
-            while True:
-                try:
-                    data = await asyncio.wait_for(queue.get(), timeout=25.0)
-                    yield f"data: {json.dumps(data)}\n\n".encode()
-                except asyncio.TimeoutError:
-                    # Keepalive para que el browser no cierre la conexión
-                    yield b": keepalive\n\n"
-        finally:
-            unsubscribe_tab_change(on_change)
+        # Evento inicial con estado actual
+        yield f"data: {json.dumps(_active_tab)}\n\n".encode()
+        # Luego solo cuando cambia
+        while True:
+            try:
+                data = await asyncio.wait_for(_tab_queue.get(), timeout=25.0)
+                yield f"data: {json.dumps(data)}\n\n".encode()
+            except asyncio.TimeoutError:
+                # Keepalive para que el browser no cierre la conexión
+                yield b": keepalive\n\n"
 
     return Stream(
         generator(),
@@ -260,4 +232,4 @@ async def ext_status() -> dict:
     }
 
 
-EXT_ROUTES = [ext_ws, ext_capture, ext_captures, ext_tab_change, ext_cmd_route, ext_tab, ext_tab_stream, ext_status]
+EXT_ROUTES = [ext_ws, ext_capture, ext_tab_change, ext_cmd_route, ext_tab, ext_tab_stream, ext_status]

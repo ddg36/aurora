@@ -84,13 +84,10 @@ async def fs_grep(pattern: str, path: str = '.', max_results: int = 40, names_on
             break
         try:
             parts = fp.relative_to(root).parts
-        except Exception:
-            continue
-        if any(part in SKIP_DIRS for part in parts):
-            continue
-        if not fp.is_file() or fp.stat().st_size > 500_000:
-            continue
-        try:
+            if any(part in SKIP_DIRS for part in parts):
+                continue
+            if not fp.is_file() or fp.stat().st_size > 500_000:
+                continue
             if names_only:
                 if re.search(pattern, fp.name):
                     results.append(rel(fp))

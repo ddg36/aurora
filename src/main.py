@@ -19,7 +19,7 @@ from nexus.router import NEXUS_ROUTES
 from parser.router import PARSER_ROUTES
 from tools.router import TOOLS_ROUTES
 from voz.router import VOZ_ROUTES
-from ext.router import ext_ws, EXT_ROUTES
+from ext.router import EXT_ROUTES
 from browser.router import NAV_BROWSER_ROUTES
 from jobs.cleanup_capturas import run_cleanup
 from logging_config import setup_logging

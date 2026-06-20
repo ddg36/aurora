@@ -19,18 +19,6 @@ LANGS = {
 }
 
 
-def _runner(lang: str, path: str) -> list[str] | None:
-    if lang in ('py', 'python'):
-        py, _ = _venv_python()
-        return [py, path]
-    if lang in ('js', 'node'):
-        node = shutil.which('node')
-        return [node, path] if node else None
-    if lang in ('sh', 'bash'):
-        return ['powershell', '-File', path] if IS_WIN else ['bash', path]
-    return None
-
-
 @post('/nexus/editor/run')
 async def editor_run(data: dict) -> dict:
     lang = str(data.get('lang') or 'py').lower()
@@ -45,7 +33,16 @@ async def editor_run(data: dict) -> dict:
                                      delete=False, encoding='utf-8') as f:
         f.write(code)
         tmp = f.name
-    args = _runner(lang, tmp)
+    if lang in ('py', 'python'):
+        py, _ = _venv_python()
+        args = [py, tmp]
+    elif lang in ('js', 'node'):
+        node = shutil.which('node')
+        args = [node, tmp] if node else None
+    elif lang in ('sh', 'bash'):
+        args = ['powershell', '-File', tmp] if IS_WIN else ['bash', tmp]
+    else:
+        args = None
     if not args:
         return {'ok': False, 'error': f'Runtime no disponible para {lang}'}
     inicio = time.monotonic()

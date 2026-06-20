@@ -30,6 +30,12 @@ class BackupController(Controller):
             async with db.execute(q, p) as cur:
                 return [dict(r) for r in await cur.fetchall()]
 
+        async def safe_rows(table):
+            try:
+                return await rows(f"SELECT * FROM {table} WHERE usuario_id=?", uid)
+            except Exception:
+                return []
+
         datos: dict = {
             "version": 1,
             "exportado_en": int(time.time()),
@@ -38,12 +44,7 @@ class BackupController(Controller):
         }
 
         for t in TABLAS_USUARIO:
-            try:
-                datos["tablas"][t] = await rows(
-                    f"SELECT * FROM {t} WHERE usuario_id=?", uid
-                )
-            except Exception:
-                datos["tablas"][t] = []
+            datos["tablas"][t] = await safe_rows(t)
 
         datos["tablas"]["mensajes"] = await rows(
             """SELECT m.* FROM mensajes m
@@ -74,12 +75,15 @@ class BackupController(Controller):
                 r = await cur.fetchone()
                 return r[0] if r else 0
 
+        async def safe_count(table):
+            try:
+                return await scalar(f"SELECT COUNT(*) FROM {table} WHERE usuario_id=?", uid)
+            except Exception:
+                return 0
+
         conteos = {}
         for t in TABLAS_USUARIO:
-            try:
-                conteos[t] = await scalar(f"SELECT COUNT(*) FROM {t} WHERE usuario_id=?", uid)
-            except Exception:
-                conteos[t] = 0
+            conteos[t] = await safe_count(t)
         conteos["mensajes"] = await scalar(
             "SELECT COUNT(*) FROM mensajes m JOIN chats c ON c.id=m.chat_id WHERE c.usuario_id=?", uid
         )

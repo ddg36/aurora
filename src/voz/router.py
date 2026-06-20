@@ -51,9 +51,16 @@ async def _get_modelo():
     return _modelo
 
 
-async def _a_wav16k(data: bytes) -> str:
+@post("/voz/stt")
+async def stt(
+    data: UploadFile = Body(media_type=RequestEncodingType.MULTI_PART),
+) -> dict:
+    raw = await data.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="audio vacío")
+
     src = tempfile.NamedTemporaryFile(suffix=".audio", delete=False)
-    src.write(data)
+    src.write(raw)
     src.close()
     dst = src.name + ".wav"
     proc = await asyncio.create_subprocess_exec(
@@ -64,30 +71,19 @@ async def _a_wav16k(data: bytes) -> str:
     os.unlink(src.name)
     if proc.returncode != 0 or not os.path.exists(dst):
         raise HTTPException(status_code=422, detail="ffmpeg no pudo convertir el audio")
-    return dst
 
-
-@post("/voz/stt")
-async def stt(
-    data: UploadFile = Body(media_type=RequestEncodingType.MULTI_PART),
-) -> dict:
-    raw = await data.read()
-    if not raw:
-        raise HTTPException(status_code=400, detail="audio vacío")
-
-    wav = await _a_wav16k(raw)
     try:
         modelo = await _get_modelo()
         loop = asyncio.get_event_loop()
 
         def _transcribir():
-            segments, info = modelo.transcribe(wav, vad_filter=True)
+            segments, info = modelo.transcribe(dst, vad_filter=True)
             texto = " ".join(s.text.strip() for s in segments).strip()
             return texto, info.language
 
         texto, idioma = await loop.run_in_executor(None, _transcribir)
     finally:
-        os.unlink(wav)
+        os.unlink(dst)
 
     return {"text": texto, "language": idioma}
 

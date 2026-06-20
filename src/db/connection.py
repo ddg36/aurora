@@ -1,6 +1,7 @@
 import aiosqlite
 import os
 import pathlib
+import time
 
 DB_PATH = pathlib.Path(
     os.environ.get(
@@ -22,11 +23,6 @@ async def get_db() -> aiosqlite.Connection:
     return _db
 
 
-async def _columna_existe(db, tabla: str, columna: str) -> bool:
-    async with db.execute(f"PRAGMA table_info({tabla})") as cur:
-        return any(r["name"] == columna for r in await cur.fetchall())
-
-
 async def init_db():
     db = await get_db()
     schema = pathlib.Path(__file__).parent / "schema.sql"
@@ -39,7 +35,9 @@ async def init_db():
             await db.executescript(schema.read_text())
             await db.commit()
 
-    if not await _columna_existe(db, "mensajes", "fijado"):
+    async with db.execute(f"PRAGMA table_info(mensajes)") as cur:
+        has_fijado = any(r["name"] == "fijado" for r in await cur.fetchall())
+    if not has_fijado:
         await db.execute("ALTER TABLE mensajes ADD COLUMN fijado INTEGER NOT NULL DEFAULT 0")
         await db.commit()
 
@@ -248,6 +246,10 @@ async def _ensure_productividad(db):
             await db.execute("CREATE INDEX idx_ext_capturas_tipo    ON ext_capturas(usuario_id, tipo)")
             await db.commit()
 
+    await _ensure_builder_templates(db)
+    await _ensure_team_roles(db)
+    await _ensure_creativity_ideas(db)
+
     async with db.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='md_reader_prefs'"
     ) as cur:
@@ -322,3 +324,140 @@ async def _ensure_productividad(db):
                 CREATE INDEX idx_md_reader_edges_usuario_root ON md_reader_edges(usuario_id, root);
             """)
             await db.commit()
+
+
+async def _ensure_builder_templates(db):
+    async with db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='builder_templates'"
+    ) as cur:
+        if not await cur.fetchone():
+            await db.executescript("""
+                CREATE TABLE builder_templates (
+                    id          TEXT PRIMARY KEY,
+                    usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
+                    tipo        TEXT NOT NULL,
+                    datos       TEXT NOT NULL,
+                    version     INTEGER NOT NULL DEFAULT 1,
+                    creado_en   INTEGER NOT NULL DEFAULT (unixepoch()),
+                    actualizado INTEGER NOT NULL DEFAULT (unixepoch())
+                );
+                CREATE INDEX IF NOT EXISTS idx_builder_templates_usuario ON builder_templates(usuario_id, tipo);
+            """)
+            await db.commit()
+
+
+async def _ensure_team_roles(db):
+    async with db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_team_roles'"
+    ) as cur:
+        if not await cur.fetchone():
+            await db.executescript("""
+                CREATE TABLE ai_team_roles (
+                    id              TEXT PRIMARY KEY,
+                    usuario_id      INTEGER NOT NULL REFERENCES usuarios(id),
+                    nombre          TEXT NOT NULL,
+                    icono           TEXT,
+                    color           TEXT,
+                    prompt_template TEXT,
+                    default_members TEXT,
+                    orden           INTEGER NOT NULL DEFAULT 0,
+                    creado_en       INTEGER NOT NULL DEFAULT (unixepoch()),
+                    actualizado     INTEGER NOT NULL DEFAULT (unixepoch())
+                );
+                CREATE INDEX IF NOT EXISTS idx_team_roles_usuario ON ai_team_roles(usuario_id, orden);
+            """)
+            await db.commit()
+
+
+async def _ensure_creativity_ideas(db):
+    async with db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='creativity_ideas'"
+    ) as cur:
+        if not await cur.fetchone():
+            await db.executescript("""
+                CREATE TABLE creativity_ideas (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+                    tematica   TEXT NOT NULL,
+                    datos      TEXT NOT NULL,
+                    creado_en  INTEGER NOT NULL DEFAULT (unixepoch()),
+                    actualizado INTEGER NOT NULL DEFAULT (unixepoch()),
+                    UNIQUE(usuario_id, tematica)
+                );
+            """)
+            await db.commit()
+    await seed_builder_data(db)
+
+
+async def seed_builder_data(db):
+    import json as _json
+
+    templates_dir = pathlib.Path(__file__).resolve().parent.parent.parent / "ui" / "modules" / "prompts" / "templates"
+    if not templates_dir.exists():
+        return
+
+    async with db.execute("SELECT id FROM usuarios") as cur:
+        users = [r["id"] for r in await cur.fetchall()]
+    if not users:
+        return
+
+    async with db.execute("SELECT COUNT(*) as n FROM builder_templates") as cur:
+        existing = (await cur.fetchone())["n"]
+    if existing > 0:
+        return
+
+    seed_files = {
+        "builder_comfyui": ("comfyui", "comfyui-chips.tmpl.json"),
+        "builder_wan":     ("wan",     "wan-video.tmpl.json"),
+    }
+    now = int(time.time())
+    for tid, (tipo, fname) in seed_files.items():
+        fpath = templates_dir / fname
+        if not fpath.exists():
+            continue
+        try:
+            data = _json.loads(fpath.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        blob = _json.dumps(data, ensure_ascii=False)
+        for uid in users:
+            await db.execute(
+                """INSERT OR IGNORE INTO builder_templates (id, usuario_id, tipo, datos, creado_en, actualizado)
+                   VALUES (?,?,?,?,?,?)""",
+                (tid, uid, tipo, blob, now, now),
+            )
+
+    roles_path = templates_dir / "roles-equipo.tmpl.json"
+    if roles_path.exists():
+        try:
+            roles_data = _json.loads(roles_path.read_text(encoding="utf-8"))
+            default_members = _json.dumps(roles_data.get("defaultMembers", []), ensure_ascii=False)
+            for i, rol in enumerate(roles_data.get("roles", [])):
+                rid = f"rol_{rol['id']}"
+                for uid in users:
+                    await db.execute(
+                        """INSERT OR IGNORE INTO ai_team_roles
+                           (id, usuario_id, nombre, icono, color, prompt_template, default_members, orden, creado_en, actualizado)
+                           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                        (rid, uid, rol.get("label", rol["id"]), rol.get("icono"), rol.get("color"),
+                         rol.get("prompt"), default_members, i, now, now),
+                    )
+        except Exception:
+            pass
+
+    ideas_path = templates_dir / "conceptos-creatividad.tmpl.json"
+    if ideas_path.exists():
+        try:
+            ideas_data = _json.loads(ideas_path.read_text(encoding="utf-8"))
+            for tematica, datos in ideas_data.items():
+                blob = _json.dumps(datos, ensure_ascii=False)
+                for uid in users:
+                    await db.execute(
+                        """INSERT OR IGNORE INTO creativity_ideas (usuario_id, tematica, datos, creado_en, actualizado)
+                           VALUES (?,?,?,?,?)""",
+                        (uid, tematica, blob, now, now),
+                    )
+        except Exception:
+            pass
+
+    await db.commit()

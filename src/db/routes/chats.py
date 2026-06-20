@@ -44,17 +44,6 @@ class MensajeBody:
     tokens_est: int | None = None
 
 
-def _chat_dict(row: dict) -> dict:
-    actualizado = row.get("actualizado") or int(time.time())
-    return {
-        **row,
-        "id": row.get("id"),
-        "chat_id": row.get("id"),
-        "updatedAt": actualizado * 1000,
-        "modelo": row.get("modelo_id") or "",
-    }
-
-
 class ChatsController(Controller):
     path = "/db/chats"
     guards = [auth_guard]
@@ -70,7 +59,12 @@ class ChatsController(Controller):
             (uid,),
         ) as cur:
             rows = await cur.fetchall()
-        return [_chat_dict(dict(r)) for r in rows]
+        return [
+            {**r, "id": r["id"], "chat_id": r["id"],
+             "updatedAt": (r.get("actualizado") or int(time.time())) * 1000,
+             "modelo": r.get("modelo_id") or ""}
+            for r in (dict(row) for row in rows)
+        ]
 
     @post("")
     async def create_chat(self, data: ChatBody, request: Request) -> dict:

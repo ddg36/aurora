@@ -8,6 +8,13 @@ from ..connection import get_db
 from ..auth import auth_guard
 
 
+def _safe_json(s: str | None, default=None):
+    try:
+        return json.loads(s) if s else (default if default is not None else {})
+    except (json.JSONDecodeError, TypeError):
+        return default if default is not None else {}
+
+
 @dataclass
 class PrefsBody:
     root_path: Optional[str] = None
@@ -73,12 +80,7 @@ class MDReaderController(Controller):
             row = await cur.fetchone()
         if not row:
             return {"ok": True, "prefs": {}}
-        filters = {}
-        if row["filters_json"]:
-            try:
-                filters = json.loads(row["filters_json"])
-            except Exception:
-                filters = {}
+        filters = _safe_json(row["filters_json"])
         return {
             "ok": True,
             "prefs": {
@@ -197,10 +199,7 @@ class MDReaderController(Controller):
             nodes = []
             for r in await cur.fetchall():
                 item = dict(r)
-                try:
-                    item["meta"] = json.loads(item.pop("meta_json") or "{}")
-                except Exception:
-                    item["meta"] = {}
+                item["meta"] = _safe_json(item.pop("meta_json"))
                 nodes.append(item)
 
         async with db.execute(
@@ -214,10 +213,7 @@ class MDReaderController(Controller):
             edges = []
             for r in await cur.fetchall():
                 item = dict(r)
-                try:
-                    item["meta"] = json.loads(item.pop("meta_json") or "{}")
-                except Exception:
-                    item["meta"] = {}
+                item["meta"] = _safe_json(item.pop("meta_json"))
                 edges.append(item)
 
         return {

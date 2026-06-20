@@ -1,12 +1,7 @@
-# ══════════════════════════════════════════════════════
-#  GEMITA BUCLE — Loop agéntico contra llama.cpp server
-#  Stream tokens, ejecuta tool_calls, itera hasta MAX_RONDAS.
-#  session: GemitaSession (send dict, shell, inbox para hub results)
-# ══════════════════════════════════════════════════════
-
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 
@@ -14,17 +9,17 @@ import httpx
 
 from . import config
 from . import providers
-from .protocol import get_catalog
-from .roles import seleccionar_rol, get_role_config, get_system_prompt
-from tools.registry import get_tool, list_tools, run_tool
+from .roles import seleccionar_rol, AgentRole, ROLE_SYSTEM_PROMPTS
+from tools.registry import get_tool, list_tools, run_tool, to_openai_format
 
 log = logging.getLogger("aurora.gemita.bucle")
 
-_TOOL_FORMAT_INSTRUCTION = """\
-Cuando necesites usar una herramienta, escribe EXACTAMENTE en una línea:
-<tool_call>{"name": "nombre_herramienta", "arguments": {"param": "valor"}}</tool_call>
-No escribas nada más después de ese bloque hasta recibir el resultado.
-"""
+_ROLE_CONFIG = {
+    AgentRole.ARCHITECT:  {"max_rondas": 5,  "allow_tools": ["list_directory", "find_files", "read_file", "search_in_files"]},
+    AgentRole.CODER:      {"max_rondas": 15, "allow_tools": "all"},
+    AgentRole.DEBUGGER:   {"max_rondas": 10, "allow_tools": "all"},
+    AgentRole.GENERAL:    {"max_rondas": 10, "allow_tools": "all"},
+}
 
 
 def _project_context_intro() -> str:
@@ -48,7 +43,7 @@ async def manejar_chat(session, datos: dict):
     mensaje_usuario = datos.get('message', '')
     t0 = time.monotonic()
     rol = seleccionar_rol(mensaje_usuario)
-    rol_config = get_role_config(rol)
+    rol_config = _ROLE_CONFIG.get(rol, _ROLE_CONFIG[AgentRole.GENERAL])
     max_rondas = rol_config.get('max_rondas', config.MAX_RONDAS)
 
     pure = datos.get('pure_system', False)
@@ -57,11 +52,11 @@ async def manejar_chat(session, datos: dict):
     else:
         system_completo = '\n\n'.join(filter(None, [
             _project_context_intro(),
-            get_system_prompt(rol),
+            ROLE_SYSTEM_PROMPTS.get(rol, ROLE_SYSTEM_PROMPTS[AgentRole.GENERAL]),
             (datos.get('system') or '').strip(),
         ]))
 
-    modelo   = datos.get('model') or config.MODELO_DEFAULT
+    modelo = datos.get('model') or config.MODELO_DEFAULT
     tools_js = datos.get('tools') or []
 
     if tools_js:
@@ -73,11 +68,10 @@ async def manejar_chat(session, datos: dict):
             lines.append(f"- {fn.get('name', '')}({param_str}): {fn.get('description', '')}")
         system_completo += '\n\n' + '\n'.join(lines)
 
-    mensajes = _construir_historial(datos, _TOOL_FORMAT_INSTRUCTION, system_completo)
+    mensajes = _construir_historial(datos, system_completo)
 
-    catalog = get_catalog()
-    aurora_tools = [] if pure else _aurora_tools_openai()
-    todas_las_tools = [] if pure else list(tools_js) + catalog.to_openai_format() + aurora_tools
+    aurora_tools = [] if pure else to_openai_format()
+    todas_las_tools = [] if pure else list(tools_js) + aurora_tools
 
     allow_tools = rol_config.get('allow_tools')
     if allow_tools != 'all' and isinstance(allow_tools, list):
@@ -109,22 +103,19 @@ async def manejar_chat(session, datos: dict):
                 except json.JSONDecodeError:
                     args = {}
 
-            tool = catalog.get(nombre)
-            aurora_tool = get_tool(nombre) if not tool else None
-            schema = tool.get_schema() if tool else None
+            tool = get_tool(nombre)
             await session.send({
                 'type': 'tool_call',
                 'name': nombre,
                 'args': args,
-                'risk': schema.risk.value if schema else (aurora_tool.risk.upper() if aurora_tool else 'LOW'),
+                'risk': tool.risk.upper() if tool else 'LOW',
             })
 
             try:
                 if tool:
-                    output = await tool.execute(args, {'shell': session.shell, 'config': config})
-                elif aurora_tool:
-                    result = await run_tool(nombre, args, {'kind': 'internal', 'source': 'gemita'})
-                    output = result.get('text') or result.get('data') or result.get('error') or result
+                    caller = {'kind': 'internal', 'source': 'gemita', 'shell': session.shell, 'config': config}
+                    result = await run_tool(nombre, args, caller)
+                    output = result.get('text') or result.get('data') or result.get('error') or str(result)
                 elif nombre in hub_tool_names:
                     output = await delegar_hub_tool(session, nombre, args)
                 else:
@@ -245,38 +236,13 @@ async def _llamar_llama(session, modelo, mensajes, tools) -> tuple:
 
 # ── Extracción de tool_calls desde texto ──────────────
 
+_valid_tool_names: set | None = None
+
 def _nombres_validos() -> set:
-    return {s.name for s in get_catalog().list_all()} | {t['name'] for t in list_tools()}
-
-
-def _aurora_tools_openai() -> list:
-    return [
-        {
-            'type': 'function',
-            'function': {
-                'name': tool['name'],
-                'description': tool['description'],
-                'parameters': tool['input_schema'],
-            },
-        }
-        for tool in list_tools()
-        if not tool.get('requires_approval')
-    ]
-
-
-def _normalizar_nombre_tool(nombre: str) -> str:
-    if not nombre:
-        return nombre
-    for valid in _nombres_validos():
-        if nombre == valid:
-            return nombre
-        if nombre == valid + valid:
-            return valid
-        if nombre.startswith(valid) and len(nombre) > len(valid):
-            resto = nombre[len(valid):]
-            if resto == valid or resto in _nombres_validos():
-                return valid
-    return nombre
+    global _valid_tool_names
+    if _valid_tool_names is None:
+        _valid_tool_names = {t['name'] for t in list_tools()}
+    return _valid_tool_names
 
 
 def _extraer_tool_calls_del_texto(texto: str) -> list:
@@ -288,7 +254,19 @@ def _extraer_tool_calls_del_texto(texto: str) -> list:
             data = json.loads(m.strip())
         except (json.JSONDecodeError, AttributeError):
             continue
-        nombre = _normalizar_nombre_tool(data.get('name', ''))
+        nombre = data.get('name', '')
+        if nombre:
+            for valid in validos:
+                if nombre == valid:
+                    break
+                if nombre == valid + valid:
+                    nombre = valid
+                    break
+                if nombre.startswith(valid) and len(nombre) > len(valid):
+                    resto = nombre[len(valid):]
+                    if resto == valid or resto in validos:
+                        nombre = valid
+                        break
         args = data.get('arguments', data.get('parameters', {}))
         if nombre and nombre in validos:
             tool_calls.append({
@@ -303,7 +281,7 @@ def _extraer_tool_calls_del_texto(texto: str) -> list:
 
 # ── Construcción del historial ────────────────────────
 
-def _construir_historial(datos: dict, tool_instruction: str, system_completo: str) -> list:
+def _construir_historial(datos: dict, system_completo: str) -> list:
     mensajes = []
     system = (system_completo or '').strip()
     if system:
@@ -333,7 +311,6 @@ Máximo 400 tokens. Sin charla. Usa listas. Mismo idioma del historial."""
 
 
 async def condensar_memoria(datos: dict):
-    import os
     historial = datos.get('history', [])
     if len(historial) < 4:
         return None
@@ -362,10 +339,7 @@ async def condensar_memoria(datos: dict):
         return None
 
     os.makedirs(os.path.dirname(config.RUTA_MEMORIA), exist_ok=True)
-    ts = time.strftime('%Y-%m-%dT%H-%M-%S')
-    session_file = os.path.join(os.path.dirname(config.RUTA_MEMORIA), f'session_{ts}.md')
-    with open(session_file, 'w', encoding='utf-8') as f:
-        f.write(f"# Sesión condensada — {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n{summary}")
+    ts = time.strftime('%Y-%m-%dT-%H-%M-%S')
     with open(config.RUTA_MEMORIA, 'a', encoding='utf-8') as f:
         f.write(f"\n==========\n*Condensación — {time.strftime('%Y-%m-%d %H:%M:%S')}\n{summary}\n==========\n")
     return summary

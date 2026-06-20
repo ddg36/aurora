@@ -1,6 +1,9 @@
 from .routes.usuarios import UsuariosController
 from .routes.chats import ChatsController
 from .routes.prompts import PromptsController
+from .routes.builder_templates import BuilderTemplatesController
+from .routes.team_roles import TeamRolesController
+from .routes.creativity_ideas import CreativityIdeasController
 from .routes.ajustes import AjustesController
 from .routes.stats import StatsController
 from .routes.llm import LlmController
@@ -25,6 +28,9 @@ ALL_CONTROLLERS = [
     UsuariosController,
     ChatsController,
     PromptsController,
+    BuilderTemplatesController,
+    TeamRolesController,
+    CreativityIdeasController,
     AjustesController,
     StatsController,
     LlmController,

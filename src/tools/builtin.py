@@ -9,7 +9,7 @@ from nexus.config import SKIP_DIRS, clip
 from nexus.shell import ejecutar_shell
 from nexus.workspace import rel, safe
 
-from .contract import ToolContract
+from .contract import ToolContract, schema
 from .registry import register
 
 
@@ -50,13 +50,10 @@ async def workspace_search(args: dict, caller: dict) -> dict:
             break
         try:
             parts = fp.relative_to(root).parts
-        except Exception:
-            continue
-        if any(part in SKIP_DIRS for part in parts):
-            continue
-        if not fp.is_file() or fp.stat().st_size > 500_000:
-            continue
-        try:
+            if any(part in SKIP_DIRS for part in parts):
+                continue
+            if not fp.is_file() or fp.stat().st_size > 500_000:
+                continue
             for n, line in enumerate(fp.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if re.search(pattern, line):
                     results.append({"path": rel(fp), "line": n, "text": line[:240]})
@@ -278,10 +275,6 @@ async def productividad_price_scan(args: dict, caller: dict) -> dict:
     return {"ok": True, "data": data | {"check_id": cur.lastrowid}, "text": f"Precio detectado: {data.get('precio') or 'n/d'}"}
 
 
-def _schema(properties: dict, required: list[str] | None = None) -> dict:
-    return {"type": "object", "properties": properties, "required": required or []}
-
-
 def _json(data) -> str:
     import json
     return json.dumps(data if data is not None else {}, ensure_ascii=False)
@@ -291,7 +284,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.workspace.list",
         description="Lista archivos y carpetas dentro del workspace permitido.",
-        input_schema=_schema({"path": {"type": "string", "default": "."}}),
+        input_schema=schema({"path": {"type": "string", "default": "."}}),
         handler=workspace_list,
         scopes=["workspace:read"],
         tags=["workspace", "mcp"],
@@ -299,7 +292,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.workspace.read",
         description="Lee un archivo dentro del workspace permitido.",
-        input_schema=_schema({"path": {"type": "string"}}, ["path"]),
+        input_schema=schema({"path": {"type": "string"}}, ["path"]),
         handler=workspace_read,
         scopes=["workspace:read"],
         tags=["workspace", "mcp"],
@@ -307,7 +300,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.workspace.search",
         description="Busca texto o regex simple dentro del workspace permitido.",
-        input_schema=_schema({
+        input_schema=schema({
             "pattern": {"type": "string"},
             "path": {"type": "string", "default": "."},
             "max_results": {"type": "integer", "default": 40},
@@ -319,7 +312,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.nexus.shell.run",
         description="Ejecuta un comando shell dentro del workspace permitido.",
-        input_schema=_schema({
+        input_schema=schema({
             "cmd": {"type": "string"},
             "cwd": {"type": "string", "default": "."},
             "timeout": {"type": "integer", "default": 30},
@@ -334,7 +327,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.services.health",
         description="Devuelve estado resumido de servicios internos y providers LLM.",
-        input_schema=_schema({"timeout_s": {"type": "number", "default": 1.0}}),
+        input_schema=schema({"timeout_s": {"type": "number", "default": 1.0}}),
         handler=services_health,
         scopes=["services:read"],
         tags=["services", "llm", "mcp"],
@@ -342,7 +335,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.capture.page",
         description="Captura contexto limpio de la pestaña activa y lo guarda en Productividad.",
-        input_schema=_schema({"tipo": {"type": "string", "default": "page"}}),
+        input_schema=schema({"tipo": {"type": "string", "default": "page"}}),
         handler=productividad_capture_page,
         scopes=["capture:write"],
         tags=["productividad", "capture", "mcp"],
@@ -350,7 +343,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.research.page",
         description="Crea una entrada de research ligada a una captura o contenido web.",
-        input_schema=_schema({"captura_id": {"type": "integer"}, "contenido": {"type": "string"}}),
+        input_schema=schema({"captura_id": {"type": "integer"}, "contenido": {"type": "string"}}),
         handler=productividad_research_page,
         scopes=["research:write"],
         tags=["productividad", "research", "mcp"],
@@ -358,7 +351,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.tasks.from_capture",
         description="Crea una tarea accionable desde una captura web.",
-        input_schema=_schema({"captura_id": {"type": "integer"}, "titulo": {"type": "string"}}),
+        input_schema=schema({"captura_id": {"type": "integer"}, "titulo": {"type": "string"}}),
         handler=productividad_task_from_capture,
         scopes=["tasks:write"],
         tags=["productividad", "tasks", "mcp"],
@@ -366,7 +359,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.clipboard.save",
         description="Guarda texto de clipboard como memoria clasificada.",
-        input_schema=_schema({"contenido": {"type": "string"}, "tipo": {"type": "string"}}),
+        input_schema=schema({"contenido": {"type": "string"}, "tipo": {"type": "string"}}),
         handler=productividad_clipboard_save,
         scopes=["clipboard:write"],
         tags=["productividad", "clipboard", "mcp"],
@@ -374,7 +367,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.forms.inspect",
         description="Inspecciona formularios visibles en la pestaña activa.",
-        input_schema=_schema({}),
+        input_schema=schema({}),
         handler=productividad_forms_inspect,
         risk="medium",
         scopes=["forms:read"],
@@ -383,7 +376,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.forms.fill",
         description="Rellena un formulario tras approval.",
-        input_schema=_schema({"form_selector": {"type": "string"}, "data": {"type": "object"}}),
+        input_schema=schema({"form_selector": {"type": "string"}, "data": {"type": "object"}}),
         handler=productividad_forms_fill,
         risk="high",
         scopes=["forms:write"],
@@ -393,7 +386,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.meeting.capture",
         description="Captura transcript/chat visible de una reunion web.",
-        input_schema=_schema({}),
+        input_schema=schema({}),
         handler=productividad_meeting_capture,
         scopes=["meeting:write"],
         tags=["productividad", "meeting", "mcp"],
@@ -401,7 +394,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.tabs.list",
         description="Lista pestañas abiertas desde la extension conectada.",
-        input_schema=_schema({}),
+        input_schema=schema({}),
         handler=productividad_tabs_list,
         scopes=["tabs:read"],
         tags=["productividad", "tabs", "mcp"],
@@ -409,7 +402,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.tabs.archive",
         description="Archiva la sesion actual de pestañas.",
-        input_schema=_schema({"nombre": {"type": "string"}, "tabs": {"type": "array"}}),
+        input_schema=schema({"nombre": {"type": "string"}, "tabs": {"type": "array"}}),
         handler=productividad_tabs_archive,
         scopes=["tabs:write"],
         tags=["productividad", "tabs", "mcp"],
@@ -417,7 +410,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.price.watch",
         description="Crea un item de vigilancia de precio.",
-        input_schema=_schema({"nombre": {"type": "string"}, "url": {"type": "string"}}, ["url"]),
+        input_schema=schema({"nombre": {"type": "string"}, "url": {"type": "string"}}, ["url"]),
         handler=productividad_price_watch,
         scopes=["price:write"],
         tags=["productividad", "price", "mcp"],
@@ -425,7 +418,7 @@ def register_builtin_tools() -> None:
     register(ToolContract(
         name="aurora.price.scan",
         description="Extrae precio/stock de la pestaña o URL configurada.",
-        input_schema=_schema({"item_id": {"type": "integer"}, "url": {"type": "string"}}),
+        input_schema=schema({"item_id": {"type": "integer"}, "url": {"type": "string"}}),
         handler=productividad_price_scan,
         risk="medium",
         scopes=["price:scan"],

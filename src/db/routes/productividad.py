@@ -9,33 +9,21 @@ from ..auth import auth_guard
 from ..connection import get_db
 
 
-def _json(data: Any) -> str:
-    return json.dumps(data if data is not None else {}, ensure_ascii=False)
+# ponytail: these 5 helpers are called ~40 times in this file only — keep them local
+_j = lambda d: json.dumps(d if d is not None else {}, ensure_ascii=False)
+_pj = lambda t, fb: json.loads(t) if t else fb
+_d = lambda r: dict(r) if r else {}
 
 
-def _parse_json(text: str | None, fallback):
-    if not text:
-        return fallback
-    try:
-        return json.loads(text)
-    except Exception:
-        return fallback
+async def _fo(db, q, args=()):
+    async with db.execute(q, args) as c:
+        r = await c.fetchone()
+    return _d(r) if r else None
 
 
-def _dict(row) -> dict:
-    return dict(row) if row else {}
-
-
-async def _fetchone(db, query: str, args: tuple) -> dict | None:
-    async with db.execute(query, args) as cur:
-        row = await cur.fetchone()
-    return _dict(row) if row else None
-
-
-async def _fetchall(db, query: str, args: tuple = ()) -> list[dict]:
-    async with db.execute(query, args) as cur:
-        rows = await cur.fetchall()
-    return [_dict(r) for r in rows]
+async def _fa(db, q, args=()):
+    async with db.execute(q, args) as c:
+        return [_d(r) for r in await c.fetchall()]
 
 
 class ProductividadController(Controller):
@@ -56,9 +44,9 @@ class ProductividadController(Controller):
             "tab_sessions": "productividad_tab_sessions",
             "prices": "productividad_price_items",
         }.items():
-            row = await _fetchone(db, f"SELECT COUNT(*) AS n FROM {table} WHERE usuario_id=?", (uid,))
+            row = await _fo(db, f"SELECT COUNT(*) AS n FROM {table} WHERE usuario_id=?", (uid,))
             counts[key] = row["n"] if row else 0
-        recent = await _fetchall(
+        recent = await _fa(
             db,
             """SELECT id, tipo, titulo, url, capturado_en
                FROM productividad_capturas
@@ -86,7 +74,7 @@ class ProductividadController(Controller):
                 data.get("seleccion") or data.get("selection"),
                 data.get("contenido") or data.get("content"),
                 data.get("html_limpio") or data.get("html"),
-                _json(data.get("metadata") or data.get("meta")),
+                _j(data.get("metadata") or data.get("meta")),
                 data.get("screenshot"),
                 data.get("origen") or "aurora-productivity",
             ),
@@ -99,7 +87,7 @@ class ProductividadController(Controller):
         uid = request.state.usuario_id
         db = await get_db()
         if tipo:
-            rows = await _fetchall(
+            rows = await _fa(
                 db,
                 """SELECT id, tipo, titulo, url, favicon, seleccion, capturado_en, origen,
                           length(coalesce(contenido,'')) AS chars
@@ -109,7 +97,7 @@ class ProductividadController(Controller):
                 (uid, tipo, limit, offset),
             )
         else:
-            rows = await _fetchall(
+            rows = await _fa(
                 db,
                 """SELECT id, tipo, titulo, url, favicon, seleccion, capturado_en, origen,
                           length(coalesce(contenido,'')) AS chars
@@ -124,10 +112,10 @@ class ProductividadController(Controller):
     async def obtener_captura(self, request: Request, id: int) -> dict:
         uid = request.state.usuario_id
         db = await get_db()
-        row = await _fetchone(db, "SELECT * FROM productividad_capturas WHERE id=? AND usuario_id=?", (id, uid))
+        row = await _fo(db, "SELECT * FROM productividad_capturas WHERE id=? AND usuario_id=?", (id, uid))
         if not row:
             return {"ok": False, "error": "not found"}
-        row["metadata"] = _parse_json(row.pop("metadata_json", None), {})
+        row["metadata"] = _parse_j(row.pop("metadata_json", None), {})
         return {"ok": True, "captura": row}
 
     @delete("/capturas/{id:int}", status_code=200)
@@ -152,11 +140,11 @@ class ProductividadController(Controller):
                 data.get("captura_id"),
                 data.get("resumen_corto"),
                 data.get("resumen_largo"),
-                _json(data.get("entidades") or []),
-                _json(data.get("argumentos") or []),
-                _json(data.get("decisiones") or []),
-                _json(data.get("fuentes") or []),
-                _json(data.get("preguntas") or []),
+                _j(data.get("entidades") or []),
+                _j(data.get("argumentos") or []),
+                _j(data.get("decisiones") or []),
+                _j(data.get("fuentes") or []),
+                _j(data.get("preguntas") or []),
                 data.get("prompt"),
             ),
         )
@@ -165,7 +153,7 @@ class ProductividadController(Controller):
 
     @get("/research")
     async def listar_research(self, request: Request, limit: int = 100) -> list:
-        rows = await _fetchall(
+        rows = await _fa(
             await get_db(),
             """SELECT r.id, r.captura_id, r.resumen_corto, r.creado_en, c.titulo, c.url
                FROM productividad_research r
@@ -193,7 +181,7 @@ class ProductividadController(Controller):
                 data.get("selector"),
                 data.get("estado") or "open",
                 data.get("prioridad") or "normal",
-                _json(data.get("meta")),
+                _j(data.get("meta")),
             ),
         )
         await db.commit()
@@ -204,8 +192,8 @@ class ProductividadController(Controller):
         uid = request.state.usuario_id
         db = await get_db()
         if estado:
-            return await _fetchall(db, "SELECT * FROM productividad_tasks WHERE usuario_id=? AND estado=? ORDER BY actualizado DESC LIMIT ?", (uid, estado, limit))
-        return await _fetchall(db, "SELECT * FROM productividad_tasks WHERE usuario_id=? ORDER BY actualizado DESC LIMIT ?", (uid, limit))
+            return await _fa(db, "SELECT * FROM productividad_tasks WHERE usuario_id=? AND estado=? ORDER BY actualizado DESC LIMIT ?", (uid, estado, limit))
+        return await _fa(db, "SELECT * FROM productividad_tasks WHERE usuario_id=? ORDER BY actualizado DESC LIMIT ?", (uid, limit))
 
     @patch("/tasks/{id:int}")
     async def actualizar_task(self, request: Request, id: int, data: dict) -> dict:
@@ -218,7 +206,7 @@ class ProductividadController(Controller):
                 args.append(data[key])
         if "meta" in data:
             fields.append("meta_json=?")
-            args.append(_json(data["meta"]))
+            args.append(_j(data["meta"]))
         fields.append("actualizado=?")
         args.append(int(time.time()))
         args.extend([id, uid])
@@ -244,14 +232,14 @@ class ProductividadController(Controller):
             """INSERT INTO productividad_clipboard
                (usuario_id, contenido, tipo, tags_json, destino, url)
                VALUES (?,?,?,?,?,?)""",
-            (uid, contenido, tipo, _json(data.get("tags") or []), data.get("destino"), data.get("url")),
+            (uid, contenido, tipo, _j(data.get("tags") or []), data.get("destino"), data.get("url")),
         )
         await db.commit()
         return {"ok": True, "id": cur.lastrowid, "tipo": tipo}
 
     @get("/clipboard")
     async def listar_clipboard(self, request: Request, limit: int = 100) -> list:
-        return await _fetchall(await get_db(), "SELECT * FROM productividad_clipboard WHERE usuario_id=? ORDER BY id DESC LIMIT ?", (request.state.usuario_id, limit))
+        return await _fa(await get_db(), "SELECT * FROM productividad_clipboard WHERE usuario_id=? ORDER BY id DESC LIMIT ?", (request.state.usuario_id, limit))
 
     @delete("/clipboard/{id:int}", status_code=200)
     async def eliminar_clipboard(self, request: Request, id: int) -> dict:
@@ -265,16 +253,16 @@ class ProductividadController(Controller):
         db = await get_db()
         cur = await db.execute(
             "INSERT INTO productividad_form_profiles (usuario_id, nombre, datos_json) VALUES (?,?,?)",
-            (request.state.usuario_id, data.get("nombre") or "Perfil", _json(data.get("datos") or data.get("data") or {})),
+            (request.state.usuario_id, data.get("nombre") or "Perfil", _j(data.get("datos") or data.get("data") or {})),
         )
         await db.commit()
         return {"ok": True, "id": cur.lastrowid}
 
     @get("/forms/profiles")
     async def listar_form_profiles(self, request: Request) -> list:
-        rows = await _fetchall(await get_db(), "SELECT * FROM productividad_form_profiles WHERE usuario_id=? ORDER BY id DESC", (request.state.usuario_id,))
+        rows = await _fa(await get_db(), "SELECT * FROM productividad_form_profiles WHERE usuario_id=? ORDER BY id DESC", (request.state.usuario_id,))
         for row in rows:
-            row["datos"] = _parse_json(row.pop("datos_json", None), {})
+            row["datos"] = _parse_j(row.pop("datos_json", None), {})
         return rows
 
     @post("/forms/templates")
@@ -282,7 +270,7 @@ class ProductividadController(Controller):
         db = await get_db()
         cur = await db.execute(
             "INSERT INTO productividad_form_templates (usuario_id, dominio, nombre, campos_json) VALUES (?,?,?,?)",
-            (request.state.usuario_id, data.get("dominio") or data.get("domain") or "", data.get("nombre"), _json(data.get("campos") or [])),
+            (request.state.usuario_id, data.get("dominio") or data.get("domain") or "", data.get("nombre"), _j(data.get("campos") or [])),
         )
         await db.commit()
         return {"ok": True, "id": cur.lastrowid}
@@ -291,11 +279,11 @@ class ProductividadController(Controller):
     async def listar_form_templates(self, request: Request, dominio: Optional[str] = None) -> list:
         db = await get_db()
         if dominio:
-            rows = await _fetchall(db, "SELECT * FROM productividad_form_templates WHERE usuario_id=? AND dominio=? ORDER BY id DESC", (request.state.usuario_id, dominio))
+            rows = await _fa(db, "SELECT * FROM productividad_form_templates WHERE usuario_id=? AND dominio=? ORDER BY id DESC", (request.state.usuario_id, dominio))
         else:
-            rows = await _fetchall(db, "SELECT * FROM productividad_form_templates WHERE usuario_id=? ORDER BY id DESC", (request.state.usuario_id,))
+            rows = await _fa(db, "SELECT * FROM productividad_form_templates WHERE usuario_id=? ORDER BY id DESC", (request.state.usuario_id,))
         for row in rows:
-            row["campos"] = _parse_json(row.pop("campos_json", None), [])
+            row["campos"] = _parse_j(row.pop("campos_json", None), [])
         return rows
 
     @post("/forms/fills")
@@ -303,7 +291,7 @@ class ProductividadController(Controller):
         db = await get_db()
         cur = await db.execute(
             "INSERT INTO productividad_form_fills (usuario_id, template_id, url, resultado_json) VALUES (?,?,?,?)",
-            (request.state.usuario_id, data.get("template_id"), data.get("url"), _json(data.get("resultado") or {})),
+            (request.state.usuario_id, data.get("template_id"), data.get("url"), _j(data.get("resultado") or {})),
         )
         await db.commit()
         return {"ok": True, "id": cur.lastrowid}
@@ -321,13 +309,13 @@ class ProductividadController(Controller):
                 data.get("titulo") or data.get("title"),
                 data.get("url"),
                 data.get("plataforma"),
-                _json(data.get("participantes") or []),
+                _j(data.get("participantes") or []),
                 data.get("transcript"),
                 data.get("chat"),
                 data.get("resumen"),
-                _json(data.get("decisiones") or []),
-                _json(data.get("pendientes") or []),
-                _json(data.get("timeline") or []),
+                _j(data.get("decisiones") or []),
+                _j(data.get("pendientes") or []),
+                _j(data.get("timeline") or []),
             ),
         )
         await db.commit()
@@ -335,7 +323,7 @@ class ProductividadController(Controller):
 
     @get("/meetings")
     async def listar_meetings(self, request: Request, limit: int = 100) -> list:
-        return await _fetchall(await get_db(), "SELECT id, titulo, url, plataforma, resumen, creado_en FROM productividad_meetings WHERE usuario_id=? ORDER BY id DESC LIMIT ?", (request.state.usuario_id, limit))
+        return await _fa(await get_db(), "SELECT id, titulo, url, plataforma, resumen, creado_en FROM productividad_meetings WHERE usuario_id=? ORDER BY id DESC LIMIT ?", (request.state.usuario_id, limit))
 
     @post("/tabs/sessions")
     async def crear_tab_session(self, request: Request, data: dict) -> dict:
@@ -344,7 +332,7 @@ class ProductividadController(Controller):
         db = await get_db()
         cur = await db.execute(
             "INSERT INTO productividad_tab_sessions (usuario_id, nombre, resumen, meta_json) VALUES (?,?,?,?)",
-            (uid, data.get("nombre") or data.get("name") or "Sesion de tabs", data.get("resumen"), _json(data.get("meta"))),
+            (uid, data.get("nombre") or data.get("name") or "Sesion de tabs", data.get("resumen"), _j(data.get("meta"))),
         )
         session_id = cur.lastrowid
         await db.executemany(
@@ -365,16 +353,16 @@ class ProductividadController(Controller):
 
     @get("/tabs/sessions")
     async def listar_tab_sessions(self, request: Request, limit: int = 50) -> list:
-        return await _fetchall(await get_db(), "SELECT * FROM productividad_tab_sessions WHERE usuario_id=? ORDER BY id DESC LIMIT ?", (request.state.usuario_id, limit))
+        return await _fa(await get_db(), "SELECT * FROM productividad_tab_sessions WHERE usuario_id=? ORDER BY id DESC LIMIT ?", (request.state.usuario_id, limit))
 
     @get("/tabs/sessions/{id:int}")
     async def obtener_tab_session(self, request: Request, id: int) -> dict:
         uid = request.state.usuario_id
         db = await get_db()
-        session = await _fetchone(db, "SELECT * FROM productividad_tab_sessions WHERE id=? AND usuario_id=?", (id, uid))
+        session = await _fo(db, "SELECT * FROM productividad_tab_sessions WHERE id=? AND usuario_id=?", (id, uid))
         if not session:
             return {"ok": False, "error": "not found"}
-        tabs = await _fetchall(db, "SELECT * FROM productividad_tab_items WHERE session_id=? AND usuario_id=? ORDER BY id", (id, uid))
+        tabs = await _fa(db, "SELECT * FROM productividad_tab_items WHERE session_id=? AND usuario_id=? ORDER BY id", (id, uid))
         return {"ok": True, "session": session, "tabs": tabs}
 
     @post("/prices")
@@ -412,7 +400,7 @@ class ProductividadController(Controller):
             q += " AND p.activo=?"
             args.append(active)
         q += " ORDER BY p.actualizado DESC"
-        return await _fetchall(db, q, tuple(args))
+        return await _fa(db, q, tuple(args))
 
     @post("/prices/{id:int}/checks")
     async def crear_price_check(self, request: Request, id: int, data: dict) -> dict:
@@ -421,7 +409,7 @@ class ProductividadController(Controller):
             """INSERT INTO productividad_price_checks
                (usuario_id, item_id, precio, moneda, stock, raw_json)
                VALUES (?,?,?,?,?,?)""",
-            (request.state.usuario_id, id, data.get("precio"), data.get("moneda"), data.get("stock"), _json(data.get("raw") or data)),
+            (request.state.usuario_id, id, data.get("precio"), data.get("moneda"), data.get("stock"), _j(data.get("raw") or data)),
         )
         await db.execute("UPDATE productividad_price_items SET actualizado=unixepoch() WHERE id=? AND usuario_id=?", (id, request.state.usuario_id))
         await db.commit()
@@ -432,7 +420,7 @@ class ProductividadController(Controller):
         from ext.router import ext_cmd
         uid = request.state.usuario_id
         db = await get_db()
-        item = await _fetchone(db, "SELECT * FROM productividad_price_items WHERE id=? AND usuario_id=?", (id, uid))
+        item = await _fo(db, "SELECT * FROM productividad_price_items WHERE id=? AND usuario_id=?", (id, uid))
         if not item:
             return {"ok": False, "error": "not found"}
         try:
@@ -443,7 +431,7 @@ class ProductividadController(Controller):
             """INSERT INTO productividad_price_checks
                (usuario_id, item_id, precio, moneda, stock, raw_json)
                VALUES (?,?,?,?,?,?)""",
-            (uid, id, data.get("precio"), data.get("moneda"), data.get("stock"), _json(data)),
+            (uid, id, data.get("precio"), data.get("moneda"), data.get("stock"), _j(data)),
         )
         await db.execute("UPDATE productividad_price_items SET actualizado=unixepoch() WHERE id=? AND usuario_id=?", (id, uid))
         await db.commit()
@@ -451,7 +439,7 @@ class ProductividadController(Controller):
 
     @get("/prices/{id:int}/checks")
     async def listar_price_checks(self, request: Request, id: int, limit: int = 100) -> list:
-        return await _fetchall(await get_db(), "SELECT * FROM productividad_price_checks WHERE usuario_id=? AND item_id=? ORDER BY id DESC LIMIT ?", (request.state.usuario_id, id, limit))
+        return await _fa(await get_db(), "SELECT * FROM productividad_price_checks WHERE usuario_id=? AND item_id=? ORDER BY id DESC LIMIT ?", (request.state.usuario_id, id, limit))
 
 
 def _infer_clipboard_tipo(text: str) -> str:

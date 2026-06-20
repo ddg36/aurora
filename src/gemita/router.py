@@ -17,12 +17,10 @@ from . import bucle, config
 from .providers import list_models
 from .shell import ShellBash
 from .tools import registrar_herramientas_python
-from .protocol import get_catalog
 
 log = logging.getLogger("aurora.gemita")
 
-if not get_catalog().list_all():
-    registrar_herramientas_python()
+registrar_herramientas_python()
 
 
 class GemitaSession:
@@ -79,11 +77,8 @@ async def _correr_chat(session: GemitaSession, datos: dict):
         await session.send({'type': 'done', 'cancelled': True})
     except Exception as exc:
         log.exception("error en chat")
-        try:
-            await session.send({'type': 'error', 'message': str(exc)})
-            await session.send({'type': 'done'})
-        except Exception:
-            pass
+        await session.send({'type': 'error', 'message': str(exc)})
+        await session.send({'type': 'done'})
 
 
 @websocket("/gemita")

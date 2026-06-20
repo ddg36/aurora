@@ -20,48 +20,69 @@ from db.auth import auth_guard
 
 log = logging.getLogger("aurora.browser.router")
 
-# queues por sesion_id → lista de asyncio.Queue de suscriptores SSE
 _queues: dict[int, list[asyncio.Queue]] = {}
 
 
-def _get_queues(sesion_id: int) -> list[asyncio.Queue]:
-    return _queues.setdefault(sesion_id, [])
-
-
-def _subscribe(sesion_id: int) -> asyncio.Queue:
-    q: asyncio.Queue = asyncio.Queue(maxsize=200)
-    _get_queues(sesion_id).append(q)
-    return q
-
-
-def _unsubscribe(sesion_id: int, q: asyncio.Queue) -> None:
-    try:
-        _get_queues(sesion_id).remove(q)
-    except ValueError:
-        pass
-
-
 async def _push(sesion_id: int, event: dict) -> None:
-    for q in list(_get_queues(sesion_id)):
+    for q in list(_queues.setdefault(sesion_id, [])):
         try:
             q.put_nowait(event)
         except asyncio.QueueFull:
             pass
 
 
-async def _write_log(db, usuario_id: int, sesion_id: int, tipo: str, mensaje: str, url: str | None) -> None:
-    await db.execute(
-        "INSERT INTO nav_log (usuario_id, nav_sesion_id, tipo, mensaje, url) VALUES (?,?,?,?,?)",
-        (usuario_id, sesion_id, tipo, mensaje, url),
-    )
-    await db.commit()
-    await _push(sesion_id, {"tipo": tipo, "mensaje": mensaje, "url": url})
-
-
 @dataclass
 class RunBody:
     objetivo: str
     max_steps: int = 30
+
+
+_run_agent_fn = None
+
+
+async def _run_agent_task(uid: int, sesion_id: int, objetivo: str, max_steps: int) -> None:
+    global _run_agent_fn
+    if _run_agent_fn is None:
+        def _do_import():
+            import os, sys, pathlib
+            os.environ.setdefault("BROWSER_USE_SETUP_LOGGING", "false")
+            bu_path = str(pathlib.Path(__file__).resolve().parents[4] / "browser-use")
+            if bu_path not in sys.path:
+                sys.path.insert(0, bu_path)
+            from browser.agent import run_agent as _fn
+            return _fn
+        _run_agent_fn = await asyncio.get_event_loop().run_in_executor(None, _do_import)
+
+    db = await get_db()
+
+    async def on_log(tipo: str, mensaje: str, url: str | None) -> None:
+        try:
+            await db.execute(
+                "INSERT INTO nav_log (usuario_id, nav_sesion_id, tipo, mensaje, url) VALUES (?,?,?,?,?)",
+                (uid, sesion_id, tipo, mensaje, url),
+            )
+            await db.commit()
+            await _push(sesion_id, {"tipo": tipo, "mensaje": mensaje, "url": url})
+        except Exception as e:
+            log.warning("on_log write error: %s", e)
+
+    try:
+        resultado = await _run_agent_fn(objetivo, sesion_id, on_log, max_steps)
+        await db.execute(
+            "UPDATE nav_sesiones SET resultado=?, fin=unixepoch() WHERE id=?",
+            (resultado, sesion_id),
+        )
+        await db.commit()
+        await _push(sesion_id, {"tipo": "done", "resultado": resultado})
+    except Exception as e:
+        err = f"agent error: {e}"
+        log.error("agent task error sesion=%d: %s", sesion_id, e)
+        await db.execute(
+            "UPDATE nav_sesiones SET resultado=?, fin=unixepoch() WHERE id=?",
+            (err, sesion_id),
+        )
+        await db.commit()
+        await _push(sesion_id, {"tipo": "error", "mensaje": err})
 
 
 @post("/nav/run", guards=[auth_guard])
@@ -85,59 +106,6 @@ async def nav_run(request: Request, data: RunBody) -> dict:
     task.add_done_callback(_on_task_done)
 
     return {"id": sesion_id, "objetivo": data.objetivo}
-
-
-_run_agent_fn = None
-
-
-async def _ensure_agent_imported() -> None:
-    """Import browser.agent una vez en hilo separado para no bloquear el event loop."""
-    global _run_agent_fn
-    if _run_agent_fn is not None:
-        return
-    loop = asyncio.get_event_loop()
-
-    def _do_import():
-        import os, sys, pathlib
-        os.environ.setdefault("BROWSER_USE_SETUP_LOGGING", "false")
-        bu_path = str(pathlib.Path(__file__).resolve().parents[4] / "browser-use")
-        if bu_path not in sys.path:
-            sys.path.insert(0, bu_path)
-        from browser.agent import run_agent as _fn
-        return _fn
-
-    _run_agent_fn = await loop.run_in_executor(None, _do_import)
-
-
-async def _run_agent_task(uid: int, sesion_id: int, objetivo: str, max_steps: int) -> None:
-    await _ensure_agent_imported()
-    run_agent = _run_agent_fn
-
-    db = await get_db()
-
-    async def on_log(tipo: str, mensaje: str, url: str | None) -> None:
-        try:
-            await _write_log(db, uid, sesion_id, tipo, mensaje, url)
-        except Exception as e:
-            log.warning("on_log write error: %s", e)
-
-    try:
-        resultado = await run_agent(objetivo, sesion_id, on_log, max_steps)
-        await db.execute(
-            "UPDATE nav_sesiones SET resultado=?, fin=unixepoch() WHERE id=?",
-            (resultado, sesion_id),
-        )
-        await db.commit()
-        await _push(sesion_id, {"tipo": "done", "resultado": resultado})
-    except Exception as e:
-        err = f"agent error: {e}"
-        log.error("agent task error sesion=%d: %s", sesion_id, e)
-        await db.execute(
-            "UPDATE nav_sesiones SET resultado=?, fin=unixepoch() WHERE id=?",
-            (err, sesion_id),
-        )
-        await db.commit()
-        await _push(sesion_id, {"tipo": "error", "mensaje": err})
 
 
 @get("/nav/stream/{sesion_id:int}", guards=[auth_guard])
@@ -166,7 +134,8 @@ async def nav_stream(request: Request, sesion_id: int) -> Stream:
             yield f"data: {data}\n\n".encode()
             return
 
-        q = _subscribe(sesion_id)
+        q: asyncio.Queue = asyncio.Queue(maxsize=200)
+        _queues.setdefault(sesion_id, []).append(q)
         try:
             while True:
                 try:
@@ -177,7 +146,10 @@ async def nav_stream(request: Request, sesion_id: int) -> Stream:
                 except asyncio.TimeoutError:
                     yield b": keepalive\n\n"
         finally:
-            _unsubscribe(sesion_id, q)
+            try:
+                _queues[sesion_id].remove(q)
+            except (ValueError, KeyError):
+                pass
 
     return Stream(
         event_gen(),

@@ -19,16 +19,6 @@ class ExtensionStateBody:
     config: Any = None
 
 
-def _load_registry() -> dict:
-    if not REGISTRY_PATH.exists():
-        return {"version": 1, "extensions": []}
-    return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
-
-
-def _state_key(extension_id: str) -> str:
-    return f"extension:{extension_id}:state"
-
-
 class ExtensionsController(Controller):
     path = "/db/extensions"
     guards = [auth_guard]
@@ -36,7 +26,10 @@ class ExtensionsController(Controller):
     @get("")
     async def get_registry(self, request: Request) -> dict:
         uid = request.state.usuario_id
-        registry = _load_registry()
+        if REGISTRY_PATH.exists():
+            registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+        else:
+            registry = {"version": 1, "extensions": []}
         db = await get_db()
         async with db.execute(
             "SELECT clave, valor FROM ajustes WHERE usuario_id=? AND clave LIKE 'extension:%:state'",
@@ -60,7 +53,7 @@ class ExtensionsController(Controller):
         db = await get_db()
         async with db.execute(
             "SELECT valor FROM ajustes WHERE usuario_id=? AND clave=?",
-            (uid, _state_key(extension_id)),
+            (uid, f"extension:{extension_id}:state"),
         ) as cur:
             row = await cur.fetchone()
         if not row:
@@ -78,7 +71,7 @@ class ExtensionsController(Controller):
         value = json.dumps({"enabled": data.enabled, "config": data.config}, ensure_ascii=False)
         await db.execute(
             "INSERT INTO ajustes (usuario_id, clave, valor) VALUES (?,?,?) ON CONFLICT(usuario_id, clave) DO UPDATE SET valor=excluded.valor",
-            (uid, _state_key(extension_id), value),
+            (uid, f"extension:{extension_id}:state", value),
         )
         await db.commit()
         return {"ok": True}

@@ -109,7 +109,7 @@ del proyecto y ejecutar comandos."
 
 # ── Selección de rol ──────────────────────────────────
 
-def seleccionar_rol(request: str, contexto: dict = None) -> AgentRole:
+def seleccionar_rol(request: str) -> AgentRole:
     r = request.lower()
 
     if any(k in r for k in ["error", "bug", "fix", "depura", "no funciona", "fallo", "arregla", "soluciona"]):
@@ -122,33 +122,3 @@ def seleccionar_rol(request: str, contexto: dict = None) -> AgentRole:
         return AgentRole.CODER
 
     return AgentRole.GENERAL
-
-
-# ── Configuración por rol ─────────────────────────────
-
-ROLE_CONFIG = {
-    AgentRole.ARCHITECT: {
-        "max_rondas":  5,
-        "allow_tools": ["list_directory", "find_files", "read_file", "search_in_files"],
-    },
-    AgentRole.CODER: {
-        "max_rondas":  15,
-        "allow_tools": "all",
-    },
-    AgentRole.DEBUGGER: {
-        "max_rondas":  10,
-        "allow_tools": "all",
-    },
-    AgentRole.GENERAL: {
-        "max_rondas":  10,
-        "allow_tools": "all",
-    },
-}
-
-
-def get_role_config(role: AgentRole) -> dict:
-    return ROLE_CONFIG.get(role, ROLE_CONFIG[AgentRole.GENERAL])
-
-
-def get_system_prompt(role: AgentRole) -> str:
-    return ROLE_SYSTEM_PROMPTS.get(role, ROLE_SYSTEM_PROMPTS[AgentRole.GENERAL])

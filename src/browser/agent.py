@@ -189,35 +189,6 @@ class RobustChatOpenAI(ChatOpenAI):
 
         raw = choice.message.content
         cleaned = _strip_markdown_json(raw)
-        def _safe_json_loads(text: str) -> dict:
-            try:
-                return json.loads(text)
-            except json.JSONDecodeError:
-                pass
-            # Gemma produce newlines y tabs literales dentro de strings JSON.
-            # Reemplazarlos dentro de strings: recorrer char a char es lento pero seguro.
-            sanitized = []
-            in_string = False
-            escape = False
-            for ch in text:
-                if escape:
-                    sanitized.append(ch)
-                    escape = False
-                elif ch == "\\":
-                    sanitized.append(ch)
-                    escape = True
-                elif ch == '"':
-                    in_string = not in_string
-                    sanitized.append(ch)
-                elif in_string and ch == "\n":
-                    sanitized.append("\\n")
-                elif in_string and ch == "\r":
-                    sanitized.append("\\r")
-                elif in_string and ch == "\t":
-                    sanitized.append("\\t")
-                else:
-                    sanitized.append(ch)
-            return json.loads("".join(sanitized))
 
         try:
             data = _safe_json_loads(cleaned)
@@ -258,6 +229,36 @@ class RobustChatOpenAI(ChatOpenAI):
         )
 
 
+def _safe_json_loads(text: str) -> dict:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Gemma produce newlines y tabs literales dentro de strings JSON.
+    sanitized = []
+    in_string = False
+    escape = False
+    for ch in text:
+        if escape:
+            sanitized.append(ch)
+            escape = False
+        elif ch == "\\":
+            sanitized.append(ch)
+            escape = True
+        elif ch == '"':
+            in_string = not in_string
+            sanitized.append(ch)
+        elif in_string and ch == "\n":
+            sanitized.append("\\n")
+        elif in_string and ch == "\r":
+            sanitized.append("\\r")
+        elif in_string and ch == "\t":
+            sanitized.append("\\t")
+        else:
+            sanitized.append(ch)
+    return json.loads("".join(sanitized))
+
+
 def _make_llm(model_id: str) -> RobustChatOpenAI:
     return RobustChatOpenAI(
         model=model_id,
@@ -271,28 +272,6 @@ def _make_llm(model_id: str) -> RobustChatOpenAI:
         max_completion_tokens=2048,
     )
 
-
-def _patch_session_manager_filter(session_manager) -> None:
-    """
-    Monkeypatcha get_all_page_targets del SessionManager para excluir tabs de extensiones.
-    browser-use elige el primer page target — sin esto puede elegir sidepanels de extensiones.
-    Llamar después de browser_session.start().
-    """
-    if not session_manager or not hasattr(session_manager, "get_all_page_targets"):
-        return
-    original_get = session_manager.get_all_page_targets
-
-    def filtered_get_all_page_targets():
-        targets = original_get()
-        filtered = [
-            t for t in targets
-            if not getattr(t, "url", "").startswith("chrome-extension://")
-            and not getattr(t, "url", "").startswith("chrome://")
-            and getattr(t, "target_type", "") in ("page", "tab")
-        ]
-        return filtered if filtered else targets
-
-    session_manager.get_all_page_targets = filtered_get_all_page_targets
 
 
 async def run_agent(

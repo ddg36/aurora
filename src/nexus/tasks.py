@@ -71,7 +71,15 @@ class Job:
             self.status = 'done' if self.exit_code == 0 else 'errored'
         self._done.set()
         await self._queue.put(('', '', True))
-        return self.to_dict()
+        out, _ = clip(self.stdout)
+        err, _ = clip(self.stderr)
+        return {
+            'id': self.id, 'cmd': self.cmd, 'status': self.status,
+            'pid': self.pid, 'exit_code': self.exit_code,
+            'stdout': out, 'stderr': err,
+            'start_time': self.start_time, 'end_time': self.end_time,
+            'duration': round(self.duration, 1), 'origin': self.origin,
+        }
 
     def kill(self) -> bool:
         if not self._proc or self.status != 'running':
@@ -99,23 +107,6 @@ class Job:
         except (ProcessLookupError, PermissionError, OSError):
             pass
 
-    def to_dict(self) -> dict:
-        out, _ = clip(self.stdout)
-        err, _ = clip(self.stderr)
-        return {
-            'id': self.id,
-            'cmd': self.cmd,
-            'status': self.status,
-            'pid': self.pid,
-            'exit_code': self.exit_code,
-            'stdout': out,
-            'stderr': err,
-            'start_time': self.start_time,
-            'end_time': self.end_time,
-            'duration': round(self.duration, 1),
-            'origin': self.origin,
-        }
-
     def to_dict_short(self) -> dict:
         return {
             'id': self.id,
@@ -133,19 +124,11 @@ class Job:
 def create_job(cmd: str, cwd: str = '.', origin: dict | None = None) -> Job:
     job = Job(cmd, cwd, origin)
     _jobs[job.id] = job
-    _trim_old()
-    return job
-
-
-def get_job(job_id: str) -> Job | None:
-    return _jobs.get(job_id)
-
-
-def _trim_old():
     done = [j for j in _jobs.values() if j.status != 'running']
     if len(done) > _retained:
         for j in sorted(done, key=lambda x: x.end_time or 0)[:-_retained]:
             _jobs.pop(j.id, None)
+    return job
 
 
 # ── Routes ────────────────────────────────────────────────

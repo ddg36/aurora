@@ -6,30 +6,6 @@ from .prompts import get_prompt, list_prompts
 from .resources import list_resources, read_resource
 
 
-def _tool_for_mcp(tool: dict) -> dict:
-    return {
-        "name": tool["name"],
-        "description": tool["description"],
-        "inputSchema": tool["input_schema"],
-        "annotations": {
-            "risk": tool["risk"],
-            "scopes": tool["scopes"],
-            "requiresApproval": tool["requires_approval"],
-        },
-    }
-
-
-def _tool_result(result: dict) -> dict:
-    text = result.get("text")
-    if text is None:
-        text = result.get("error") or str(result.get("data") or result)
-    return {
-        "isError": not bool(result.get("ok")),
-        "content": [{"type": "text", "text": str(text)}],
-        "_meta": {k: v for k, v in result.items() if k != "text"},
-    }
-
-
 async def handle_rpc(message: dict) -> dict:
     req_id = message.get("id")
     method = message.get("method")
@@ -57,14 +33,25 @@ async def _dispatch(method: str, params: dict) -> dict:
             },
         }
     if method == "tools/list":
-        return {"tools": [_tool_for_mcp(tool) for tool in list_tools() if "mcp" in (tool.get("tags") or [])]}
+        return {"tools": [
+            {"name": t["name"], "description": t["description"], "inputSchema": t["input_schema"],
+             "annotations": {"risk": t["risk"], "scopes": t["scopes"], "requiresApproval": t["requires_approval"]}}
+            for t in list_tools() if "mcp" in (t.get("tags") or [])
+        ]}
     if method == "tools/call":
         result = await run_tool(
             params.get("name", ""),
             params.get("arguments") or {},
             {"kind": "external", "source": "mcp"},
         )
-        return _tool_result(result)
+        text = result.get("text")
+        if text is None:
+            text = result.get("error") or str(result.get("data") or result)
+        return {
+            "isError": not bool(result.get("ok")),
+            "content": [{"type": "text", "text": str(text)}],
+            "_meta": {k: v for k, v in result.items() if k != "text"},
+        }
     if method == "resources/list":
         return {"resources": list_resources()}
     if method == "resources/read":

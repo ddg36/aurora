@@ -1,7 +1,11 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Awaitable, Callable
 
 ToolHandler = Callable[[dict, dict], Awaitable[dict]]
+
+
+def schema(properties: dict, required: list[str] | None = None) -> dict:
+    return {"type": "object", "properties": properties, "required": required or []}
 
 
 @dataclass(frozen=True)
@@ -18,14 +22,4 @@ class ToolContract:
     timeout: int = 30
 
     def public(self) -> dict:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "input_schema": self.input_schema,
-            "output_schema": self.output_schema,
-            "risk": self.risk,
-            "scopes": self.scopes,
-            "requires_approval": self.requires_approval,
-            "tags": self.tags,
-            "timeout": self.timeout,
-        }
+        return {f.name: getattr(self, f.name) for f in fields(self) if f.name != "handler"}

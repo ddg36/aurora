@@ -15,13 +15,6 @@ class UrlCustomBody:
     icono: Optional[str] = None
 
 
-@dataclass
-class UrlCustomUpdateBody:
-    nombre: str
-    url: str
-    icono: Optional[str] = None
-
-
 class UrlsCustomController(Controller):
     path = "/db/urls-custom"
     guards = [auth_guard]
@@ -51,7 +44,7 @@ class UrlsCustomController(Controller):
         return {"id": new_id}
 
     @put("/{url_id:str}")
-    async def update_url(self, request: Request, url_id: str, data: UrlCustomUpdateBody) -> dict:
+    async def update_url(self, request: Request, url_id: str, data: UrlCustomBody) -> dict:
         uid = request.state.usuario_id
         db = await get_db()
         await db.execute(

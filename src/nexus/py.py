@@ -1,5 +1,4 @@
 import os
-import pathlib
 import shutil
 import subprocess
 
@@ -20,20 +19,6 @@ def _venv_python() -> tuple[str, bool]:
     if IS_WIN:
         return shutil.which('python') or shutil.which('python3') or 'python', False
     return shutil.which('python3') or 'python3', False
-
-
-def _safe_py_path(path_str: str) -> pathlib.Path:
-    raw = str(path_str or '.').replace('\\', '/')
-    target = (PY_WORKSPACE / raw.lstrip('/')).resolve()
-    if not is_inside(target, PY_WORKSPACE):
-        raise PermissionError(f'Path fuera del workspace Python: {path_str}')
-    return target
-
-
-def _run_env() -> dict:
-    venv = _venv()
-    return dict(os.environ, VIRTUAL_ENV=str(venv),
-                PATH=str(venv / ('Scripts' if IS_WIN else 'bin')) + os.pathsep + os.environ.get('PATH', ''))
 
 
 @get('/nexus/py/status')
@@ -69,10 +54,11 @@ async def py_venv_create() -> dict:
 
 @post('/nexus/py/run')
 async def py_run(data: dict) -> dict:
-    try:
-        path = _safe_py_path(str(data.get('path') or ''))
-    except PermissionError as e:
-        return {'ok': False, 'error': str(e)}
+    raw = str(data.get('path') or '.').replace('\\', '/')
+    target = (PY_WORKSPACE / raw.lstrip('/')).resolve()
+    if not is_inside(target, PY_WORKSPACE):
+        return {'ok': False, 'error': f'Path fuera del workspace Python: {data.get("path")}'}
+    path = target
     if not path.is_file() or path.suffix != '.py':
         return {'ok': False, 'error': f'py/run requiere archivo .py: {data.get("path")}'}
     py, in_venv = _venv_python()
@@ -80,8 +66,11 @@ async def py_run(data: dict) -> dict:
         return {'ok': False, 'error': f'No existe .venv: {_venv()}. Usa /nexus/py/venv-create primero'}
     args = [str(a) for a in (data.get('args') or [])]
     timeout = int(data.get('timeout') or TIMEOUT_RUN)
+    venv = _venv()
+    env = dict(os.environ, VIRTUAL_ENV=str(venv),
+               PATH=str(venv / ('Scripts' if IS_WIN else 'bin')) + os.pathsep + os.environ.get('PATH', ''))
     try:
-        result = subprocess.run([py, str(path), *args], cwd=str(PY_WORKSPACE), env=_run_env(),
+        result = subprocess.run([py, str(path), *args], cwd=str(PY_WORKSPACE), env=env,
                                 capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return {'ok': False, 'error': f'Timeout tras {timeout}s'}

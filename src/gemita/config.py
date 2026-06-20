@@ -7,8 +7,6 @@ import pathlib
 
 VERSION = '2.0.0'
 
-# ── llama.cpp server (OpenAI-compatible) ──────────────
-LLAMACPP_URL   = 'http://127.0.0.1:8088/v1'
 MODELO_DEFAULT = 'gemma-4-26B-A4B-it-MXFP4_MOE.gguf'
 TIMEOUT_LLAMA  = 180
 

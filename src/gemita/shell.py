@@ -73,12 +73,10 @@ class ShellBash:
                     timeout=self._timeout
                 )
                 return {'ok': True, 'output': output.rstrip('\n')}
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, Exception) as exc:
                 self._reiniciar()
-                return {'ok': False, 'output': f'Timeout: superó {self._timeout}s'}
-            except Exception as exc:
-                self._reiniciar()
-                return {'ok': False, 'output': str(exc)}
+                msg = f'Timeout: superó {self._timeout}s' if isinstance(exc, asyncio.TimeoutError) else str(exc)
+                return {'ok': False, 'output': msg}
 
     async def cwd(self) -> str:
         cmd = '(Get-Location).Path' if self._is_win else 'pwd'
