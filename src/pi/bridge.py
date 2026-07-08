@@ -26,8 +26,68 @@ _modelo_fijado: str | None = None
 _RUTA_MAPA = pathlib.Path(config.SESSION_DIR) / 'aurora-map.json'
 _RUTA_SCOPED = pathlib.Path(config.SESSION_DIR) / 'scoped-models.json'
 _RUTA_AUTH = pathlib.Path.home() / '.pi' / 'agent' / 'auth.json'
+_RUTA_SETTINGS = pathlib.Path.home() / '.pi' / 'agent' / 'settings.json'
 
 _DIALOGOS = ('select', 'confirm', 'input', 'editor')
+
+# Config PERSISTIDA de pi real (settings-manager.js — se guarda directo en
+# settings.json, sin RPC, mismo mecanismo que auth.json/scoped-models.json).
+# (id, ruta anidada, tipo, valores válidos, default si no está en el archivo,
+# etiqueta). No incluye los ~10 settings puramente de terminal (tema ANSI,
+# padding en celdas, cursor de hardware, OSC progress) — no tienen ningún
+# equivalente en una UI web, a diferencia de todos estos.
+_SETTINGS_PERSISTIDOS = [
+    ('hide-thinking', ('hideThinkingBlock',), 'bool', None, False, 'Ocultar thinking'),
+    ('default-thinking', ('defaultThinkingLevel',), 'choice',
+     ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'], 'medium', 'Thinking por defecto (sesiones nuevas)'),
+    # 'autocompact' NO va acá — session.setAutoCompactionEnabled() en pi real
+    # (agent-session.js:1657) es un passthrough directo a
+    # settingsManager.setCompactionEnabled(): la RPC set_auto_compaction YA
+    # persiste en compaction.enabled, no es "de sesión" como parecía por el
+    # nombre. Un entry acá sería el mismo campo escrito por 2 caminos
+    # distintos — duplicado inútil, no una config nueva.
+    ('transport', ('transport',), 'choice', ['sse', 'websocket', 'websocket-cached', 'auto'], 'auto', 'Transporte'),
+    ('http-idle-timeout', ('httpIdleTimeoutMs',), 'choice',
+     ['30000', '60000', '120000', '300000', '0'], '300000', 'Timeout HTTP idle (ms, 0=disabled)'),
+    ('retry-enabled', ('retry', 'enabled'), 'bool', None, True, 'Reintentos automáticos de pi'),
+    ('tree-filter', ('treeFilterMode',), 'choice',
+     ['default', 'no-tools', 'user-only', 'labeled-only', 'all'], 'default', 'Filtro default de /tree'),
+    ('anthropic-warning', ('warnings', 'anthropicExtraUsage'), 'bool', None, True, 'Aviso uso extra Anthropic'),
+    ('skill-commands', ('enableSkillCommands',), 'bool', None, True, 'Skills como /comandos'),
+    ('image-autoresize', ('images', 'autoResize'), 'bool', None, True, 'Auto-resize de imágenes'),
+    ('block-images', ('images', 'blockImages'), 'bool', None, False, 'Bloquear imágenes a proveedores'),
+    ('install-telemetry', ('enableInstallTelemetry',), 'bool', None, True, 'Telemetría de instalación'),
+]
+
+
+def _config_por_id(id_: str):
+    return next((c for c in _SETTINGS_PERSISTIDOS if c[0] == id_), None)
+
+
+def _leer_anidado(d: dict, ruta: tuple, default=None):
+    for k in ruta:
+        if not isinstance(d, dict) or k not in d:
+            return default
+        d = d[k]
+    return d
+
+
+def _escribir_anidado(d: dict, ruta: tuple, valor):
+    for k in ruta[:-1]:
+        d = d.setdefault(k, {})
+    d[ruta[-1]] = valor
+
+
+def _cargar_settings() -> dict:
+    try:
+        return json.loads(_RUTA_SETTINGS.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _guardar_settings(datos: dict):
+    _RUTA_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    _RUTA_SETTINGS.write_text(json.dumps(datos, indent=2, ensure_ascii=False))
 
 # Los 22 comandos reales de pi (docs/usage.md) adaptados a Lyra — evidencia
 # en docs/superpowers/specs/2026-07-07-lyra-paridad-pi-design.md.
@@ -122,12 +182,23 @@ def _texto_de_contenido(contenido) -> str:
     return ''
 
 
-def _nodo_visible(entry: dict, leaf_id) -> bool:
-    """Mismo criterio de default filter de pi (tree-selector.js:
-    TreeList.applyFilter) — sin esto el árbol se llena de ruido
-    (model_change, thinking_level_change, turnos de assistant que
-    fueron solo tool-calls sin texto) que pi jamás muestra por default."""
+def _nodo_visible(entry: dict, leaf_id, filtro: str = 'default') -> bool:
+    """Mismos 5 filter mode de pi (tree-selector.js: TreeList.applyFilter,
+    settings 'treeFilterMode') — sin 'default' el árbol se llena de ruido
+    (model_change, thinking_level_change, turnos de assistant que fueron
+    solo tool-calls sin texto) que pi jamás muestra por default."""
     tipo = entry.get('type')
+    if filtro == 'all':
+        return True
+    if filtro == 'user-only':
+        return tipo == 'message' and (entry.get('message') or {}).get('role') == 'user'
+    if filtro == 'labeled-only':
+        return entry.get('label') is not None
+    if filtro == 'no-tools':
+        if tipo in _ENTRADAS_CONFIG:
+            return False
+        return not (tipo == 'message' and (entry.get('message') or {}).get('role') == 'toolResult')
+    # 'default'
     if tipo in _ENTRADAS_CONFIG:
         return False
     if tipo == 'message':
@@ -166,7 +237,7 @@ def _etiqueta_nodo(entry: dict) -> tuple[str, str]:
     return tipo or '?', ''
 
 
-def _arbol_a_nodos(nodos: list, leaf_id) -> list:
+def _arbol_a_nodos(nodos: list, leaf_id, filtro: str = 'default') -> list:
     """get_tree de pi, aplanado para el modal — replica el filtro y la
     indentación real de pi (tree-selector.js: flattenTree/applyFilter).
     Clave: la indentación SOLO avanza en un punto de branch real (nodo
@@ -179,7 +250,7 @@ def _arbol_a_nodos(nodos: list, leaf_id) -> list:
         entry = nodo.get('entry') or {}
         eid = entry.get('id') or ''
         hijos = nodo.get('children') or []
-        if _nodo_visible(entry, leaf_id):
+        if _nodo_visible(entry, leaf_id, filtro):
             rol, preview = _etiqueta_nodo(entry)
             visibles.append({
                 'id': eid, 'rol': rol, 'preview': preview,
@@ -622,13 +693,19 @@ class PiBridge:
 
             elif nombre == 'settings':
                 niveles = ('off', 'minimal', 'low', 'medium', 'high', 'xhigh')
-                # pi real tiene ~25 settings en su selector (settings-selector.js)
-                # — la mayoría son de terminal (tema, padding, cursor) y no
-                # aplican a una UI web. Estos 3 SÍ son comportamiento real del
-                # agente con RPC propia (set_auto_compaction/set_steering_mode/
-                # set_follow_up_mode) y valor legible en get_state — se exponen
-                # con la sintaxis "clave:valor" para no chocar con los niveles
-                # de thinking (que van sueltos, "/settings high").
+                # pi real tiene ~25 settings (settings-selector.js). ~10 son
+                # puramente de terminal (tema ANSI, padding en celdas, cursor
+                # de hardware, OSC progress) y no tienen ningún equivalente en
+                # una UI web — el resto SÍ es comportamiento real y se expone
+                # acá: autocompact/steering/followup vía RPC propia (que en
+                # pi real YA persiste sola — session.setAutoCompactionEnabled
+                # y setSteeringMode/setFollowUpMode son passthroughs directos
+                # a settingsManager, agent-session.js:1272-1282,1657 — no son
+                # "de sesión", cualquier cambio afecta también las próximas
+                # sesiones) + el resto escrito directo en settings.json
+                # (_SETTINGS_PERSISTIDOS, mismo mecanismo que auth.json).
+                # Sintaxis "clave:valor" para no chocar con los niveles de
+                # thinking, que van sueltos ("/settings high").
                 if ':' in arg:
                     clave, _, valor = arg.partition(':')
                     if clave == 'autocompact':
@@ -641,7 +718,19 @@ class PiBridge:
                         await proceso.pedir({'type': 'set_follow_up_mode', 'mode': valor})
                         await avisar(f'✔ Follow-up: {valor}')
                     else:
-                        await avisar(f'Configuración desconocida: {clave}')
+                        cfg = _config_por_id(clave)
+                        if cfg is None:
+                            await avisar(f'Configuración desconocida: {clave}')
+                        else:
+                            _, ruta, tipo, valores, _default, etiqueta = cfg
+                            if tipo == 'choice' and valor not in valores:
+                                await avisar(f'Uso: /settings {clave}:{"|".join(valores)}')
+                            else:
+                                valor_final = (valor == 'true') if tipo == 'bool' else valor
+                                datos = _cargar_settings()
+                                _escribir_anidado(datos, ruta, valor_final)
+                                _guardar_settings(datos)
+                                await avisar(f'✔ {etiqueta}: {valor}')
                 elif arg and arg not in niveles:
                     await avisar(f'Uso: /settings {"|".join(niveles)}')
                 elif arg:
@@ -650,20 +739,29 @@ class PiBridge:
                 else:
                     estado = await proceso.pedir({'type': 'get_state'})
                     data_estado = estado.get('data') or {}
+                    datos_settings = _cargar_settings()
+                    opciones = [
+                        {'id': 'autocompact', 'label': 'Auto-compact',
+                         'actual': 'true' if data_estado.get('autoCompactionEnabled', True) else 'false',
+                         'valores': ['true', 'false']},
+                        {'id': 'steering', 'label': 'Steering mode',
+                         'actual': data_estado.get('steeringMode') or 'one-at-a-time',
+                         'valores': ['one-at-a-time', 'all']},
+                        {'id': 'followup', 'label': 'Follow-up mode',
+                         'actual': data_estado.get('followUpMode') or 'one-at-a-time',
+                         'valores': ['one-at-a-time', 'all']},
+                    ]
+                    for id_, ruta, tipo, valores, default, etiqueta in _SETTINGS_PERSISTIDOS:
+                        v = _leer_anidado(datos_settings, ruta, default)
+                        actual = ('true' if v else 'false') if tipo == 'bool' else str(v)
+                        opciones.append({
+                            'id': id_, 'label': etiqueta, 'actual': actual,
+                            'valores': valores if tipo == 'choice' else ['true', 'false'],
+                        })
                     await responder({
                         'thinkingActual': data_estado.get('thinkingLevel'),
                         'niveles': list(niveles),
-                        'opciones': [
-                            {'id': 'autocompact', 'label': 'Auto-compact',
-                             'actual': 'true' if data_estado.get('autoCompactionEnabled', True) else 'false',
-                             'valores': ['true', 'false']},
-                            {'id': 'steering', 'label': 'Steering mode',
-                             'actual': data_estado.get('steeringMode') or 'one-at-a-time',
-                             'valores': ['one-at-a-time', 'all']},
-                            {'id': 'followup', 'label': 'Follow-up mode',
-                             'actual': data_estado.get('followUpMode') or 'one-at-a-time',
-                             'valores': ['one-at-a-time', 'all']},
-                        ],
+                        'opciones': opciones,
                     }, interactive=True)
 
             elif nombre == 'name':
@@ -729,8 +827,11 @@ class PiBridge:
             elif nombre == 'tree':
                 resp = await proceso.pedir({'type': 'get_tree'})
                 data = resp.get('data') or {}
-                nodos = _arbol_a_nodos(data.get('tree') or [], data.get('leafId'))
-                await responder({'nodos': nodos[:200], 'leafId': data.get('leafId')}, interactive=True)
+                filtro = _leer_anidado(_cargar_settings(), ('treeFilterMode',), 'default')
+                if filtro not in ('default', 'no-tools', 'user-only', 'labeled-only', 'all'):
+                    filtro = 'default'
+                nodos = _arbol_a_nodos(data.get('tree') or [], data.get('leafId'), filtro)
+                await responder({'nodos': nodos[:200], 'leafId': data.get('leafId'), 'filtro': filtro}, interactive=True)
 
             elif nombre == 'trust':
                 await avisar('✔ El workspace de Aurora es fijo y ya es de confianza — no hace falta nada más.')

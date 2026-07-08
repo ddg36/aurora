@@ -80,6 +80,7 @@ async def main():
     # ── Capa 1: comandos reales de pi como builtins ──
     B._RUTA_SCOPED = pathlib.Path(tempfile.mkdtemp()) / "scoped-models.json"
     B._RUTA_AUTH = pathlib.Path(tempfile.mkdtemp()) / "auth.json"  # nunca la real en tests
+    B._RUTA_SETTINGS = pathlib.Path(tempfile.mkdtemp()) / "settings.json"  # nunca la real en tests
 
     async def comando(texto: str, chat_id=None) -> dict:
         """Manda un builtin y devuelve el ÚLTIMO command_result — nunca debe
@@ -98,13 +99,26 @@ async def main():
     assert opciones["autocompact"]["actual"] == "true", opciones
     assert opciones["steering"]["actual"] == "one-at-a-time", opciones
     assert opciones["followup"]["actual"] == "one-at-a-time", opciones
+    # Regresión: /settings sólo exponía 3 cosas de sesión — pi tiene mucho
+    # más comportamiento real configurable (persistido en settings.json,
+    # settings-manager.js) además de lo de sesión vía RPC. Se excluyen sólo
+    # los settings puramente de terminal (tema ANSI, padding, cursor).
+    assert opciones["hide-thinking"]["actual"] == "false", opciones
+    assert opciones["default-thinking"]["actual"] == "medium", opciones
+    assert opciones["transport"]["actual"] == "auto", opciones
+    assert opciones["http-idle-timeout"]["actual"] == "300000", opciones
+    assert opciones["tree-filter"]["actual"] == "default", opciones
+    assert opciones["block-images"]["actual"] == "false", opciones
+    assert len(opciones) >= 14, opciones  # 3 vía RPC (auto-persistente) + 11 escritos directo
 
     r = await comando("/settings high")
     assert not r["interactive"] and "Thinking: high" in r["data"]["texto"], r
 
-    # Regresión: /settings sólo exponía thinking level — pi tiene más
-    # comportamiento real configurable con RPC propia (set_auto_compaction,
-    # set_steering_mode, set_follow_up_mode) y valor legible en get_state.
+    # autocompact/steering/followup usan RPC propia — en pi real esa RPC
+    # (session.setAutoCompactionEnabled/setSteeringMode/setFollowUpMode) YA
+    # persiste sola (agent-session.js:1272-1282,1657 son passthrough directo
+    # a settingsManager) — no hay "modo sesión" separado, cualquier cambio
+    # afecta también las próximas sesiones.
     r = await comando("/settings autocompact:false")
     assert "Auto-compact: false" in r["data"]["texto"], r
     r = await comando("/settings")
@@ -117,6 +131,44 @@ async def main():
     r = await comando("/settings")
     actuales = {op["id"]: op["actual"] for op in r["data"]["opciones"]}
     assert actuales["steering"] == "all" and actuales["followup"] == "all", actuales
+
+    # Settings PERSISTIDOS (bool y choice) — escriben directo en
+    # settings.json (_RUTA_SETTINGS), igual que auth.json/scoped-models.json.
+    r = await comando("/settings hide-thinking:true")
+    assert "Ocultar thinking: true" in r["data"]["texto"], r
+    r = await comando("/settings transport:websocket")
+    assert "Transporte: websocket" in r["data"]["texto"], r
+    r = await comando("/settings block-images:true")
+    assert "Bloquear imágenes a proveedores: true" in r["data"]["texto"], r
+    r = await comando("/settings")
+    actuales = {op["id"]: op["actual"] for op in r["data"]["opciones"]}
+    assert actuales["hide-thinking"] == "true", actuales
+    assert actuales["transport"] == "websocket", actuales
+    assert actuales["block-images"] == "true", actuales
+    # Sobrevive un archivo settings.json ya existente con OTRAS claves
+    # reales (packages, defaultProvider, etc.) — no debe pisarlas.
+    guardado = json.loads(B._RUTA_SETTINGS.read_text())
+    assert guardado["hideThinkingBlock"] is True, guardado
+    assert guardado["transport"] == "websocket", guardado
+    assert guardado["images"]["blockImages"] is True, guardado
+
+    # Choice inválido: no escribe nada, avisa el uso correcto.
+    r = await comando("/settings transport:noexiste")
+    assert "Uso: /settings transport:" in r["data"]["texto"], r
+
+    r = await comando("/settings noexiste:x")
+    assert "desconocida" in r["data"]["texto"], r
+
+    # Regresión: tree-filter-mode ahora es real — cambiarlo debe cambiar
+    # qué nodos devuelve /tree (antes el filtro estaba hardcodeado a
+    # 'default' sin importar lo que dijera el setting).
+    r = await comando("/settings tree-filter:user-only")
+    assert "Filtro default de /tree: user-only" in r["data"]["texto"], r
+    r = await comando("/tree")
+    assert r["data"]["filtro"] == "user-only", r
+    assert all(n["rol"] == "user" for n in r["data"]["nodos"]), r["data"]["nodos"]
+    r = await comando("/settings tree-filter:default")
+    assert "default" in r["data"]["texto"], r
 
     r = await comando("/settings noexiste:x")
     assert "desconocida" in r["data"]["texto"], r
