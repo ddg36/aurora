@@ -86,13 +86,30 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
             </div>
           `}
           ${!aplicando && comando === 'settings' && html`
-            <div class="comando-overlay-chips">
-              ${data.niveles.map(nivel => html`
-                <button
-                  key=${nivel}
-                  class=${'comando-overlay-chip' + (nivel === data.thinkingActual ? ' comando-overlay-chip--actual' : '')}
-                  onClick=${() => onAction('settings', nivel)}
-                >${nivel}</button>
+            <div>
+              <div class="comando-overlay-subtitulo">Thinking level</div>
+              <div class="comando-overlay-chips">
+                ${data.niveles.map(nivel => html`
+                  <button
+                    key=${nivel}
+                    class=${'comando-overlay-chip' + (nivel === data.thinkingActual ? ' comando-overlay-chip--actual' : '')}
+                    onClick=${() => onAction('settings', nivel)}
+                  >${nivel}</button>
+                `)}
+              </div>
+              ${(data.opciones || []).map(op => html`
+                <div key=${op.id}>
+                  <div class="comando-overlay-subtitulo">${op.label}</div>
+                  <div class="comando-overlay-chips">
+                    ${op.valores.map(v => html`
+                      <button
+                        key=${v}
+                        class=${'comando-overlay-chip' + (v === op.actual ? ' comando-overlay-chip--actual' : '')}
+                        onClick=${() => onAction('settings', `${op.id}:${v}`)}
+                      >${v}</button>
+                    `)}
+                  </div>
+                </div>
               `)}
             </div>
           `}

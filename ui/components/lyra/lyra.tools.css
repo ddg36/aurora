@@ -468,6 +468,15 @@
   color: var(--text-dim);
 }
 .comando-overlay-vacio { padding: 12px; text-align: center; color: var(--text-dim); }
+.comando-overlay-subtitulo {
+  font-size: 0.78em;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 12px 0 6px;
+}
+.comando-overlay-subtitulo:first-child { margin-top: 0; }
 .comando-overlay-chips {
   display: flex;
   flex-wrap: wrap;

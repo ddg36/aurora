@@ -94,9 +94,32 @@ async def main():
 
     r = await comando("/settings")
     assert r["interactive"] and r["data"]["thinkingActual"] == "medium", r
+    opciones = {op["id"]: op for op in r["data"]["opciones"]}
+    assert opciones["autocompact"]["actual"] == "true", opciones
+    assert opciones["steering"]["actual"] == "one-at-a-time", opciones
+    assert opciones["followup"]["actual"] == "one-at-a-time", opciones
 
     r = await comando("/settings high")
     assert not r["interactive"] and "Thinking: high" in r["data"]["texto"], r
+
+    # Regresión: /settings sólo exponía thinking level — pi tiene más
+    # comportamiento real configurable con RPC propia (set_auto_compaction,
+    # set_steering_mode, set_follow_up_mode) y valor legible en get_state.
+    r = await comando("/settings autocompact:false")
+    assert "Auto-compact: false" in r["data"]["texto"], r
+    r = await comando("/settings")
+    assert {op["id"]: op["actual"] for op in r["data"]["opciones"]}["autocompact"] == "false"
+
+    r = await comando("/settings steering:all")
+    assert "Steering: all" in r["data"]["texto"], r
+    r = await comando("/settings followup:all")
+    assert "Follow-up: all" in r["data"]["texto"], r
+    r = await comando("/settings")
+    actuales = {op["id"]: op["actual"] for op in r["data"]["opciones"]}
+    assert actuales["steering"] == "all" and actuales["followup"] == "all", actuales
+
+    r = await comando("/settings noexiste:x")
+    assert "desconocida" in r["data"]["texto"], r
 
     # Regresión: /model con arg debía aplicar SÓLO en match exacto (como pi:
     # findExactModelMatch) — antes aplicaba a ciegas el primer substring,

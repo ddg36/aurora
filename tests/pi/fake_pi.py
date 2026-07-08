@@ -10,7 +10,8 @@ def out(obj):
     sys.stdout.flush()
 
 
-state = {"n": 1, "session_name": None}
+state = {"n": 1, "session_name": None, "auto_compaction": True,
+         "steering_mode": "one-at-a-time", "follow_up_mode": "one-at-a-time"}
 
 
 def session():
@@ -51,11 +52,26 @@ for linea in sys.stdin:
     elif t == "get_state":
         out({"id": cid, "type": "response", "command": "get_state", "success": True,
              "data": {**session(), "model": None, "isStreaming": False, "thinkingLevel": "medium",
-                       "sessionName": state["session_name"]}})
+                       "sessionName": state["session_name"],
+                       "autoCompactionEnabled": state["auto_compaction"],
+                       "steeringMode": state["steering_mode"],
+                       "followUpMode": state["follow_up_mode"]}})
 
     elif t == "set_session_name":
         state["session_name"] = cmd.get("name")
         out({"id": cid, "type": "response", "command": "set_session_name", "success": True})
+
+    elif t == "set_auto_compaction":
+        state["auto_compaction"] = bool(cmd.get("enabled"))
+        out({"id": cid, "type": "response", "command": "set_auto_compaction", "success": True})
+
+    elif t == "set_steering_mode":
+        state["steering_mode"] = cmd.get("mode")
+        out({"id": cid, "type": "response", "command": "set_steering_mode", "success": True})
+
+    elif t == "set_follow_up_mode":
+        state["follow_up_mode"] = cmd.get("mode")
+        out({"id": cid, "type": "response", "command": "set_follow_up_mode", "success": True})
 
     elif t == "compact":
         out({"id": cid, "type": "response", "command": "compact", "success": True,

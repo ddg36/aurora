@@ -622,15 +622,49 @@ class PiBridge:
 
             elif nombre == 'settings':
                 niveles = ('off', 'minimal', 'low', 'medium', 'high', 'xhigh')
-                if arg and arg not in niveles:
+                # pi real tiene ~25 settings en su selector (settings-selector.js)
+                # — la mayoría son de terminal (tema, padding, cursor) y no
+                # aplican a una UI web. Estos 3 SÍ son comportamiento real del
+                # agente con RPC propia (set_auto_compaction/set_steering_mode/
+                # set_follow_up_mode) y valor legible en get_state — se exponen
+                # con la sintaxis "clave:valor" para no chocar con los niveles
+                # de thinking (que van sueltos, "/settings high").
+                if ':' in arg:
+                    clave, _, valor = arg.partition(':')
+                    if clave == 'autocompact':
+                        await proceso.pedir({'type': 'set_auto_compaction', 'enabled': valor == 'true'})
+                        await avisar(f'✔ Auto-compact: {valor}')
+                    elif clave == 'steering':
+                        await proceso.pedir({'type': 'set_steering_mode', 'mode': valor})
+                        await avisar(f'✔ Steering: {valor}')
+                    elif clave == 'followup':
+                        await proceso.pedir({'type': 'set_follow_up_mode', 'mode': valor})
+                        await avisar(f'✔ Follow-up: {valor}')
+                    else:
+                        await avisar(f'Configuración desconocida: {clave}')
+                elif arg and arg not in niveles:
                     await avisar(f'Uso: /settings {"|".join(niveles)}')
                 elif arg:
                     await proceso.pedir({'type': 'set_thinking_level', 'level': arg})
                     await avisar(f'✔ Thinking: {arg}')
                 else:
                     estado = await proceso.pedir({'type': 'get_state'})
-                    actual = (estado.get('data') or {}).get('thinkingLevel')
-                    await responder({'thinkingActual': actual, 'niveles': list(niveles)}, interactive=True)
+                    data_estado = estado.get('data') or {}
+                    await responder({
+                        'thinkingActual': data_estado.get('thinkingLevel'),
+                        'niveles': list(niveles),
+                        'opciones': [
+                            {'id': 'autocompact', 'label': 'Auto-compact',
+                             'actual': 'true' if data_estado.get('autoCompactionEnabled', True) else 'false',
+                             'valores': ['true', 'false']},
+                            {'id': 'steering', 'label': 'Steering mode',
+                             'actual': data_estado.get('steeringMode') or 'one-at-a-time',
+                             'valores': ['one-at-a-time', 'all']},
+                            {'id': 'followup', 'label': 'Follow-up mode',
+                             'actual': data_estado.get('followUpMode') or 'one-at-a-time',
+                             'valores': ['one-at-a-time', 'all']},
+                        ],
+                    }, interactive=True)
 
             elif nombre == 'name':
                 if not arg:
