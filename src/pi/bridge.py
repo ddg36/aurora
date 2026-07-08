@@ -235,8 +235,16 @@ class PiBridge:
             await self.send({'type': 'agent_start'})
 
         elif tipo == 'agent_end':
-            await self.send({'type': 'done'})
+            # fin.set() SIEMPRE debe correr, pase lo que pase con el socket:
+            # si el send() de abajo tira (socket muerto — reload, tab cerrada,
+            # red cortada) y esto quedara después, _lock_streaming (GLOBAL,
+            # compartido por TODO el server) queda tomado para siempre y
+            # ningún chat de ningún usuario vuelve a andar hasta reiniciar.
             self.fin.set()
+            try:
+                await self.send({'type': 'done'})
+            except Exception as exc:
+                log.warning('no se pudo mandar done (socket muerto?): %s', exc)
 
         elif tipo == 'queue_update':
             await self.send({'type': 'queue_update',
