@@ -10,7 +10,7 @@ def out(obj):
     sys.stdout.flush()
 
 
-state = {"n": 1}
+state = {"n": 1, "session_name": None}
 
 
 def session():
@@ -50,7 +50,16 @@ for linea in sys.stdin:
 
     elif t == "get_state":
         out({"id": cid, "type": "response", "command": "get_state", "success": True,
-             "data": {**session(), "model": None, "isStreaming": False, "thinkingLevel": "medium"}})
+             "data": {**session(), "model": None, "isStreaming": False, "thinkingLevel": "medium",
+                       "sessionName": state["session_name"]}})
+
+    elif t == "set_session_name":
+        state["session_name"] = cmd.get("name")
+        out({"id": cid, "type": "response", "command": "set_session_name", "success": True})
+
+    elif t == "compact":
+        out({"id": cid, "type": "response", "command": "compact", "success": True,
+             "data": {"customInstructions": cmd.get("customInstructions")}})
 
     elif t == "get_tree":
         out({"id": cid, "type": "response", "command": "get_tree", "success": True,
@@ -91,7 +100,11 @@ for linea in sys.stdin:
 
     elif t == "get_available_models":
         out({"id": cid, "type": "response", "command": "get_available_models", "success": True,
-             "data": {"models": [{"id": "llamacpp", "name": "llamacpp", "provider": "llama-cpp"}]}})
+             "data": {"models": [
+                 {"id": "llamacpp", "name": "llamacpp", "provider": "llama-cpp"},
+                 {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "provider": "anthropic"},
+                 {"id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5 (pinned)", "provider": "anthropic"},
+             ]}})
 
     elif t == "abort":
         out({"id": cid, "type": "response", "command": "abort", "success": True})

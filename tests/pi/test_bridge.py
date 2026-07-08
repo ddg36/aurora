@@ -98,6 +98,30 @@ async def main():
     r = await comando("/settings high")
     assert not r["interactive"] and "Thinking: high" in r["data"]["texto"], r
 
+    # Regresión: /model con arg debía aplicar SÓLO en match exacto (como pi:
+    # findExactModelMatch) — antes aplicaba a ciegas el primer substring,
+    # pudiendo fijar "claude-haiku-4-5-20251001" cuando el usuario pidió
+    # "claude-haiku-4-5" (substring de ambos).
+    r = await comando("/model claude-haiku-4-5")
+    assert not r["interactive"] and "claude-haiku-4-5" in r["data"]["texto"], r
+    assert "20251001" not in r["data"]["texto"], r
+
+    # Sin match exacto ("claude-haiku" no es el id de ninguno): abre el
+    # selector interactivo prefiltrado, nunca aplica a ciegas.
+    r = await comando("/model claude-haiku")
+    assert r["interactive"], r
+    ids = [m["id"] for m in r["data"]["modelos"]]
+    assert set(ids) == {"claude-haiku-4-5", "claude-haiku-4-5-20251001"}, ids
+
+    # Regresión: /name sin arg debía mostrar el nombre actual si ya hay uno
+    # seteado — antes siempre mostraba el "Usage:" ignorando ese estado.
+    r = await comando("/name")
+    assert "Uso: /name" in r["data"]["texto"], r
+    r = await comando("/name Charla de prueba")
+    assert "Charla de prueba" in r["data"]["texto"], r
+    r = await comando("/name")
+    assert "Charla de prueba" in r["data"]["texto"], r
+
     r = await comando("/tree")
     assert r["interactive"], r
     nodos = r["data"]["nodos"]
@@ -115,8 +139,26 @@ async def main():
     assert "tokens" in r["data"]["texto"] and "input=100" in r["data"]["texto"], r
     assert "cost: 0.0123" in r["data"]["texto"], r
 
+    # Regresión: /compact <instrucciones> se tiraba sin usar — pi real las
+    # pasa como customInstructions (rpc-mode.js case "compact").
+    comandos_vistos = []
+    pedir_original = proceso.pedir
+
+    async def pedir_espia(cmd, *a, **kw):
+        comandos_vistos.append(cmd)
+        return await pedir_original(cmd, *a, **kw)
+
+    proceso.pedir = pedir_espia
+    await comando("/compact enfocate en el bug de streaming")
+    proceso.pedir = pedir_original
+    compact_cmds = [c for c in comandos_vistos if c.get("type") == "compact"]
+    assert compact_cmds and compact_cmds[-1].get("customInstructions") == "enfocate en el bug de streaming", compact_cmds
+
+    # /copy manda el texto crudo + 'copiar':True — el clipboard real lo hace
+    # el frontend (navigator.clipboard), el backend no puede tocarlo.
     r = await comando("/copy")
     assert "ULTIMO_MENSAJE_DE_PRUEBA" in r["data"]["texto"], r
+    assert r["data"]["copiar"] is True, r
 
     r = await comando("/fork e1")
     assert not r["interactive"]
@@ -214,6 +256,27 @@ async def main():
 
     r = await comando("/share")
     assert "gh" in r["data"]["texto"], r  # gh no instalado en este entorno → mensaje de instalación
+
+    # Regresión: /reload mata y reinicia el motor pi COMPARTIDO (mismo radio
+    # de impacto que /quit) pero no pedía confirmación — inconsistente.
+    # Cancelar no debe tocar el proceso.
+    sock.enviados.clear()
+    await asyncio.gather(
+        br.manejar_chat({"type": "chat", "message": "/reload", "chat_id": None, "system": ""}),
+        cancelar_pronto(),
+    )
+    resultados = [m for m in sock.enviados if m["type"] == "command_result"]
+    assert resultados and resultados[-1]["data"]["texto"] == "Cancelado.", sock.enviados
+    assert proceso.vivo
+
+    sock.enviados.clear()
+    await asyncio.gather(
+        br.manejar_chat({"type": "chat", "message": "/reload", "chat_id": None, "system": ""}),
+        confirmar_pronto(),
+    )
+    resultados = [m for m in sock.enviados if m["type"] == "command_result"]
+    assert resultados and "recargad" in resultados[-1]["data"]["texto"], sock.enviados
+    assert proceso.vivo  # se reinició, pero sigue vivo (nuevo subproceso)
 
     # /quit pide confirmación propia (no de pi) — se confirma en paralelo
     # (confirmar_pronto ya definida arriba, para /import)

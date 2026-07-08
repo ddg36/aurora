@@ -583,31 +583,42 @@ class PiBridge:
 
             elif nombre == 'compact':
                 await avisar('🗜️ Compactando contexto…')
-                await proceso.pedir({'type': 'compact'}, timeout=180)
+                cmd_compact = {'type': 'compact'}
+                if arg:
+                    # pi real acepta /compact <instrucciones> y las pasa como
+                    # customInstructions (rpc-mode.js case "compact") — Aurora
+                    # las recibía en arg y las tiraba sin usar ni avisar nada.
+                    cmd_compact['customInstructions'] = arg
+                await proceso.pedir(cmd_compact, timeout=180)
                 await avisar('Listo — lo viejo quedó resumido.')
 
             elif nombre == 'model':
                 resp = await proceso.pedir({'type': 'get_available_models'})
                 modelos = (resp.get('data') or {}).get('models') or []
                 if arg:
-                    m = next((m for m in modelos if m.get('id') == arg or arg in str(m.get('id'))), None)
-                    if not m:
-                        await avisar(f'No encontré el modelo "{arg}"')
-                    else:
+                    m = next((m for m in modelos if m.get('id') == arg), None)
+                    if m:
                         await proceso.pedir({'type': 'set_model', 'provider': m.get('provider'), 'modelId': m.get('id')})
-                        await avisar(f"✔ Modelo: {m.get('provider')}/{m.get('id')}")
-                else:
-                    estado = await proceso.pedir({'type': 'get_state'})
-                    actual = ((estado.get('data') or {}).get('model') or {}).get('id')
-                    favoritos = set(_cargar_scoped())
-                    await responder({
-                        'actual': actual,
-                        'modelos': [
-                            {'id': m.get('id'), 'provider': m.get('provider'),
-                             'favorito': m.get('id') in favoritos}
-                            for m in modelos
-                        ],
-                    }, interactive=True)
+                        await avisar(f"✔ Modelo: {m.get('id')}")
+                        return
+                    # Sin match EXACTO: pi nunca aplica a ciegas un match
+                    # parcial (handleModelCommand: findExactModelMatch o
+                    # nada) — antes acá se auto-aplicaba el primer substring
+                    # que apareciera en la lista, pudiendo fijar un modelo
+                    # distinto al que el usuario quiso. Ahora abre el mismo
+                    # selector interactivo, prefiltrado por el término.
+                    modelos = [m for m in modelos if arg.lower() in str(m.get('id') or '').lower()]
+                estado = await proceso.pedir({'type': 'get_state'})
+                actual = ((estado.get('data') or {}).get('model') or {}).get('id')
+                favoritos = set(_cargar_scoped())
+                await responder({
+                    'actual': actual,
+                    'modelos': [
+                        {'id': m.get('id'), 'provider': m.get('provider'),
+                         'favorito': m.get('id') in favoritos}
+                        for m in modelos
+                    ],
+                }, interactive=True)
 
             elif nombre == 'settings':
                 niveles = ('off', 'minimal', 'low', 'medium', 'high', 'xhigh')
@@ -623,7 +634,15 @@ class PiBridge:
 
             elif nombre == 'name':
                 if not arg:
-                    await avisar('Uso: /name <nombre>')
+                    # pi real (/name sin arg) muestra el nombre actual si hay
+                    # uno seteado, y sólo el "Usage:" si no hay ninguno —
+                    # acá siempre se mostraba el Usage, aunque ya hubiera nombre.
+                    estado = await proceso.pedir({'type': 'get_state'})
+                    actual = (estado.get('data') or {}).get('sessionName')
+                    if actual:
+                        await avisar(f'Nombre de sesión: {actual}')
+                    else:
+                        await avisar('Uso: /name <nombre>')
                 else:
                     await proceso.pedir({'type': 'set_session_name', 'name': arg})
                     await avisar(f'✔ Sesión: "{arg}"')
@@ -718,7 +737,12 @@ class PiBridge:
                 if not texto_ult:
                     await avisar('(sin mensajes de Lyra todavía)')
                 else:
-                    await avisar(f'📋 Seleccioná para copiar:\n\n{texto_ult}')
+                    # pi real copia directo al portapapeles del SO
+                    # (copyToClipboard) — acá sólo se mostraba el texto para
+                    # seleccionar a mano. El backend no tiene clipboard; se
+                    # manda el texto crudo y el frontend hace el copiado real
+                    # vía navigator.clipboard (comando-overlay.js).
+                    await responder({'texto': texto_ult, 'copiar': True})
 
             elif nombre == 'import':
                 arg_import = _quitar_comillas(arg)
@@ -770,8 +794,12 @@ class PiBridge:
                     if not ruta:
                         await avisar('No se pudo exportar la sesión.')
                     else:
+                        # gh CLI no tiene flag "--private" (gist secreto ya es
+                        # el default) — pasarlo tiraba "unknown flag" y /share
+                        # fallaba siempre que gh estuviera instalado. pi real
+                        # usa "--public=false" (interactive-mode.js:handleShareCommand).
                         proc = await asyncio.create_subprocess_exec(
-                            'gh', 'gist', 'create', ruta, '--private',
+                            'gh', 'gist', 'create', '--public=false', ruta,
                             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                         )
                         salida, error = await proc.communicate()
@@ -781,6 +809,21 @@ class PiBridge:
                             await avisar(f'Error de gh: {error.decode().strip()[:300]}')
 
             elif nombre == 'reload':
+                # pi real recarga en el mismo proceso (session.reload()) — acá
+                # no hay RPC para eso (no existe case "reload" en rpc-mode.js),
+                # así que el único equivalente headless es matar y levantar de
+                # nuevo el subproceso COMPARTIDO, cortando cualquier chat activo
+                # de cualquier usuario — mismo radio de impacto que /quit, que
+                # sí confirma. Que /reload no preguntara nada era inconsistente.
+                ok = await self._pedir_confirmacion(
+                    'Recargar motor pi',
+                    'Esto reinicia el motor pi COMPARTIDO para recargar extensiones/skills — '
+                    'corta cualquier chat activo ahora mismo. ¿Confirmás?',
+                    riesgo='high',
+                )
+                if not ok:
+                    await avisar('Cancelado.')
+                    return
                 chat_actual = _cargar_mapa().get(str(chat_id)) if chat_id is not None else None
                 await proceso.parar()
                 await proceso.ensure()

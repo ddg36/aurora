@@ -1,4 +1,5 @@
 const html = (...args) => globalThis.html(...args);
+const { useEffect, useState } = globalThis.preactHooks;
 
 const ICONOS = {
   tree: '🌳', model: '🧠', settings: '⚙️', 'scoped-models': '⭐',
@@ -22,6 +23,17 @@ function tituloDe(comando) {
 // mensaje de chat (ver spec 2026-07-08). Interactivo cuando el backend lo
 // marca así (tree/model/settings/scoped-models); el resto es texto + Cerrar.
 export function ComandoOverlay({ comando, interactive, data, aplicando, onClose, onAction }) {
+  const [copiado, setCopiado] = useState(false);
+
+  // pi copia /copy directo al portapapeles del SO (copyToClipboard) — el
+  // backend no puede tocar el clipboard del usuario, así que lo hace acá
+  // apenas se abre el overlay, replicando esa misma UX inmediata.
+  useEffect(() => {
+    if (comando === 'copy' && data?.copiar && navigator.clipboard) {
+      navigator.clipboard.writeText(data.texto || '').then(() => setCopiado(true)).catch(() => {});
+    }
+  }, [comando, data]);
+
   if (!comando) return null;
 
   const onKeyDown = e => { if (e.key === 'Escape') onClose(); };
@@ -98,6 +110,9 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
                 `;
               })}
             </div>
+          `}
+          ${!aplicando && comando === 'copy' && copiado && html`
+            <div class="comando-overlay-aplicando">✔ Copiado al portapapeles</div>
           `}
           ${!aplicando && !interactive && html`
             <pre class="comando-overlay-texto">${data.texto}</pre>
