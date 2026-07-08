@@ -208,6 +208,7 @@ class PiBridge:
         self.chat_task: asyncio.Task | None = None
         self._confirm_id: str | None = None
         self._builtin_confirm: asyncio.Future | None = None
+        self._error_pendiente: str | None = None
 
     async def send(self, payload: dict):
         await self.socket.send_text(json.dumps(payload, ensure_ascii=False))
@@ -243,17 +244,41 @@ class PiBridge:
                              'is_error': bool(evt.get('isError'))})
 
         elif tipo == 'message_start':
-            await self.send({'type': 'message_start', 'role': evt.get('role', 'assistant')})
+            rol = (evt.get('message') or {}).get('role', 'assistant')
+            await self.send({'type': 'message_start', 'role': rol})
 
         elif tipo == 'message_end':
-            await self.send({'type': 'message_end', 'role': evt.get('role', 'assistant'),
-                             'stop_reason': evt.get('stopReason')})
+            msg = evt.get('message') or {}
+            stop_reason = msg.get('stopReason')
+            # role/stopReason viven en evt['message'], no en evt de primer
+            # nivel — leerlos mal significaba que un fallo real del proveedor
+            # (ej. nvidia devolviendo 410) nunca llegaba a la UI: mensaje
+            # vacío, sin error, silencio total (bug real, encontrado en vivo).
+            # No se manda todavía: agent_end (que llega después) tiene
+            # willRetry — si va a reintentar, este error es solo de UN
+            # intento, no del turno; se decide recién ahí.
+            if stop_reason == 'error' and msg.get('role') == 'assistant':
+                self._error_pendiente = msg.get('errorMessage') or 'Error del proveedor del modelo'
+            await self.send({'type': 'message_end', 'role': msg.get('role', 'assistant'),
+                             'stop_reason': stop_reason})
 
         elif tipo == 'agent_start':
             self.inicio.set()
             await self.send({'type': 'agent_start'})
 
         elif tipo == 'agent_end':
+            if evt.get('willRetry'):
+                # Este intento falló pero pi YA sabe que va a reintentar
+                # (campo real en agent_end, no documentado en rpc.md pero
+                # confirmado en vivo) — NO es el final del turno. Cerrarlo
+                # acá sería el bug real encontrado: con llama-server caído,
+                # el primer intento fallido ya mandaba 'done' vacío mientras
+                # pi seguía reintentando en silencio 2 veces más de fondo.
+                self._error_pendiente = None  # este intento no cuenta — viene otro
+                return
+            if self._error_pendiente:
+                await self.send({'type': 'error', 'message': self._error_pendiente})
+                self._error_pendiente = None
             # fin.set() SIEMPRE debe correr, pase lo que pase con el socket:
             # si el send() de abajo tira (socket muerto — reload, tab cerrada,
             # red cortada) y esto quedara después, _lock_streaming (GLOBAL,
@@ -280,7 +305,15 @@ class PiBridge:
         elif tipo == 'extension_ui_request':
             await self._ui_request(evt)
 
-        elif tipo in ('compaction_start', 'compaction_end', 'auto_retry_start', 'auto_retry_end'):
+        elif tipo == 'auto_retry_start':
+            # Sin esto, un reintento de pi (error transitorio de red/proveedor)
+            # pasaba en total silencio — el frontend ni tiene handler para
+            # 'auto_retry_start'. Reusa el canal 'token' (ya funciona, visible
+            # en la burbuja en vivo) en vez de inventar un evento nuevo.
+            intento, maximo = evt.get('attempt'), evt.get('maxAttempts')
+            await self.send({'type': 'token', 'content': f'\n🔄 Reintentando ({intento}/{maximo})…\n'})
+
+        elif tipo in ('compaction_start', 'compaction_end', 'auto_retry_end'):
             await self.send({'type': tipo, 'reason': evt.get('reason', '')})
 
         elif tipo == 'extension_error':
