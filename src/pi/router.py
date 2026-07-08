@@ -36,7 +36,9 @@ async def pi_ws(socket: WebSocket) -> None:
 
             if tipo == 'chat':
                 if bridge.chat_task and not bridge.chat_task.done():
-                    await bridge.send({'type': 'error', 'message': 'pi ocupado: ya hay un chat en curso'})
+                    # Ya streameando: Enter mid-stream ES steering, no error —
+                    # se entrega apenas termine el turno de tool-calls actual.
+                    asyncio.create_task(bridge.enviar_steer(msg))
                     continue
                 bridge.chat_task = asyncio.create_task(bridge.manejar_chat(msg))
 
@@ -51,6 +53,9 @@ async def pi_ws(socket: WebSocket) -> None:
 
             elif tipo == 'commands':
                 await bridge.manejar_commands()
+
+            elif tipo == 'cycle_model':
+                await bridge.manejar_cycle_model()
 
             elif tipo == 'reset':
                 await bridge.reset(msg)

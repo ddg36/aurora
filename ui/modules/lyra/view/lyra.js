@@ -23,7 +23,7 @@ import { copiarMensaje, añadirANotas, reformularRespuesta, leerMensaje } from '
 import { exportarChatPDF } from '../scripts/chat/exportar-pdf.js';
 import { comandosPi, cargarComandos, filtrarComandos, iconoComando } from '../scripts/chat/comandos.js';
 import { HERRAMIENTAS_SISTEMA, promptParaHerramienta } from '../scripts/chat/herramientas.js';
-import { sendToLyra, fetchModels, connectLyra, cancelarMensaje } from '../../../components/shared/lyra-ws.js';
+import { sendToLyra, fetchModels, connectLyra, cancelarMensaje, enviarSteer, onWidgetUpdate, cycleModel } from '../../../components/shared/lyra-ws.js';
 import { CanvasPanel } from '../../../components/lyra.views/canvas.js';
 import { nexusOnline } from '../../../store.js';
 import { getJSON, patchJSON } from '../../../components/shared/api.js';
@@ -126,6 +126,8 @@ export function Local() {
   const [nexusPendiente, setNexusPendiente]         = useState(null);
   const [avatar, setAvatar]                         = useState(null);
   const [asistenteEnVivo, setAsistenteEnVivo]       = useState({ blocks: [] });
+  const [colaMensajes, setColaMensajes]             = useState({ steering: [], followUp: [] });
+  const [widgets, setWidgets]                       = useState({});
   const assistantMessageRef                          = useRef(asistenteEnVivo);
 
   const chatRef   = useRef(null);
@@ -147,6 +149,7 @@ export function Local() {
     });
     fetchModels().then(ms => setModelosDisp(ms || [])).catch(() => {});
     connectLyra().catch(() => {});
+    onWidgetUpdate(setWidgets);
     getJSON('/db/ajustes/avatar').then(d => {
       if (d?.valor) try { setAvatar(JSON.parse(d.valor)); } catch {}
     }).catch(() => {});
@@ -183,7 +186,20 @@ export function Local() {
     const opciones = textoDirecto && typeof textoDirecto === 'object' ? textoDirecto : {};
     const texto = (typeof textoDirecto === 'string' ? textoDirecto : opciones.message ?? mensaje).trim();
     const imagenDataUrl = opciones.skipUserAppend ? null : pendingImageDataUrl.value;
-    if ((!texto && !imagenDataUrl) || cargando.value) return;
+    if (!texto && !imagenDataUrl) return;
+
+    // Steering: Lyra ya está respondiendo — Enter no bloquea, encola el
+    // mensaje y pi lo entrega apenas termine el turno de tool-calls actual.
+    if (cargando.value) {
+      if (texto.startsWith('/')) return; // comandos mid-stream: fuera de alcance por ahora
+      if (!opciones.skipUserAppend) {
+        agregarMensajeRico({ role: 'user', content: texto, image: imagenDataUrl ? imagenDataUrl.split(',')[1] : null });
+        clearPendingImage();
+      }
+      setMensaje('');
+      enviarSteer(texto, chatActualId.value);
+      return;
+    }
     setMensaje('');
 
     if (!opciones.skipUserAppend) {
@@ -278,8 +294,8 @@ export function Local() {
         onAgentEnd: () => {
           // agent end - could be used to hide working indicator
         },
-        onQueueUpdate: queue => {
-          // queue update - could be used to show queued items
+        onQueueUpdate: (steering, followUp) => {
+          setColaMensajes({ steering, followUp });
         },
         onSessionInfo: (sessionId, sessionName) => {
           // session info - could be used to update session display
@@ -288,10 +304,10 @@ export function Local() {
           // thinking level - could be used to show thinking level
         },
         onCompactionStart: reason => {
-          // compaction start - could be used to show compaction status
+          Toast().setStatus('🗜️ Compactando contexto…');
         },
         onCompactionEnd: reason => {
-          // compaction end - could be used to hide compaction status
+          Toast().setStatus('');
         },
         onHubAction: (name, args, respond) => {
           handleHubAction(name, args, respond);
@@ -342,6 +358,7 @@ export function Local() {
       setNexusPendiente(null);
       assistantMessageRef.current = { blocks: [] };
       setAsistenteEnVivo({ blocks: [] });
+      setColaMensajes({ steering: [], followUp: [] });
     }
   }, [mensaje]);
 
@@ -382,6 +399,7 @@ export function Local() {
     }
     assistantMessageRef.current = { blocks: [] };
     setAsistenteEnVivo({ blocks: [] });
+      setColaMensajes({ steering: [], followUp: [] });
     cargando.value = false;
   }, []);
 
@@ -409,6 +427,7 @@ export function Local() {
     cancelarMensaje();
     assistantMessageRef.current = { blocks: [] };
     setAsistenteEnVivo({ blocks: [] });
+      setColaMensajes({ steering: [], followUp: [] });
     limpiarHistorial();
     chatActualId.value = null;
     const chat = await crearChat('Chat sin nombre');
@@ -974,6 +993,25 @@ export function Local() {
         `}
 
         <div class="px-2 pt-1 pb-3 relative" style="z-index:5">
+          ${Object.entries(widgets).filter(([, w]) => (w.placement || 'aboveEditor') === 'aboveEditor').map(([key, w]) => html`
+            <div key=${'w-' + key} class="composer-widget">
+              ${w.lines.map((linea, i) => html`<div key=${i}>${linea}</div>`)}
+            </div>
+          `)}
+          ${(colaMensajes.steering.length > 0 || colaMensajes.followUp.length > 0) && html`
+            <div class="queue-chips">
+              ${colaMensajes.steering.map((m, i) => html`
+                <span key=${'s' + i} class="queue-chip queue-chip--steer" title="Se entrega apenas termine el turno actual">
+                  🔗 ${String(m).slice(0, 60)}
+                </span>
+              `)}
+              ${colaMensajes.followUp.map((m, i) => html`
+                <span key=${'f' + i} class="queue-chip queue-chip--followup" title="Se entrega cuando Lyra termine del todo">
+                  ⏳ ${String(m).slice(0, 60)}
+                </span>
+              `)}
+            </div>
+          `}
           ${slashSel >= 0 && html`
             <div class="slash-menu">
               ${slashCmds.length === 0 && html`
@@ -1025,6 +1063,18 @@ export function Local() {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   enviarMensaje();
+                  return;
+                }
+                if (e.altKey && (e.key === 'm' || e.key === 'M')) {
+                  e.preventDefault();
+                  cycleModel().then(m => {
+                    if (m) {
+                      guardarModelo(m.id);
+                      Toast().show(`🔁 Modelo: ${m.provider}/${m.id}`, 'info');
+                    } else {
+                      Toast().show('No hay más modelos para ciclar', 'info');
+                    }
+                  });
                 }
               }}
               onPaste=${handlePaste}

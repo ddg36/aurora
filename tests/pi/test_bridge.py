@@ -154,6 +154,19 @@ async def main():
     assert "Motor detenido" in r, r
     assert not proceso.vivo
 
+    # Regresión: cycle_model debe sincronizar _modelo_fijado — si no, el
+    # próximo chat con el mismo model_id de antes no vuelve a fijar el modelo
+    # real (bug encontrado al verificar Alt+M contra pi real).
+    B._modelo_fijado = 'llamacpp'
+    await br.manejar_cycle_model()
+    assert B._modelo_fijado == 'otro-modelo', B._modelo_fijado
+    cycled = [m for m in sock.enviados if m["type"] == "model_cycled"]
+    assert cycled and cycled[-1]["model"]["id"] == "otro-modelo", cycled
+
+    # /quit reinició el proceso vía get_proceso() con auto-restart — pararlo.
+    if B._proceso is not None and B._proceso.vivo:
+        await B._proceso.parar()
+
     print("OK — todos los asserts pasaron")
 
 

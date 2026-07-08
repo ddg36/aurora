@@ -70,6 +70,10 @@ for linea in sys.stdin:
         out({"id": cid, "type": "response", "command": "fork", "success": True,
              "data": {"text": "hola", "cancelled": False}})
 
+    elif t == "cycle_model":
+        out({"id": cid, "type": "response", "command": "cycle_model", "success": True,
+             "data": {"model": {"id": "otro-modelo", "provider": "lm-studio"}}})
+
     elif t == "new_session":
         state["n"] += 1
         out({"id": cid, "type": "response", "command": "new_session", "success": True})

@@ -682,3 +682,37 @@
   white-space: nowrap;
   min-width: 0;
 }
+
+/* ── Queue chips: mensajes en cola (steering/follow-up) ──── */
+.queue-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.queue-chip {
+  font-size: 0.8em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--surface3);
+  background: var(--surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+.queue-chip--steer { border-color: var(--accent, #7c8cff); }
+.queue-chip--followup { opacity: 0.75; }
+
+/* ── Widget de extensión (setWidget de pi) sobre el composer ── */
+.composer-widget {
+  font-size: 0.78em;
+  font-family: var(--font-mono, monospace);
+  padding: 4px 10px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--surface3);
+  opacity: 0.85;
+  white-space: pre-wrap;
+}

@@ -239,7 +239,9 @@ class PiBridge:
             self.fin.set()
 
         elif tipo == 'queue_update':
-            await self.send({'type': 'queue_update', 'queue': evt.get('queue', [])})
+            await self.send({'type': 'queue_update',
+                             'steering': evt.get('steering') or [],
+                             'follow_up': evt.get('followUp') or []})
 
         elif tipo == 'session_info_changed':
             await self.send({'type': 'session_info', 'session_id': evt.get('sessionId', ''),
@@ -271,6 +273,10 @@ class PiBridge:
             aviso = ' '.join(p for p in (evt.get('title'), evt.get('message')) if p)
             log.info('pi notify: %s', aviso)
             await self.send({'type': 'token', 'content': f'🔔 {aviso}\n'})
+        elif metodo == 'setWidget':
+            await self.send({'type': 'widget', 'key': evt.get('widgetKey') or '',
+                             'lines': evt.get('widgetLines') or None,
+                             'placement': evt.get('widgetPlacement') or 'aboveEditor'})
 
     async def responder_confirm(self, approved: bool):
         if self._builtin_confirm is not None and not self._builtin_confirm.done():
@@ -364,6 +370,20 @@ class PiBridge:
         if not self.fin.is_set():
             await self.send({'type': 'done', 'cancelled': True})
             self.fin.set()
+
+    async def enviar_steer(self, msg: dict):
+        """Enter mid-stream: encola el mensaje, pi lo entrega apenas termine
+        el turno de tool-calls actual — no interrumpe, no crea otro turno."""
+        texto, imagenes = _extraer_contenido(msg.get('message'))
+        cmd = {'type': 'steer', 'message': texto}
+        if imagenes:
+            cmd['images'] = imagenes
+        try:
+            resp = await get_proceso().pedir(cmd)
+            if not resp.get('success'):
+                await self.send({'type': 'error', 'message': resp.get('error') or 'no se pudo encolar el mensaje'})
+        except Exception as exc:
+            await self.send({'type': 'error', 'message': f'error al encolar: {exc}'})
 
     async def _fijar_modelo(self, proceso: PiProceso, model_id):
         global _modelo_fijado
@@ -632,6 +652,45 @@ class PiBridge:
 
         except Exception as exc:
             await avisar(f'Error en /{nombre}: {exc}')
+
+    async def manejar_cycle_model(self):
+        """Alt+M: cicla /scoped-models si hay favoritos guardados; si no, cicla
+        entre todos los disponibles (cycle_model nativo — pi no expone RPC
+        para ciclar un subconjunto, así que el subconjunto lo maneja Aurora)."""
+        global _modelo_fijado
+        proceso = get_proceso()
+        try:
+            favoritos = _cargar_scoped()
+            if favoritos:
+                estado = await proceso.pedir({'type': 'get_state'})
+                actual = ((estado.get('data') or {}).get('model') or {}).get('id')
+                resp = await proceso.pedir({'type': 'get_available_models'})
+                modelos = {m.get('id'): m for m in (resp.get('data') or {}).get('models') or []}
+                try:
+                    idx = favoritos.index(actual)
+                except ValueError:
+                    idx = -1
+                siguiente_id = favoritos[(idx + 1) % len(favoritos)]
+                m = modelos.get(siguiente_id)
+                if not m:
+                    await self.send({'type': 'cycle_model_error', 'message': f'Favorito "{siguiente_id}" ya no está disponible'})
+                    return
+                await proceso.pedir({'type': 'set_model', 'provider': m.get('provider'), 'modelId': m.get('id')})
+                # _fijar_modelo cachea por chat_id — si no se actualiza acá, el
+                # próximo chat con el mismo model_id de antes no lo vuelve a fijar.
+                _modelo_fijado = m.get('id')
+                await self.send({'type': 'model_cycled', 'model': {'id': m.get('id'), 'provider': m.get('provider')}})
+            else:
+                resp = await proceso.pedir({'type': 'cycle_model'})
+                data = resp.get('data') or {}
+                modelo = data.get('model') if isinstance(data, dict) and 'model' in data else data
+                if not modelo:
+                    await self.send({'type': 'cycle_model_error', 'message': 'Un solo modelo disponible — nada para ciclar'})
+                    return
+                _modelo_fijado = modelo.get('id')
+                await self.send({'type': 'model_cycled', 'model': {'id': modelo.get('id'), 'provider': modelo.get('provider')}})
+        except Exception as exc:
+            await self.send({'type': 'cycle_model_error', 'message': f'cycle_model: {exc}'})
 
     async def manejar_commands(self):
         comandos = [{'name': n, 'description': d, 'source': 'builtin'} for n, d in _BUILTINS.items()]

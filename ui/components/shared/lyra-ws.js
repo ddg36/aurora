@@ -7,6 +7,8 @@ let _ws                = null;
 let _handlers          = null;
 let _lastSessionInfo   = null;
 let _sessionInfoCb     = null;
+let _widgets           = {};
+let _widgetCb          = null;
 let _reconnectAttempts = 0;
 let _reconnectTimer    = null;
 let _intentionalClose  = false;
@@ -18,6 +20,14 @@ function _setOnline(online) {
 export function onSessionInfo(cb) {
   _sessionInfoCb = cb;
   if (_lastSessionInfo) cb(_lastSessionInfo);
+}
+
+// setWidget de pi (extensiones) puede llegar en cualquier momento, incluso
+// sin ningún chat en curso — no depende de _handlers (que solo existe
+// mientras hay un sendToLyra() activo).
+export function onWidgetUpdate(cb) {
+  _widgetCb = cb;
+  cb(_widgets);
 }
 
 function _scheduleReconnect() {
@@ -65,6 +75,15 @@ function _connectInternal() {
           workspace:    msg.workspace,
         };
         _sessionInfoCb?.(_lastSessionInfo);
+      }
+      if (msg.type === 'widget') {
+        if (msg.lines) {
+          _widgets = { ..._widgets, [msg.key]: { lines: msg.lines, placement: msg.placement } };
+        } else {
+          const { [msg.key]: _quitado, ...resto } = _widgets;
+          _widgets = resto;
+        }
+        _widgetCb?.(_widgets);
       }
       _dispatch(msg);
     });
@@ -127,6 +146,14 @@ export function confirmTool(approved) {
   _ws?.send(JSON.stringify({ type: 'confirm', approved }));
 }
 
+// Mensaje mid-stream: NO registra handlers nuevos (pisaría los del stream en
+// curso) — solo manda el texto. El router decide steer vs prompt del lado
+// servidor según si ya hay un chat corriendo; los tokens resultantes siguen
+// llegando a los handlers YA activos del sendToLyra() en curso.
+export function enviarSteer(message, chat_id) {
+  _ws?.send(JSON.stringify({ type: 'chat', message, chat_id, system: '', history: [], tools: [] }));
+}
+
 export function resetLyraSession() {
   _ws?.send(JSON.stringify({ type: 'reset' }));
 }
@@ -145,6 +172,24 @@ export function fetchModels() {
       ws.send(JSON.stringify({ type: 'models' }));
       setTimeout(() => { ws.removeEventListener('message', handler); resolve([]); }, 4000);
     } catch { resolve([]); }
+  });
+}
+
+export function cycleModel() {
+  return new Promise(async resolve => {
+    try {
+      const ws = await connectLyra();
+      const handler = ev => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === 'model_cycled') { ws.removeEventListener('message', handler); resolve(msg.model || null); }
+          else if (msg.type === 'cycle_model_error') { ws.removeEventListener('message', handler); resolve(null); }
+        } catch {}
+      };
+      ws.addEventListener('message', handler);
+      ws.send(JSON.stringify({ type: 'cycle_model' }));
+      setTimeout(() => { ws.removeEventListener('message', handler); resolve(null); }, 8000);
+    } catch { resolve(null); }
   });
 }
 
@@ -182,7 +227,7 @@ function _dispatch(msg) {
     case 'message_end':    onMessageEnd?.(msg.role, msg.stop_reason); break;
     case 'agent_start':    onAgentStart?.(); break;
     case 'agent_end':      onAgentEnd?.(); break;
-    case 'queue_update':   onQueueUpdate?.(msg.queue); break;
+    case 'queue_update':   onQueueUpdate?.(msg.steering || [], msg.follow_up || []); break;
     case 'session_info':   onSessionInfo?.(msg.session_id, msg.session_name); break;
     case 'thinking_level': onThinkingLevel?.(msg.level); break;
     case 'compaction_start': onCompactionStart?.(msg.reason); break;
