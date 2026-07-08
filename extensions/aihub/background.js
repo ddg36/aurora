@@ -166,6 +166,45 @@ async function handleServerCmd(msg) {
       sendExtResult(id, true, res[0]?.result || null);
       return;
     }
+    case 'capture_youtube': {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab) { sendExtResult(id, false, null, 'no tab'); return; }
+      if (!tab.url?.includes('youtube.com/watch')) { sendExtResult(id, false, null, 'not-youtube'); return; }
+
+      const sendWithTimeout = (t, m, ms = 20000) => new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Receiving end does not exist (timeout)')), ms);
+        chrome.tabs.sendMessage(t, m, (r) => {
+          clearTimeout(timer);
+          const err = chrome.runtime.lastError;
+          if (err) reject(new Error(err.message));
+          else resolve(r);
+        });
+      });
+
+      let result;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          result = await sendWithTimeout(tab.id, { action: 'extractData', type: params.type || 'withoutTimestamps' });
+          if (result && (result.success || result.content)) break;
+          throw new Error(result?.error || 'Content script no respondio');
+        } catch (err) {
+          if (attempt < 1 && err.message?.includes?.('Receiving end')) {
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                files: ['content-scripts/yt-captures.js'],
+              });
+            } catch (_) {}
+            await new Promise(r => setTimeout(r, 800));
+            continue;
+          }
+          sendExtResult(id, false, null, err.message);
+          return;
+        }
+      }
+      sendExtResult(id, !!(result && (result.success || result.content)), result || null, result?.error || null);
+      return;
+    }
     default:
       sendExtResult(id, false, null, `cmd desconocido: ${cmd}`);
   }
@@ -550,7 +589,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // ── LAB_YOUTUBE_TRANSCRIPT_HUMAN ────────────────────────
   // Herramienta de laboratorio: emula el flujo humano de YouTube
   // Info → scroll panel → Mostrar transcripción → leer segmentos.
-  // No se expone a Gemita en tools-definiciones.js.
+  // No se expone a Lyra en tools-definiciones.js.
   if (msg.type === 'LAB_YOUTUBE_TRANSCRIPT_HUMAN') {
     (async () => {
       try {

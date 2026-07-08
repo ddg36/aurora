@@ -77,7 +77,7 @@ export function renderMarkdownLight(text) {
       const hl = highlightCode(p.c, p.lang);
       const raw = escape(p.c).replace(/"/g, '&quot;');
       const runBtn = LENGUAJES_EJECUTABLES.has(lang.toLowerCase())
-        ? `<button class="code-btn js-run-code" title="Ejecutar en cuarto de Gemita">▶ Run</button>`
+        ? `<button class="code-btn js-run-code" title="Ejecutar en cuarto de Lyra">▶ Run</button>`
         : '';
       return `<div class="code-block" data-code="${raw}" data-lang="${escape(lang)}">` +
                `<div class="code-hdr">` +
@@ -193,7 +193,7 @@ export function inicializarEventosCodigo(containerEl, { onNotas, onRun } = {}) {
       e.stopPropagation();
       const raw = btn.closest('.code-block')?.dataset.code || '';
       const lang = btn.closest('.code-block')?.dataset.lang || 'text';
-      document.dispatchEvent(new CustomEvent('gemita:canvas', {
+      document.dispatchEvent(new CustomEvent('lyra:canvas', {
         detail: { code: raw, lang },
       }));
     });

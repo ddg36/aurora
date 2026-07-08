@@ -4,7 +4,7 @@ import time
 
 from db.connection import get_db
 from ext.router import ext_cmd
-from gemita.providers import discover_providers
+from llm.providers import discover_providers
 from nexus.config import SKIP_DIRS, clip
 from nexus.shell import ejecutar_shell
 from nexus.workspace import rel, safe

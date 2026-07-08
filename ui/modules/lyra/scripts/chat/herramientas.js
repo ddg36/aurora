@@ -1,6 +1,6 @@
 export const HERRAMIENTAS_SISTEMA = [
   { name: 'get_current_datetime', desc: 'Obtiene la fecha y hora actual en ISO 8601.' },
-  { name: 'run_bash',             desc: 'Ejecuta un comando bash en el cuarto de Gemita.' },
+  { name: 'run_bash',             desc: 'Ejecuta un comando bash en el cuarto de Lyra.' },
   { name: 'nexus_run',            desc: 'Ejecuta una tarea via Nexus con confirmación por riesgo.' },
   { name: 'read_file',            desc: 'Lee el contenido de un archivo del workspace.' },
   { name: 'write_file',           desc: 'Escribe o sobreescribe un archivo.' },

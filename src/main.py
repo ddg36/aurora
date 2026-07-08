@@ -12,8 +12,8 @@ from litestar.middleware import MiddlewareProtocol
 
 from db.connection import DB_PATH, init_db
 from db.router import ALL_CONTROLLERS
-from gemita.router import GEMITA_ROUTES
-from gemita.providers import discover_providers
+from llm.providers import discover_providers
+from pi.router import PI_ROUTES
 from mcp.router import MCP_ROUTES
 from nexus.router import NEXUS_ROUTES
 from parser.router import PARSER_ROUTES
@@ -88,10 +88,10 @@ async def on_startup() -> None:
             log.info("startup cleanup: %d capturas borradas en %d usuarios", total, len(resultados))
     except Exception as e:
         log.warning("startup cleanup error: %s", e)
-    log.info("Aurora Server ready")
+    log.info("Aurora Server ready — LLM engine: pi")
 
 
-ROUTES = [root, ping, health, favicon] + GEMITA_ROUTES + VOZ_ROUTES + NEXUS_ROUTES + PARSER_ROUTES + TOOLS_ROUTES + MCP_ROUTES + EXT_ROUTES + ALL_CONTROLLERS + NAV_BROWSER_ROUTES
+ROUTES = [root, ping, health, favicon] + PI_ROUTES + VOZ_ROUTES + NEXUS_ROUTES + PARSER_ROUTES + TOOLS_ROUTES + MCP_ROUTES + EXT_ROUTES + ALL_CONTROLLERS + NAV_BROWSER_ROUTES
 
 if UI_DIR.exists():
     ROUTES.append(

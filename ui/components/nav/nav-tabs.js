@@ -24,7 +24,7 @@ export const TABS = [
   { id: 'inicio',       label: 'Inicio',    svg: I.inicio       },
   { id: 'aurora',       label: 'Aurora',    svg: I.aurora       },
   { id: 'productividad', label: 'Product',  svg: I.productividad },
-  { id: 'local',        label: 'Local',     svg: I.local        },
+  { id: 'lyra',         label: 'Lyra',     svg: I.local        },
   { id: 'llmcloud',     label: 'Cloud',     svg: I.llmcloud     },
   { id: 'prompts',      label: 'Prompts',   svg: I.prompts      },
   { id: 'wiki',         label: 'Wiki',      svg: I.wiki         },

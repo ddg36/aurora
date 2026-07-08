@@ -135,7 +135,7 @@ export function exportarChatPDF(historial, modeloSeleccionado) {
 `;
 
   visibles.forEach(msg => {
-    const rolLabel = msg.role === 'user' ? '👤 Tú' : '🦙 Gemita';
+    const rolLabel = msg.role === 'user' ? '👤 Tú' : '🦙 Lyra';
     const timestamp = formatearTimestamp(msg.ts || msg.timestamp);
     const contenidoHtml = renderMarkdownLight(msg.content);
 
@@ -153,7 +153,7 @@ export function exportarChatPDF(historial, modeloSeleccionado) {
   html += `
   </div>
   <div class="footer">
-    Exportado desde Aurora — Gemita
+    Exportado desde Aurora — Lyra
   </div>
 </body>
 </html>

@@ -631,3 +631,54 @@
 .msg-speak-btn:active {
   transform: scale(0.95);
 }
+
+/* ── Slash menu: autocomplete de comandos pi ─────────── */
+.slash-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 8px;
+  right: 8px;
+  margin-bottom: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--surface3);
+  border-radius: 12px;
+  padding: 4px;
+  z-index: 9999;
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.35);
+}
+.slash-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 0;
+}
+.slash-item--sel {
+  background: var(--surface3);
+}
+.slash-item--empty {
+  opacity: 0.55;
+  cursor: default;
+  font-size: 0.9em;
+}
+.slash-item-icon {
+  flex: none;
+  width: 1.4em;
+  text-align: center;
+}
+.slash-item-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.slash-item-desc {
+  opacity: 0.55;
+  font-size: 0.85em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}

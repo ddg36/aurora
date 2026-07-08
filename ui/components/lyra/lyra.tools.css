@@ -50,6 +50,50 @@
 .act-entry.act-ok      { border-color: rgba(34,197,94,.62); }
 .act-entry.act-error   { border-color: rgba(239,68,68,.72); }
 .act-entry.act-running { border-color: rgba(96,165,250,.62); animation: pulse 1s infinite; }
+.act-entry.act-thinking { border-color: rgba(168,85,247,.62); }
+.act-entry.act-result  { border-color: rgba(251,191,36,.45); }
+
+/* ══════════════════════════════════════════════════════
+   TOOL EXECUTION — Tool execution components en vivo
+   ══════════════════════════════════════════════════════ */
+
+.message.tool-execution {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-family: var(--aurora-font-mono);
+}
+.tool-execution-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tool-execution-icon { flex-shrink: 0; font-size: 10px; }
+.tool-execution-name { font-weight: 700; color: var(--text); }
+.tool-execution-preview { color: var(--text-dim); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+.tool-execution-output {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.25);
+  border-radius: 4px;
+  font-size: 9px;
+  color: var(--text-dim);
+  max-height: 300px;
+  overflow-y: auto;
+}
+.tool-execution-output pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+}
+.tool-running { border-left: 2px solid rgba(96,165,250,.62); background: rgba(40,40,50,0.5); }
+.tool-success { border-left: 2px solid rgba(34,197,94,.62); background: rgba(40,50,40,0.5); }
+.tool-error   { border-left: 2px solid rgba(239,68,68,.72); background: rgba(60,40,40,0.5); }
 
 /* ── Banner de confirmación Nexus MEDIUM/HIGH ──────── */
 .nexus-confirm-banner {

@@ -39,7 +39,7 @@ aurora:       () => import('./modules/aurora/view/aurora.js?v=v2-control-center-
 
 productividad: () => import('./modules/productividad/view/productividad.js?v=v2-productividad-1'),
 
-local:        () => import('./modules/local/view/local.js?v=v2-clean-ui-4'),
+lyra:         () => import('./modules/lyra/view/lyra.js?v=v2-clean-ui-4'),
 
 llmcloud:     () => import('./modules/llmcloud/view/llmcloud.js?v=v2-clean-ui-4'),
 

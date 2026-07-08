@@ -5,7 +5,7 @@ from litestar import get, post
 
 from . import builtin
 from .registry import get_tool, list_tools, run_tool
-from gemita.providers import choose_provider, complete_chat, list_models
+from llm.providers import choose_provider, complete_chat, list_models
 
 _ = builtin
 

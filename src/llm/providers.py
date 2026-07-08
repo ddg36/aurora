@@ -7,9 +7,16 @@ from typing import AsyncIterator
 
 import httpx
 
-from . import config
+import pathlib as _pathlib
+import tomllib as _tomllib
 
-log = logging.getLogger("aurora.gemita.providers")
+log = logging.getLogger("aurora.llm.providers")
+
+_LLM_TOML = _pathlib.Path(__file__).resolve().parents[2] / "config" / "llm.toml"
+try:
+    MODELO_DEFAULT = _tomllib.loads(_LLM_TOML.read_text(encoding="utf-8")).get("llama", {}).get("default_model", "")
+except OSError:
+    MODELO_DEFAULT = ""
 
 
 @dataclass(frozen=True)
@@ -205,16 +212,16 @@ async def choose_provider(model_id: str | None = None) -> tuple[LLMProvider, str
             if model_id in (model.id, model.name, f"{model.provider_id}/{model.name}"):
                 return _get_provider(model.provider_id), model.name
 
-    if config.MODELO_DEFAULT:
+    if MODELO_DEFAULT:
         for model in models:
-            if config.MODELO_DEFAULT in (model.id, model.name):
+            if MODELO_DEFAULT in (model.id, model.name):
                 return _get_provider(model.provider_id), model.name
 
     if models:
         model = models[0]
         return _get_provider(model.provider_id), model.name
 
-    return _get_provider("llamacpp"), model_id or config.MODELO_DEFAULT
+    return _get_provider("llamacpp"), model_id or MODELO_DEFAULT
 
 
 async def stream_chat(model_id: str | None, payload: dict, timeout_s: int) -> AsyncIterator[dict]:
