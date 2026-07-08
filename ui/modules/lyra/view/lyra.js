@@ -32,6 +32,16 @@ import { ComandoOverlay } from './comando-overlay.js';
 
 const Toast = () => globalThis.Toast || { show() {}, setStatus() {} };
 
+// Mismo formato que formatTokens() de pi real (footer.js) — 1.2k / 45k / 3.4M.
+function formatTokens(n) {
+  if (n == null) return '0';
+  if (n < 1000) return String(n);
+  if (n < 10000) return (n / 1000).toFixed(1) + 'k';
+  if (n < 1000000) return Math.round(n / 1000) + 'k';
+  if (n < 10000000) return (n / 1000000).toFixed(1) + 'M';
+  return Math.round(n / 1000000) + 'M';
+}
+
 const AI_URLS = {
   gemini:     'https://gemini.google.com',
   claude:     'https://claude.ai',
@@ -132,6 +142,8 @@ export function Local() {
   const [colaMensajes, setColaMensajes]             = useState({ steering: [], followUp: [] });
   const [widgets, setWidgets]                       = useState({});
   const [comandoOverlay, setComandoOverlay]         = useState(null); // {comando, interactive, data, aplicando}
+  const [sessionStats, setSessionStats]             = useState(null); // get_session_stats — estilo footer.js de pi
+  const [ultimoTps, setUltimoTps]                   = useState(null); // tok/s del último turno — no existe en pi, agregado propio
   const assistantMessageRef                          = useRef(asistenteEnVivo);
 
   const chatRef   = useRef(null);
@@ -290,8 +302,12 @@ export function Local() {
         onMessageStart: role => {
           // message start - could be used to show message status
         },
-        onMessageEnd: (role, stopReason) => {
-          // message end - could be used to show completion status
+        onMessageEnd: (role, stopReason, usage, tokensPerSec) => {
+          // tok/s no es algo que pi muestre en su propia UI (footer.js no
+          // trackea timing) — es un agregado propio de Aurora, calculado
+          // igual acá con lo que ya manda pi (usage.output + tiempo medido
+          // del lado del bridge).
+          if (role === 'assistant' && tokensPerSec != null) setUltimoTps(tokensPerSec);
         },
         onAgentStart: () => {
           // agent start - could be used to show working indicator
@@ -311,9 +327,21 @@ export function Local() {
         onCompactionStart: reason => {
           Toast().setStatus('🗜️ Compactando contexto…');
         },
-        onCompactionEnd: reason => {
+        onCompactionEnd: (reason, info) => {
           Toast().setStatus('');
+          // Antes esto sólo apagaba el status, sin decir qué pasó — un
+          // auto-compact (reason='auto') que fallara desaparecía en
+          // silencio total, igual bug que /compact pero para el disparo
+          // automático.
+          if (info?.error) {
+            Toast().show(`✗ Compactación falló: ${info.error}`, 'error', 4000);
+          } else if (info?.aborted) {
+            Toast().show('Compactación cancelada', 'info');
+          } else if (info?.tokensBefore != null) {
+            Toast().show(`🗜️ Compactado: ${info.tokensBefore}→${info.tokensAfter} tokens`, 'success', 3000);
+          }
         },
+        onSessionStats: stats => setSessionStats(stats),
         onCommandResult: async (comandoNombre, interactive, data) => {
           const esNuevaSesion = (comandoNombre === 'fork' || comandoNombre === 'clone' || comandoNombre === 'import') && data.sessionPath;
           if (esNuevaSesion) {
@@ -621,6 +649,25 @@ export function Local() {
   const toolbarHeaderClass = 'toolbar-section-header flex items-center gap-1.5 px-1.5 py-1 rounded text-[11px] text-aurora-text-dim cursor-pointer select-none transition hover:bg-aurora-surface hover:text-aurora-text';
   const toolbarChipClass = 'toolbar-tool-chip flex items-center gap-1 px-2 py-1 rounded-full text-[10px] bg-aurora-surface border border-aurora-border text-aurora-text-dim cursor-pointer transition hover:border-aurora-accent hover:text-aurora-text';
 
+  // Mismo formato que el footer.js real de pi: ↑input ↓output, costo,
+  // %contexto — tok/s es agregado propio de Aurora (pi no lo muestra).
+  let statsTexto = '';
+  if (sessionStats) {
+    const tk = sessionStats.tokens || {};
+    const partes = [];
+    if (tk.input) partes.push(`↑${formatTokens(tk.input)}`);
+    if (tk.output) partes.push(`↓${formatTokens(tk.output)}`);
+    if (tk.cacheRead) partes.push(`R${formatTokens(tk.cacheRead)}`);
+    if (tk.cacheWrite) partes.push(`W${formatTokens(tk.cacheWrite)}`);
+    if (sessionStats.cost) partes.push(`$${sessionStats.cost.toFixed(3)}`);
+    const ctx = sessionStats.contextUsage;
+    if (ctx && ctx.percent != null && ctx.contextWindow) {
+      partes.push(`${ctx.percent.toFixed(1)}%/${formatTokens(ctx.contextWindow)}`);
+    }
+    if (ultimoTps != null) partes.push(`${ultimoTps} tok/s`);
+    statsTexto = partes.join(' · ');
+  }
+
   return html`
     <div class="llama-view ${canvasVisibleVal ? 'canvas-open' : ''} ${cloudVisible && cloudExpanded ? 'cloud-expanded' : ''}">
 
@@ -655,6 +702,9 @@ export function Local() {
           >
             ${vocesVal.map(v => html`<option key=${v.id} value=${v.id}>${v.nombre}</option>`)}
           </select>
+        `}
+        ${statsTexto && html`
+          <span class="text-[10px] text-aurora-text-dim px-1.5 font-mono whitespace-nowrap" title="Tokens de esta sesión (como el footer de pi) · tok/s del último turno">${statsTexto}</span>
         `}
         <span class=${'text-[10px] px-1.5 ' + (lyraOnline ? 'text-aurora-success' : 'text-aurora-error')} title=${lyraOnline ? 'Lyra online' : 'Lyra offline'}>●</span>
       </div>

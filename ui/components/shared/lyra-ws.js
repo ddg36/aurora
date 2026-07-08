@@ -122,14 +122,14 @@ export async function sendToLyra({
   message, images, model, system = '', history = [], tools = [], pure_system = false, chat_id = null,
   onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
   onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
-  onHubAction, onConfirmRequest, onCommandResult
+  onSessionStats, onHubAction, onConfirmRequest, onCommandResult
 }) {
   const ws = await connectLyra();
   return new Promise((resolve, reject) => {
     _handlers = {
       onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
       onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
-      onHubAction, onConfirmRequest, onCommandResult, resolve, reject
+      onSessionStats, onHubAction, onConfirmRequest, onCommandResult, resolve, reject
     };
     const payload = { type: 'chat', message, model, system, history, tools, pure_system, chat_id };
     if (images && images.length > 0) {
@@ -221,7 +221,7 @@ function _dispatch(msg) {
   const {
     onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
     onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
-    onHubAction, onConfirmRequest, onCommandResult, resolve, reject
+    onSessionStats, onHubAction, onConfirmRequest, onCommandResult, resolve, reject
   } = _handlers;
   switch (msg.type) {
     case 'command_result': onCommandResult?.(msg.command, msg.interactive, msg.data); break;
@@ -231,14 +231,18 @@ function _dispatch(msg) {
     case 'tool_result':    onToolResult?.(msg.name, msg.output, msg.is_error); break;
     case 'tool_progress':  onToolProgress?.(msg.name, msg.partial); break;
     case 'message_start':  onMessageStart?.(msg.role); break;
-    case 'message_end':    onMessageEnd?.(msg.role, msg.stop_reason); break;
+    case 'message_end':    onMessageEnd?.(msg.role, msg.stop_reason, msg.usage, msg.tokens_per_sec); break;
     case 'agent_start':    onAgentStart?.(); break;
     case 'agent_end':      onAgentEnd?.(); break;
     case 'queue_update':   onQueueUpdate?.(msg.steering || [], msg.follow_up || []); break;
     case 'session_info':   onSessionInfo?.(msg.session_id, msg.session_name); break;
     case 'thinking_level': onThinkingLevel?.(msg.level); break;
     case 'compaction_start': onCompactionStart?.(msg.reason); break;
-    case 'compaction_end':   onCompactionEnd?.(msg.reason); break;
+    case 'compaction_end':   onCompactionEnd?.(msg.reason, {
+      aborted: msg.aborted, error: msg.error, tokensBefore: msg.tokens_before,
+      tokensAfter: msg.tokens_after, summary: msg.summary,
+    }); break;
+    case 'session_stats':  onSessionStats?.(msg.stats || {}); break;
     case 'hub_action_request':
       if (onHubAction) {
         onHubAction(msg.name, msg.args || {}, (output, imageB64) => {

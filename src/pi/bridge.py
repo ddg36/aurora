@@ -355,9 +355,26 @@ class PiBridge:
         self._confirm_id: str | None = None
         self._builtin_confirm: asyncio.Future | None = None
         self._error_pendiente: str | None = None
+        self._msg_start_ts: float | None = None
 
     async def send(self, payload: dict):
         await self.socket.send_text(json.dumps(payload, ensure_ascii=False))
+
+    async def _enviar_session_stats(self):
+        """Corre en su propia task — ver comentario en agent_end sobre por
+        qué NO puede llamarse con `await` directo desde ahí (auto-deadlock
+        del loop lector de stdout). Sólo pide stats si el proceso YA está
+        vivo — nunca dispara un spawn nuevo solo para esto (dato meramente
+        informativo, no vale la pena/el riesgo de levantar un engine)."""
+        proceso = get_proceso()
+        if not proceso.vivo:
+            return
+        try:
+            resp_stats = await proceso.pedir({'type': 'get_session_stats'}, timeout=10)
+            if resp_stats.get('success'):
+                await self.send({'type': 'session_stats', 'stats': resp_stats.get('data') or {}})
+        except Exception as exc:
+            log.warning('get_session_stats tras agent_end: %s', exc)
 
     # ── eventos pi → UI ───────────────────────────────
 
@@ -391,6 +408,8 @@ class PiBridge:
 
         elif tipo == 'message_start':
             rol = (evt.get('message') or {}).get('role', 'assistant')
+            if rol == 'assistant':
+                self._msg_start_ts = time.monotonic()
             await self.send({'type': 'message_start', 'role': rol})
 
         elif tipo == 'message_end':
@@ -405,8 +424,21 @@ class PiBridge:
             # intento, no del turno; se decide recién ahí.
             if stop_reason == 'error' and msg.get('role') == 'assistant':
                 self._error_pendiente = msg.get('errorMessage') or 'Error del proveedor del modelo'
-            await self.send({'type': 'message_end', 'role': msg.get('role', 'assistant'),
-                             'stop_reason': stop_reason})
+            payload = {'type': 'message_end', 'role': msg.get('role', 'assistant'), 'stop_reason': stop_reason}
+            # tok/s — NO es algo que pi muestre en su propia UI (footer.js sólo
+            # tiene ↑input ↓output/contexto, sin timing) así que esto es un
+            # agregado propio de Aurora, no una réplica de pi. usage.output
+            # ya viene en message_end de pi; el tiempo se mide acá porque el
+            # protocolo RPC de pi no manda duración.
+            usage = msg.get('usage') or {}
+            if msg.get('role') == 'assistant' and usage.get('output') and self._msg_start_ts:
+                elapsed = time.monotonic() - self._msg_start_ts
+                if elapsed > 0:
+                    payload['usage'] = {'input': usage.get('input', 0), 'output': usage.get('output', 0),
+                                        'cache_read': usage.get('cacheRead', 0), 'cache_write': usage.get('cacheWrite', 0)}
+                    payload['tokens_per_sec'] = round(usage['output'] / elapsed, 1)
+            self._msg_start_ts = None
+            await self.send(payload)
 
         elif tipo == 'agent_start':
             self.inicio.set()
@@ -435,6 +467,21 @@ class PiBridge:
                 await self.send({'type': 'done'})
             except Exception as exc:
                 log.warning('no se pudo mandar done (socket muerto?): %s', exc)
+            # Contador de tokens de la sesión estilo footer.js de pi real
+            # (↑input ↓output, costo, % de contexto) — best-effort, informativo.
+            # CLAVE: tiene que ir en una task aparte, nunca `await` acá adentro.
+            # evento_pi corre DENTRO del propio loop lector de stdout
+            # (PiProceso._leer_stdout → _despachar → on_event, todo in-line,
+            # ver proceso.py) — un pedir() esperado en el mismo lugar sería un
+            # auto-deadlock real: pedir() sólo se resuelve cuando ese MISMO
+            # loop lee la línea de respuesta, pero el loop está bloqueado acá
+            # esperando esa respuesta. No sólo este pedido se cuelga para
+            # siempre — el lector completo deja de leer CUALQUIER línea más,
+            # rompiendo el motor compartido para todos los chats futuros
+            # (encontrado en vivo: session_stats nunca llegaba y el test
+            # siguiente se colgaba). asyncio.create_task() lo desacopla del
+            # loop lector para que pueda seguir leyendo mientras esto espera.
+            asyncio.create_task(self._enviar_session_stats())
 
         elif tipo == 'queue_update':
             await self.send({'type': 'queue_update',
@@ -459,7 +506,28 @@ class PiBridge:
             intento, maximo = evt.get('attempt'), evt.get('maxAttempts')
             await self.send({'type': 'token', 'content': f'\n🔄 Reintentando ({intento}/{maximo})…\n'})
 
-        elif tipo in ('compaction_start', 'compaction_end', 'auto_retry_end'):
+        elif tipo == 'compaction_start':
+            await self.send({'type': tipo, 'reason': evt.get('reason', '')})
+
+        elif tipo == 'compaction_end':
+            # Antes esto sólo reenviaba 'reason' — un compactado automático
+            # (reason='auto', dispara solo cuando el contexto crece mucho) que
+            # fallara pasaba en TOTAL silencio: el toast "Compactando…" del
+            # frontend simplemente desaparecía sin decir nada, éxito o error.
+            # session.compact() real manda 'result' (con tokensBefore/
+            # estimatedTokensAfter/summary) en éxito, y 'errorMessage'/
+            # 'aborted' en fallo — se reenvía todo.
+            resultado = evt.get('result') or {}
+            await self.send({
+                'type': tipo, 'reason': evt.get('reason', ''),
+                'aborted': bool(evt.get('aborted')),
+                'error': evt.get('errorMessage'),
+                'tokens_before': resultado.get('tokensBefore'),
+                'tokens_after': resultado.get('estimatedTokensAfter'),
+                'summary': resultado.get('summary'),
+            })
+
+        elif tipo == 'auto_retry_end':
             await self.send({'type': tipo, 'reason': evt.get('reason', '')})
 
         elif tipo == 'extension_error':
