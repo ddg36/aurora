@@ -454,8 +454,13 @@
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   cursor: default;
 }
+.comando-overlay-item--fijo { cursor: default; }
+.comando-overlay-item--fijo:hover { background: none; }
+.comando-overlay-badge { flex: none; opacity: 0.55; font-size: 0.85em; }
 .comando-overlay-marca { flex: none; width: 1.2em; text-align: center; }
 .comando-overlay-rol { flex: none; font-weight: 700; opacity: 0.8; }
+.comando-overlay-rol--user { color: var(--accent); }
+.comando-overlay-rol--assistant { color: #4ade80; }
 .comando-overlay-preview {
   overflow: hidden;
   text-overflow: ellipsis;

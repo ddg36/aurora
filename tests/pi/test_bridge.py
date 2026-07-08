@@ -103,6 +103,17 @@ async def main():
     nodos = r["data"]["nodos"]
     assert any("hola" in n["preview"] for n in nodos), nodos
     assert any(n["actual"] for n in nodos), nodos
+    # Regresión: la indentación sólo debe avanzar en un branch real — esta
+    # sesión de prueba es una cadena lineal (user → assistant, sin ramas),
+    # así que TODOS los nodos deben quedar en profundidad 0 (antes: cada
+    # nivel sumaba +1 aunque no hubiera bifurcación, "escalera infinita").
+    assert all(n["profundidad"] == 0 for n in nodos), nodos
+
+    # Regresión: /session perdía 'tokens'/'cost' (dicts anidados de
+    # get_session_stats) porque el filtro los descartaba enteros.
+    r = await comando("/session")
+    assert "tokens" in r["data"]["texto"] and "input=100" in r["data"]["texto"], r
+    assert "cost: 0.0123" in r["data"]["texto"], r
 
     r = await comando("/copy")
     assert "ULTIMO_MENSAJE_DE_PRUEBA" in r["data"]["texto"], r
@@ -192,6 +203,34 @@ async def main():
     assert B._modelo_fijado == 'otro-modelo', B._modelo_fijado
     cycled = [m for m in sock.enviados if m["type"] == "model_cycled"]
     assert cycled and cycled[-1]["model"]["id"] == "otro-modelo", cycled
+
+    # Regresión: la indentación de /tree sólo debe avanzar en un branch real
+    # (nodo con >1 hijo) — replica flattenTree() de tree-selector.js. Árbol:
+    # root(user) -> A(assistant, sin rama) -> [B1(user), B2(user)] (branch)
+    # -> B1 sigue con C1(assistant) single-chain.
+    arbol_con_rama = [{
+        "entry": {"id": "root", "type": "message", "message": {"role": "user", "content": "hola"}},
+        "children": [{
+            "entry": {"id": "A", "type": "message", "message": {"role": "assistant", "content": "hola de vuelta"}},
+            "children": [
+                {"entry": {"id": "B1", "type": "message", "message": {"role": "user", "content": "rama uno"}},
+                 "children": [{
+                     "entry": {"id": "C1", "type": "message", "message": {"role": "assistant", "content": "sigo en rama uno"}},
+                     "children": [],
+                 }]},
+                {"entry": {"id": "B2", "type": "message", "message": {"role": "user", "content": "rama dos"}},
+                 "children": []},
+            ],
+        }],
+    }]
+    nodos_rama = B._arbol_a_nodos(arbol_con_rama, "C1")
+    por_id = {n["id"]: n for n in nodos_rama}
+    assert por_id["root"]["profundidad"] == 0, por_id
+    assert por_id["A"]["profundidad"] == 0, por_id  # single-chain: sin rama, se queda flat
+    assert por_id["B1"]["profundidad"] == 1, por_id  # branch real: +1
+    assert por_id["B2"]["profundidad"] == 1, por_id
+    assert por_id["C1"]["profundidad"] == 2, por_id  # 1ra gen después del branch: +1 extra (como pi)
+    assert por_id["C1"]["actual"], por_id
 
     # /quit reinició el proceso vía get_proceso() con auto-restart — pararlo.
     if B._proceso is not None and B._proceso.vivo:

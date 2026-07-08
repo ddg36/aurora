@@ -111,28 +111,93 @@ def _guardar_auth(auth: dict):
     _RUTA_AUTH.chmod(0o600)
 
 
-def _arbol_a_nodos(nodos: list, leaf_id, profundidad: int = 0) -> list:
-    """get_tree de pi, aplanado para el modal interactivo — la jerarquía
-    en sí (quién es hijo de quién) ya la resolvió pi, acá solo se aplana
-    con profundidad para pintar la indentación."""
-    resultado = []
-    for nodo in nodos:
+_ENTRADAS_CONFIG = {'label', 'custom', 'model_change', 'thinking_level_change', 'session_info'}
+
+
+def _texto_de_contenido(contenido) -> str:
+    if isinstance(contenido, str):
+        return contenido
+    if isinstance(contenido, list):
+        return ''.join(c.get('text') or '' for c in contenido if isinstance(c, dict) and c.get('type') == 'text')
+    return ''
+
+
+def _nodo_visible(entry: dict, leaf_id) -> bool:
+    """Mismo criterio de default filter de pi (tree-selector.js:
+    TreeList.applyFilter) — sin esto el árbol se llena de ruido
+    (model_change, thinking_level_change, turnos de assistant que
+    fueron solo tool-calls sin texto) que pi jamás muestra por default."""
+    tipo = entry.get('type')
+    if tipo in _ENTRADAS_CONFIG:
+        return False
+    if tipo == 'message':
+        msg = entry.get('message') or {}
+        if msg.get('role') == 'assistant' and entry.get('id') != leaf_id:
+            texto = _texto_de_contenido(msg.get('content')).strip()
+            stop_reason = msg.get('stopReason')
+            error_o_abortado = stop_reason not in (None, 'stop', 'toolUse')
+            if not texto and not error_o_abortado:
+                return False
+    return True
+
+
+def _etiqueta_nodo(entry: dict) -> tuple[str, str]:
+    tipo = entry.get('type')
+    if tipo == 'message':
+        msg = entry.get('message') or {}
+        rol = msg.get('role') or '?'
+        if rol in ('user', 'assistant'):
+            texto = _texto_de_contenido(msg.get('content')).strip().replace('\n', ' ')
+            if not texto and rol == 'assistant':
+                if msg.get('stopReason') == 'aborted':
+                    texto = '(abortado)'
+                elif msg.get('errorMessage'):
+                    texto = msg['errorMessage']
+                else:
+                    texto = '(sin contenido)'
+            return rol, texto[:200]
+        if rol == 'toolResult':
+            return 'tool', '[resultado de tool]'
+        return rol, ''
+    if tipo == 'compaction':
+        return 'compaction', '[compactación]'
+    if tipo == 'branch_summary':
+        return 'branch', entry.get('summary') or ''
+    return tipo or '?', ''
+
+
+def _arbol_a_nodos(nodos: list, leaf_id) -> list:
+    """get_tree de pi, aplanado para el modal — replica el filtro y la
+    indentación real de pi (tree-selector.js: flattenTree/applyFilter).
+    Clave: la indentación SOLO avanza en un punto de branch real (nodo
+    con >1 hijo), nunca en cada mensaje — de lo contrario una charla
+    lineal sin ramas se ve como una escalera infinita (bug real visto
+    en vivo: cada turno se corría 16px más a la derecha que el anterior)."""
+    visibles: list = []
+
+    def caminar(nodo, indent, ya_bifurco):
         entry = nodo.get('entry') or {}
         eid = entry.get('id') or ''
-        msg = entry.get('message') or {}
-        rol = msg.get('role') or entry.get('type') or '?'
-        contenido = msg.get('content')
-        if isinstance(contenido, list):
-            contenido = ' '.join(c.get('text', '') for c in contenido if isinstance(c, dict) and c.get('type') == 'text')
-        resultado.append({
-            'id': eid,
-            'rol': rol,
-            'preview': str(contenido or '')[:80].replace('\n', ' '),
-            'profundidad': profundidad,
-            'actual': eid == leaf_id,
-        })
-        resultado.extend(_arbol_a_nodos(nodo.get('children') or [], leaf_id, profundidad + 1))
-    return resultado
+        hijos = nodo.get('children') or []
+        if _nodo_visible(entry, leaf_id):
+            rol, preview = _etiqueta_nodo(entry)
+            visibles.append({
+                'id': eid, 'rol': rol, 'preview': preview,
+                'profundidad': indent, 'actual': eid == leaf_id,
+            })
+        multiples = len(hijos) > 1
+        if multiples:
+            indent_hijos = indent + 1
+        elif ya_bifurco and indent > 0:
+            indent_hijos = indent + 1
+        else:
+            indent_hijos = indent
+        for hijo in hijos:
+            caminar(hijo, indent_hijos, multiples)
+
+    for raiz in nodos:
+        caminar(raiz, 0, False)
+    return visibles
 
 
 def _leer_parent_session(ruta: pathlib.Path) -> str | None:
@@ -556,8 +621,17 @@ class PiBridge:
             elif nombre == 'session':
                 resp = await proceso.pedir({'type': 'get_session_stats'})
                 data = resp.get('data') or {}
-                lineas = [f'{k}: {v}' for k, v in data.items() if not isinstance(v, (dict, list))]
-                await avisar('Sesión pi:\n' + '\n'.join(lineas[:12]))
+                # get_session_stats trae 'tokens' y 'contextUsage' como dicts
+                # anidados (agent-session.js:getSessionStats) — filtrarlos por
+                # isinstance(v, dict) los descartaba enteros, perdiendo tokens
+                # y costo que el /session real de pi siempre muestra.
+                lineas = []
+                for k, v in data.items():
+                    if isinstance(v, dict):
+                        lineas.append(f'{k}: ' + ', '.join(f'{kk}={vv}' for kk, vv in v.items()))
+                    elif not isinstance(v, list):
+                        lineas.append(f'{k}: {v}')
+                await avisar('Sesión pi:\n' + '\n'.join(lineas[:16]))
 
             elif nombre == 'export':
                 resp = await proceso.pedir({'type': 'export_html'}, timeout=60)

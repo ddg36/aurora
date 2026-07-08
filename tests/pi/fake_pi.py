@@ -62,6 +62,13 @@ for linea in sys.stdin:
                  }],
              }], "leafId": "e2"}})
 
+    elif t == "get_session_stats":
+        out({"id": cid, "type": "response", "command": "get_session_stats", "success": True,
+             "data": {"userMessages": 2, "assistantMessages": 2, "toolCalls": 1, "toolResults": 1,
+                       "totalMessages": 4,
+                       "tokens": {"input": 100, "output": 50, "cacheRead": 0, "cacheWrite": 0, "total": 150},
+                       "cost": 0.0123}})
+
     elif t == "get_last_assistant_text":
         out({"id": cid, "type": "response", "command": "get_last_assistant_text", "success": True,
              "data": {"text": "ULTIMO_MENSAJE_DE_PRUEBA"}})

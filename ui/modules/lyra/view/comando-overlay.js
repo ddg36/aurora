@@ -37,18 +37,25 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
           ${aplicando && html`<div class="comando-overlay-aplicando">Aplicando…</div>`}
           ${!aplicando && comando === 'tree' && html`
             <div class="comando-overlay-lista">
-              ${data.nodos.map(n => html`
+              ${data.nodos.map(n => {
+                // pi sólo permite ramificar desde mensajes de user (fork real =
+                // UserMessageSelectorComponent, agent-session-runtime.js:fork()
+                // tira "Invalid entry ID for forking" para cualquier otro rol) —
+                // clickear un nodo assistant/tool acá rompía /fork con ese error.
+                const puedeRamificar = n.rol === 'user' && !n.actual;
+                return html`
                 <div
                   key=${n.id}
-                  class=${'comando-overlay-item' + (n.actual ? ' comando-overlay-item--actual' : '')}
+                  class=${'comando-overlay-item' + (n.actual ? ' comando-overlay-item--actual' : '') + (puedeRamificar ? '' : ' comando-overlay-item--fijo')}
                   style=${{ paddingLeft: (10 + n.profundidad * 16) + 'px' }}
-                  onClick=${() => !n.actual && onAction('fork', n.id)}
+                  onClick=${() => puedeRamificar && onAction('fork', n.id)}
                 >
                   <span class="comando-overlay-marca">${n.actual ? '●' : ''}</span>
-                  <span class="comando-overlay-rol">${n.rol}</span>
+                  <span class="comando-overlay-rol comando-overlay-rol--${n.rol}">${n.rol}</span>
                   <span class="comando-overlay-preview">${n.preview}</span>
                 </div>
-              `)}
+              `;
+              })}
             </div>
           `}
           ${!aplicando && comando === 'model' && html`
@@ -60,7 +67,8 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
                   onClick=${() => m.id !== data.actual && onAction('model', m.id)}
                 >
                   <span class="comando-overlay-marca">${m.id === data.actual ? '●' : (m.favorito ? '⭐' : '')}</span>
-                  <span class="comando-overlay-preview">${m.provider}/${m.id}</span>
+                  <span class="comando-overlay-preview">${m.id}</span>
+                  <span class="comando-overlay-badge">[${m.provider}]</span>
                 </div>
               `)}
             </div>
@@ -84,7 +92,8 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
                 return html`
                   <div key=${m.id} class="comando-overlay-item" onClick=${() => onAction('scoped-models', { id: m.id, quitar: esFav })}>
                     <span class="comando-overlay-marca">${esFav ? '⭐' : '☆'}</span>
-                    <span class="comando-overlay-preview">${m.provider}/${m.id}</span>
+                    <span class="comando-overlay-preview">${m.id}</span>
+                    <span class="comando-overlay-badge">[${m.provider}]</span>
                   </div>
                 `;
               })}
