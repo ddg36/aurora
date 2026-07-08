@@ -605,9 +605,18 @@ class PiBridge:
             resp = await proceso.pedir({'type': 'get_available_models'})
             for m in (resp.get('data') or {}).get('models') or []:
                 if m.get('id') == model_id:
-                    await proceso.pedir({'type': 'set_model', 'provider': m.get('provider'),
-                                         'modelId': m.get('id')})
-                    _modelo_fijado = model_id
+                    resp_set = await proceso.pedir({'type': 'set_model', 'provider': m.get('provider'),
+                                                    'modelId': m.get('id')})
+                    # BUG real: esto marcaba _modelo_fijado igual aunque
+                    # set_model devolviera success:false — el próximo mensaje
+                    # del MISMO chat ya no reintentaba (line arriba corta
+                    # temprano si model_id == _modelo_fijado), así que el chat
+                    # seguía hablando con el modelo VIEJO en silencio total,
+                    # mientras el selector de la UI mostraba el nuevo elegido.
+                    if resp_set.get('success'):
+                        _modelo_fijado = model_id
+                    else:
+                        log.warning('set_model %s falló: %s', model_id, resp_set.get('error'))
                     return
         except Exception as exc:
             log.warning('set_model %s: %s', model_id, exc)
@@ -642,7 +651,13 @@ class PiBridge:
 
         try:
             if nombre == 'new':
-                await proceso.pedir({'type': 'new_session'})
+                resp_new = await proceso.pedir({'type': 'new_session'})
+                # new_session SIEMPRE vuelve success:true (rpc-mode.js), incluso
+                # si una extensión canceló el cambio vía hook session_before_switch
+                # — la señal real está en data.cancelled, no en 'success'.
+                if (resp_new.get('data') or {}).get('cancelled'):
+                    await avisar('Cancelado (una extensión bloqueó el cambio de sesión).')
+                    return
                 estado = await proceso.pedir({'type': 'get_state'})
                 ruta = (estado.get('data') or {}).get('sessionFile')
                 if chat_id is not None and ruta:
@@ -660,8 +675,28 @@ class PiBridge:
                     # customInstructions (rpc-mode.js case "compact") — Aurora
                     # las recibía en arg y las tiraba sin usar ni avisar nada.
                     cmd_compact['customInstructions'] = arg
-                await proceso.pedir(cmd_compact, timeout=180)
-                await avisar('Listo — lo viejo quedó resumido.')
+                resp = await proceso.pedir(cmd_compact, timeout=180)
+                # BUG real (puro teatro): esto no miraba resp.get('success')
+                # en absoluto — session.compact() en pi real TIRA excepción en
+                # varios casos reales ("Nothing to compact (session too
+                # small)", "Already compacted", sin modelo seleccionado,
+                # "Compaction cancelled", error real del proveedor) y
+                # rpc-mode.js la propaga como {success:false, error:...}.
+                # Confirmado en vivo con una sesión chica: pi devolvía
+                # success:false/"Nothing to compact (session too small)" y
+                # Aurora igual decía "Listo — lo viejo quedó resumido."
+                if not resp.get('success'):
+                    await avisar(f'✗ No se compactó: {resp.get("error") or "error desconocido"}')
+                else:
+                    data_compact = resp.get('data') or {}
+                    antes = data_compact.get('tokensBefore')
+                    despues = data_compact.get('estimatedTokensAfter')
+                    resumen = str(data_compact.get('summary') or '').strip()
+                    detalle = f' ({antes}→{despues} tokens estimados)' if antes is not None and despues is not None else ''
+                    texto = f'✔ Compactado{detalle}'
+                    if resumen:
+                        texto += f'\n\n{resumen[:500]}'
+                    await avisar(texto)
 
             elif nombre == 'model':
                 resp = await proceso.pedir({'type': 'get_available_models'})
@@ -669,8 +704,11 @@ class PiBridge:
                 if arg:
                     m = next((m for m in modelos if m.get('id') == arg), None)
                     if m:
-                        await proceso.pedir({'type': 'set_model', 'provider': m.get('provider'), 'modelId': m.get('id')})
-                        await avisar(f"✔ Modelo: {m.get('id')}")
+                        resp_set = await proceso.pedir({'type': 'set_model', 'provider': m.get('provider'), 'modelId': m.get('id')})
+                        if not resp_set.get('success'):
+                            await avisar(f'✗ No se pudo fijar el modelo: {resp_set.get("error") or "error desconocido"}')
+                        else:
+                            await avisar(f"✔ Modelo: {m.get('id')}")
                         return
                     # Sin match EXACTO: pi nunca aplica a ciegas un match
                     # parcial (handleModelCommand: findExactModelMatch o
@@ -735,7 +773,17 @@ class PiBridge:
                     await avisar(f'Uso: /settings {"|".join(niveles)}')
                 elif arg:
                     await proceso.pedir({'type': 'set_thinking_level', 'level': arg})
-                    await avisar(f'✔ Thinking: {arg}')
+                    # setThinkingLevel clampea en silencio si el modelo activo
+                    # no soporta el nivel pedido (agent-session.js:1201-1202,
+                    # _clampThinkingLevel) — la RPC no avisa, hay que releer
+                    # get_state para saber cuál quedó realmente aplicado y no
+                    # confirmar un nivel que en los hechos no se usó.
+                    estado_post = await proceso.pedir({'type': 'get_state'})
+                    real = (estado_post.get('data') or {}).get('thinkingLevel')
+                    if real and real != arg:
+                        await avisar(f'⚠ Thinking: pediste "{arg}", el modelo activo sólo soporta "{real}" — quedó en "{real}"')
+                    else:
+                        await avisar(f'✔ Thinking: {arg}')
                 else:
                     estado = await proceso.pedir({'type': 'get_state'})
                     data_estado = estado.get('data') or {}

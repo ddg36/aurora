@@ -11,7 +11,8 @@ def out(obj):
 
 
 state = {"n": 1, "session_name": None, "auto_compaction": True,
-         "steering_mode": "one-at-a-time", "follow_up_mode": "one-at-a-time"}
+         "steering_mode": "one-at-a-time", "follow_up_mode": "one-at-a-time",
+         "thinking_level": "medium"}
 
 
 def session():
@@ -51,11 +52,20 @@ for linea in sys.stdin:
 
     elif t == "get_state":
         out({"id": cid, "type": "response", "command": "get_state", "success": True,
-             "data": {**session(), "model": None, "isStreaming": False, "thinkingLevel": "medium",
+             "data": {**session(), "model": None, "isStreaming": False,
+                       "thinkingLevel": state["thinking_level"],
                        "sessionName": state["session_name"],
                        "autoCompactionEnabled": state["auto_compaction"],
                        "steeringMode": state["steering_mode"],
                        "followUpMode": state["follow_up_mode"]}})
+
+    elif t == "set_thinking_level":
+        # Simula el clamp real de pi (agent-session.js:_clampThinkingLevel):
+        # este modelo fake sólo "soporta" hasta 'medium'.
+        pedido = cmd.get("level")
+        clamp_a = {"high": "medium", "xhigh": "medium"}
+        state["thinking_level"] = clamp_a.get(pedido, pedido)
+        out({"id": cid, "type": "response", "command": "set_thinking_level", "success": True})
 
     elif t == "set_session_name":
         state["session_name"] = cmd.get("name")
@@ -73,9 +83,18 @@ for linea in sys.stdin:
         state["follow_up_mode"] = cmd.get("mode")
         out({"id": cid, "type": "response", "command": "set_follow_up_mode", "success": True})
 
+    elif t == "compact" and cmd.get("customInstructions") == "FALLAR":
+        # Regresión: session.compact() real tira "Nothing to compact" /
+        # "Already compacted" / etc, y rpc-mode.js lo propaga como
+        # success:false — bridge.py NO miraba esto y siempre decía "Listo".
+        out({"id": cid, "type": "response", "command": "compact", "success": False,
+             "error": "Nothing to compact (session too small)"})
+
     elif t == "compact":
         out({"id": cid, "type": "response", "command": "compact", "success": True,
-             "data": {"customInstructions": cmd.get("customInstructions")}})
+             "data": {"customInstructions": cmd.get("customInstructions"),
+                       "summary": "resumen de prueba de lo compactado",
+                       "tokensBefore": 5000, "estimatedTokensAfter": 800}})
 
     elif t == "get_tree":
         out({"id": cid, "type": "response", "command": "get_tree", "success": True,
@@ -106,9 +125,18 @@ for linea in sys.stdin:
         out({"id": cid, "type": "response", "command": "cycle_model", "success": True,
              "data": {"model": {"id": "otro-modelo", "provider": "lm-studio"}}})
 
+    elif t == "set_model" and cmd.get("modelId") == "modelo-que-falla":
+        # Regresión: bridge.py marcaba éxito sin mirar esto.
+        out({"id": cid, "type": "response", "command": "set_model", "success": False,
+             "error": "Model not found: prueba/modelo-que-falla"})
+
+    elif t == "set_model":
+        out({"id": cid, "type": "response", "command": "set_model", "success": True})
+
     elif t == "new_session":
         state["n"] += 1
-        out({"id": cid, "type": "response", "command": "new_session", "success": True})
+        out({"id": cid, "type": "response", "command": "new_session", "success": True,
+             "data": {"cancelled": False}})
 
     elif t == "switch_session":
         out({"id": cid, "type": "response", "command": "switch_session", "success": True,
@@ -120,6 +148,7 @@ for linea in sys.stdin:
                  {"id": "llamacpp", "name": "llamacpp", "provider": "llama-cpp"},
                  {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "provider": "anthropic"},
                  {"id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5 (pinned)", "provider": "anthropic"},
+                 {"id": "modelo-que-falla", "name": "Modelo que falla", "provider": "prueba"},
              ]}})
 
     elif t == "abort":

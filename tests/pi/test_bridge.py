@@ -111,8 +111,16 @@ async def main():
     assert opciones["block-images"]["actual"] == "false", opciones
     assert len(opciones) >= 14, opciones  # 3 vía RPC (auto-persistente) + 11 escritos directo
 
+    r = await comando("/settings low")
+    assert not r["interactive"] and "✔ Thinking: low" in r["data"]["texto"], r
+
+    # Regresión: setThinkingLevel clampea en silencio si el modelo activo no
+    # soporta el nivel pedido (agent-session.js:_clampThinkingLevel) — antes
+    # se confirmaba el nivel PEDIDO sin verificar qué quedó realmente
+    # aplicado. fake_pi simula un modelo que sólo soporta hasta 'medium'.
     r = await comando("/settings high")
-    assert not r["interactive"] and "Thinking: high" in r["data"]["texto"], r
+    assert not r["interactive"], r
+    assert 'pediste "high"' in r["data"]["texto"] and 'quedó en "medium"' in r["data"]["texto"], r
 
     # autocompact/steering/followup usan RPC propia — en pi real esa RPC
     # (session.setAutoCompactionEnabled/setSteeringMode/setFollowUpMode) YA
@@ -188,6 +196,27 @@ async def main():
     ids = [m["id"] for m in r["data"]["modelos"]]
     assert set(ids) == {"claude-haiku-4-5", "claude-haiku-4-5-20251001"}, ids
 
+    # Regresión (puro teatro): /model con match exacto confirmaba "✔ Modelo"
+    # sin mirar si set_model realmente tuvo éxito.
+    r = await comando("/model modelo-que-falla")
+    assert not r["interactive"], r
+    assert "No se pudo fijar" in r["data"]["texto"] and "Model not found" in r["data"]["texto"], r
+
+    # Regresión (puro teatro): /new decía "Sesión nueva" aunque new_session
+    # viniera cancelado por un hook — new_session real SIEMPRE success:true,
+    # la cancelación va en data.cancelled.
+    pedir_original_new = proceso.pedir
+
+    async def pedir_new_cancelado(cmd, *a, **kw):
+        if cmd.get("type") == "new_session":
+            return {"success": True, "data": {"cancelled": True}}
+        return await pedir_original_new(cmd, *a, **kw)
+
+    proceso.pedir = pedir_new_cancelado
+    r = await comando("/new")
+    proceso.pedir = pedir_original_new
+    assert "Cancelado" in r["data"]["texto"], r
+
     # Regresión: /name sin arg debía mostrar el nombre actual si ya hay uno
     # seteado — antes siempre mostraba el "Usage:" ignorando ese estado.
     r = await comando("/name")
@@ -224,10 +253,21 @@ async def main():
         return await pedir_original(cmd, *a, **kw)
 
     proceso.pedir = pedir_espia
-    await comando("/compact enfocate en el bug de streaming")
+    r = await comando("/compact enfocate en el bug de streaming")
     proceso.pedir = pedir_original
     compact_cmds = [c for c in comandos_vistos if c.get("type") == "compact"]
     assert compact_cmds and compact_cmds[-1].get("customInstructions") == "enfocate en el bug de streaming", compact_cmds
+    # Regresión CRÍTICA (puro teatro): bridge.py mandaba "Listo — lo viejo
+    # quedó resumido" SIN mirar resp.get('success') — confirmado en vivo con
+    # una sesión real chica: pi devolvía success:false/"Nothing to compact
+    # (session too small)" y Aurora igual decía que había compactado.
+    assert "Compactado" in r["data"]["texto"], r
+    assert "5000" in r["data"]["texto"] and "800" in r["data"]["texto"], r
+    assert "resumen de prueba" in r["data"]["texto"], r
+
+    r = await comando("/compact FALLAR")
+    assert "No se compactó" in r["data"]["texto"], r
+    assert "Nothing to compact" in r["data"]["texto"], r
 
     # /copy manda el texto crudo + 'copiar':True — el clipboard real lo hace
     # el frontend (navigator.clipboard), el backend no puede tocarlo.
