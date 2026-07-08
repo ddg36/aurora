@@ -1,4 +1,4 @@
-const BASE_WS = `ws://${location.hostname}:7779/gemita`;
+const BASE_WS = `ws://${location.hostname}:7779/lyra`;
 const INITIAL_RECONNECT_MS   = 1000;
 const MAX_RECONNECT_MS       = 30000;
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -46,7 +46,7 @@ function _connectInternal() {
     }, { once: true });
     ws.addEventListener('error', () => {
       _ws = null;
-      reject(new Error('Gemita offline'));
+      reject(new Error('Lyra offline'));
       _scheduleReconnect();
     }, { once: true });
     ws.addEventListener('close', () => {
@@ -71,9 +71,9 @@ function _connectInternal() {
   });
 }
 
-export function connectGemita()  { return _connectInternal(); }
+export function connectLyra()  { return _connectInternal(); }
 
-export function disconnectGemita() {
+export function disconnectLyra() {
   _intentionalClose = true;
   if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
   _reconnectAttempts = 0;
@@ -99,14 +99,20 @@ export function getConnectionState() {
   };
 }
 
-export async function sendToGemita({
-  message, images, model, system = '', history = [], tools = [], pure_system = false,
-  onToken, onThinking, onToolCall, onToolResult, onHubAction, onConfirmRequest
+export async function sendToLyra({
+  message, images, model, system = '', history = [], tools = [], pure_system = false, chat_id = null,
+  onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
+  onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
+  onHubAction, onConfirmRequest
 }) {
-  const ws = await connectGemita();
+  const ws = await connectLyra();
   return new Promise((resolve, reject) => {
-    _handlers = { onToken, onThinking, onToolCall, onToolResult, onHubAction, onConfirmRequest, resolve, reject };
-    const payload = { type: 'chat', message, model, system, history, tools, pure_system };
+    _handlers = {
+      onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
+      onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
+      onHubAction, onConfirmRequest, resolve, reject
+    };
+    const payload = { type: 'chat', message, model, system, history, tools, pure_system, chat_id };
     if (images && images.length > 0) {
       payload.message = [
         { type: 'text', text: message },
@@ -121,14 +127,14 @@ export function confirmTool(approved) {
   _ws?.send(JSON.stringify({ type: 'confirm', approved }));
 }
 
-export function resetGemitaSession() {
+export function resetLyraSession() {
   _ws?.send(JSON.stringify({ type: 'reset' }));
 }
 
 export function fetchModels() {
   return new Promise(async resolve => {
     try {
-      const ws = await connectGemita();
+      const ws = await connectLyra();
       const handler = ev => {
         try {
           const msg = JSON.parse(ev.data);
@@ -142,14 +148,45 @@ export function fetchModels() {
   });
 }
 
+export function fetchCommands() {
+  return new Promise(async resolve => {
+    try {
+      const ws = await connectLyra();
+      const handler = ev => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === 'commands') { ws.removeEventListener('message', handler); resolve(msg.commands || []); }
+        } catch {}
+      };
+      ws.addEventListener('message', handler);
+      ws.send(JSON.stringify({ type: 'commands' }));
+      setTimeout(() => { ws.removeEventListener('message', handler); resolve([]); }, 4000);
+    } catch { resolve([]); }
+  });
+}
+
 function _dispatch(msg) {
   if (!_handlers) return;
-  const { onToken, onThinking, onToolCall, onToolResult, onHubAction, onConfirmRequest, resolve, reject } = _handlers;
+  const {
+    onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
+    onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
+    onHubAction, onConfirmRequest, resolve, reject
+  } = _handlers;
   switch (msg.type) {
     case 'token':          onToken?.(msg.content); break;
     case 'thinking':       onThinking?.(msg.content); break;
     case 'tool_call':      onToolCall?.(msg.name, msg.args, msg.risk); break;
-    case 'tool_result':    onToolResult?.(msg.name, msg.output); break;
+    case 'tool_result':    onToolResult?.(msg.name, msg.output, msg.is_error); break;
+    case 'tool_progress':  onToolProgress?.(msg.name, msg.partial); break;
+    case 'message_start':  onMessageStart?.(msg.role); break;
+    case 'message_end':    onMessageEnd?.(msg.role, msg.stop_reason); break;
+    case 'agent_start':    onAgentStart?.(); break;
+    case 'agent_end':      onAgentEnd?.(); break;
+    case 'queue_update':   onQueueUpdate?.(msg.queue); break;
+    case 'session_info':   onSessionInfo?.(msg.session_id, msg.session_name); break;
+    case 'thinking_level': onThinkingLevel?.(msg.level); break;
+    case 'compaction_start': onCompactionStart?.(msg.reason); break;
+    case 'compaction_end':   onCompactionEnd?.(msg.reason); break;
     case 'hub_action_request':
       if (onHubAction) {
         onHubAction(msg.name, msg.args || {}, (output, imageB64) => {

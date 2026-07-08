@@ -4,10 +4,10 @@ const { useState, useEffect, useRef, useCallback } = globalThis.preactHooks;
 import {
   historial, streamingActual, thinkingActual, cargando,
   cargarMensajes, guardarMensaje, agregarMensajeLocal, agregarMensajeRico, limpiarHistorial,
-  limpiarStream, borrarMensaje,
+  limpiarStream, borrarMensaje, parsearMensajeRico, combinarPartesRicas,
 } from '../scripts/chat/mensajes.js';
 import { chats, chatActualId, cargarChats, crearChat, eliminarChat, autoGuardar, fmtFecha, exportarChat } from '../scripts/chat/historial.js';
-import { params, modeloSeleccionado, cargarParametros, guardarParametros, cargarModelo, guardarModelo } from '../scripts/chat/parametros.js';
+import { modeloSeleccionado, cargarModelo, guardarModelo } from '../scripts/chat/parametros.js';
 import { instruccion, cargarInstruccion } from '../scripts/chat/instrucciones.js';
 import { pendingImage, pendingImageDataUrl, setPendingImage, clearPendingImage } from '../scripts/chat/vision.js';
 import {
@@ -18,16 +18,13 @@ import { canvasDoc, canvasVisible, CANVAS_TOOLS, toggleCanvas, canvasWrite, hand
 import {
   renderizarContenido, formatearArgsToolCall, scrollAlFondo, estaCercaDelFondo, inicializarEventosCodigo,
 } from '../scripts/chat/renderizar.js';
-import {
-  typewriterEnabled, typewriterText, cargarTypewriterState, toggleTypewriter,
-  iniciarTypewriter, detenerTypewriter, isTyping,
-} from '../scripts/chat/typewriter.js';
 import { toolActivity, trackStart, trackEnd, clearActivity } from '../scripts/chat/actividad.js';
 import { copiarMensaje, añadirANotas, reformularRespuesta, leerMensaje } from '../scripts/chat/acciones-rapidas.js';
 import { exportarChatPDF } from '../scripts/chat/exportar-pdf.js';
+import { comandosPi, cargarComandos, filtrarComandos, iconoComando } from '../scripts/chat/comandos.js';
 import { HERRAMIENTAS_SISTEMA, promptParaHerramienta } from '../scripts/chat/herramientas.js';
-import { sendToGemita, fetchModels, connectGemita, cancelarMensaje } from '../../../components/shared/gemita-ws.js';
-import { CanvasPanel } from '../../../components/local.views/canvas.js';
+import { sendToLyra, fetchModels, connectLyra, cancelarMensaje } from '../../../components/shared/lyra-ws.js';
+import { CanvasPanel } from '../../../components/lyra.views/canvas.js';
 import { nexusOnline } from '../../../store.js';
 import { getJSON, patchJSON } from '../../../components/shared/api.js';
 import { ParamsPanel } from './params-panel.js';
@@ -81,13 +78,22 @@ function useSig(sig) {
 export function Local() {
   const [mensaje, setMensaje]              = useState('');
   const [previewMd, setPreviewMd]          = useState(false);
+  const [slashSel, setSlashSel]            = useState(-1);
+  const comandosVal                        = useSig(comandosPi);
+  const slashCmds  = slashSel >= 0 ? filtrarComandos(comandosVal, mensaje) : [];
+  const slashIdx   = slashCmds.length ? Math.min(slashSel, slashCmds.length - 1) : -1;
+  const elegirComando = (cmd) => {
+    if (!cmd) return;
+    setMensaje('/' + cmd.name + ' ');
+    setSlashSel(-1);
+    document.querySelector('.composer-textarea')?.focus();
+  };
   const historialVal                       = useSig(historial);
   const streamingVal                       = useSig(streamingActual);
   const thinkingVal                        = useSig(thinkingActual);
   const cargandoVal                        = useSig(cargando);
   const chatsVal                           = useSig(chats);
   const chatIdVal                          = useSig(chatActualId);
-  const parametrosVal                      = useSig(params);
   const modeloVal                          = useSig(modeloSeleccionado);
   const instruccionVal                     = useSig(instruccion);
   const pendingImageDataUrlVal             = useSig(pendingImageDataUrl);
@@ -96,10 +102,8 @@ export function Local() {
   const ttsEnabled                         = useSig(autoVoz);
   const vocesVal                           = useSig(voces);
   const vozVal                             = useSig(vozSeleccionada);
-  const typewriterOn                       = useSig(typewriterEnabled);
-  const typewriterHtml                     = useSig(typewriterText);
   const toolActivityVal                    = useSig(toolActivity);
-  const gemitaOnline                       = useSig(nexusOnline);
+  const lyraOnline                       = useSig(nexusOnline);
   const canvasCodeVal                      = useSig(canvasDoc);
   const canvasVisibleVal                   = useSig(canvasVisible);
 
@@ -121,28 +125,28 @@ export function Local() {
   const [plusOpen, setPlusOpen]                     = useState(null);
   const [nexusPendiente, setNexusPendiente]         = useState(null);
   const [avatar, setAvatar]                         = useState(null);
+  const [asistenteEnVivo, setAsistenteEnVivo]       = useState({ blocks: [] });
+  const assistantMessageRef                          = useRef(asistenteEnVivo);
 
   const chatRef   = useRef(null);
-  const enFondo   = useRef(true);
+  const [enFondo, setEnFondo]   = useState(true);
   const iframeRef = useRef(null);
 
   const cloudAiLabel = AI_LABELS[cloudAiId] || cloudAiId || 'Cloud';
-  const offline = !gemitaOnline;
+  const offline = !lyraOnline;
 
   useEffect(() => {
-    cargarParametros();
     cargarInstruccion();
     cargarModelo();
     cargarVoces();
     cargarCanvas();
-    cargarTypewriterState();
     cargarChats().then(() => {
       if (!chatActualId.value && chats.value.length > 0) {
         chatActualId.value = chats.value[0].id;
       }
     });
     fetchModels().then(ms => setModelosDisp(ms || [])).catch(() => {});
-    connectGemita().catch(() => {});
+    connectLyra().catch(() => {});
     getJSON('/db/ajustes/avatar').then(d => {
       if (d?.valor) try { setAvatar(JSON.parse(d.valor)); } catch {}
     }).catch(() => {});
@@ -153,8 +157,8 @@ export function Local() {
       if (lang) setCanvasLang(lang);
       setCanvasTab('codigo');
     };
-    document.addEventListener('gemita:canvas', onCanvasEvent);
-    return () => document.removeEventListener('gemita:canvas', onCanvasEvent);
+    document.addEventListener('lyra:canvas', onCanvasEvent);
+    return () => document.removeEventListener('lyra:canvas', onCanvasEvent);
   }, []);
 
   useEffect(() => {
@@ -162,19 +166,18 @@ export function Local() {
   }, [chatIdVal]);
 
   useEffect(() => {
-    if (streamingVal) iniciarTypewriter(streamingVal, () => {});
-    else detenerTypewriter();
-  }, [streamingVal]);
-
-  useEffect(() => {
-    if (enFondo.current) scrollAlFondo(chatRef.current);
+    const enVuelo = cargandoVal || streamingVal || thinkingVal;
+    if (enVuelo || enFondo) {
+      scrollAlFondo(chatRef.current);
+      if (enVuelo) setEnFondo(true);
+    }
     inicializarEventosCodigo(chatRef.current, {
       onNotas: añadirANotas,
       onRun: code => {
         setMensaje(`Ejecutá este comando con run_bash y mostrame el output:\n\`\`\`bash\n${code}\n\`\`\``);
       },
     });
-  }, [historialVal, streamingVal, typewriterHtml, cargandoVal]);
+  }, [historialVal, streamingVal, cargandoVal, thinkingVal]);
 
   const enviarMensaje = useCallback(async (textoDirecto) => {
     const opciones = textoDirecto && typeof textoDirecto === 'object' ? textoDirecto : {};
@@ -195,31 +198,100 @@ export function Local() {
 
     cargando.value = true;
     limpiarStream();
+    const msg0 = { blocks: [] };
+    assistantMessageRef.current = msg0;
+    setAsistenteEnVivo(msg0);
     let respuesta = '';
     let thinking  = '';
     const trackIds = {};
 
+    // Agrega texto/thinking al último bloque si es del mismo tipo (acumula
+    // la generación real en curso); si no, abre un bloque nuevo — igual que
+    // el message.content de pi: array cronológico único, nunca 4 baldes sueltos.
+    const agregarTexto = (tipo, delta) => {
+      const blocks = assistantMessageRef.current.blocks;
+      const ultimo = blocks[blocks.length - 1];
+      const nuevos = ultimo && ultimo.tipo === tipo
+        ? [...blocks.slice(0, -1), { ...ultimo, contenido: ultimo.contenido + delta }]
+        : [...blocks, { tipo, contenido: delta }];
+      assistantMessageRef.current = { blocks: nuevos };
+      setAsistenteEnVivo(assistantMessageRef.current);
+    };
+
     try {
-      await sendToGemita({
+      await sendToLyra({
         message: texto,
         model:   modeloSeleccionado.value,
         system:  instruccion.value,
         history: (opciones.history || historial.value.slice(-20, -1)).map(m => ({ role: m.role, content: m.content })),
         tools:   CANVAS_TOOLS,
+        chat_id: chatActualId.value,
         onToken: token => {
           respuesta += token;
           streamingActual.value = respuesta;
+          agregarTexto('text', token);
         },
         onThinking: t => {
           thinking += t;
           thinkingActual.value = thinking;
+          agregarTexto('thinking', t);
         },
         onToolCall: (name, args, risk) => {
           trackIds[name] = trackStart(name, args, { risk });
+          const argsStr = JSON.stringify(args || {});
+          const toolCallId = Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+          const argsPreview = argsStr.length > 120 ? argsStr.slice(0, 120) + '…' : argsStr;
+          assistantMessageRef.current = {
+            blocks: [...assistantMessageRef.current.blocks,
+              { tipo: 'tool', id: toolCallId, name, args: argsPreview, output: null, isError: false, status: 'running' }],
+          };
+          setAsistenteEnVivo(assistantMessageRef.current);
         },
         onToolResult: (name, output) => {
           const isErr = /^Error/i.test(String(output || ''));
           trackEnd(trackIds[name], isErr ? 'error' : 'ok', String(output ?? '').slice(0, 200));
+          const out = String(output ?? '').trim();
+          const corto = out.length > 700 ? out.slice(0, 700) + '\n…(truncado)' : out;
+          const blocks = assistantMessageRef.current.blocks;
+          let idx = -1;
+          for (let i = blocks.length - 1; i >= 0; i--) {
+            if (blocks[i].tipo === 'tool' && blocks[i].name === name && blocks[i].status === 'running') { idx = i; break; }
+          }
+          if (idx >= 0) {
+            const actualizado = { ...blocks[idx], output: corto, isError: isErr, status: isErr ? 'error' : 'success' };
+            assistantMessageRef.current = { blocks: [...blocks.slice(0, idx), actualizado, ...blocks.slice(idx + 1)] };
+            setAsistenteEnVivo(assistantMessageRef.current);
+          }
+        },
+        onToolProgress: (name, partial) => {
+          // tool progress - could be used to show partial results
+        },
+        onMessageStart: role => {
+          // message start - could be used to show message status
+        },
+        onMessageEnd: (role, stopReason) => {
+          // message end - could be used to show completion status
+        },
+        onAgentStart: () => {
+          // agent start - could be used to show working indicator
+        },
+        onAgentEnd: () => {
+          // agent end - could be used to hide working indicator
+        },
+        onQueueUpdate: queue => {
+          // queue update - could be used to show queued items
+        },
+        onSessionInfo: (sessionId, sessionName) => {
+          // session info - could be used to update session display
+        },
+        onThinkingLevel: level => {
+          // thinking level - could be used to show thinking level
+        },
+        onCompactionStart: reason => {
+          // compaction start - could be used to show compaction status
+        },
+        onCompactionEnd: reason => {
+          // compaction end - could be used to hide compaction status
         },
         onHubAction: (name, args, respond) => {
           handleHubAction(name, args, respond);
@@ -230,18 +302,32 @@ export function Local() {
               task_id: name,
               payload: command,
               risk_level: String(risk || 'MEDIUM').toUpperCase(),
-              description: `Gemita quiere ejecutar ${name}`,
+              description: `Lyra quiere ejecutar ${name}`,
             },
             confirm,
           });
         },
       });
       streamingActual.value = '';
-      detenerTypewriter();
       if (!opciones.skipUserSave) await guardarMensaje(chatActualId.value, 'user', texto);
-      if (respuesta) {
-        agregarMensajeRico({ role: 'assistant', content: respuesta, thinking: thinking || null });
-        await guardarMensaje(chatActualId.value, 'assistant', respuesta);
+      if (assistantMessageRef.current.blocks.length) {
+        // Serializa los bloques EN ORDEN cronológico real — mismo criterio
+        // que message.content de pi, para que al recargar el chat se vea
+        // exactamente en la secuencia en que pasó.
+        const partes = assistantMessageRef.current.blocks.map(b => {
+          if (b.tipo === 'thinking') return `[thinking]\n${b.contenido}\n[/thinking]`;
+          if (b.tipo === 'text') return b.contenido;
+          if (b.tipo === 'tool') {
+            const call = `[tool_call:${b.name}]\n${b.args}\n[/tool_call:${b.name}]`;
+            if (b.output == null) return call;
+            const abre = b.isError ? `[tool_result:${b.name}:error]` : `[tool_result:${b.name}]`;
+            return `${call}\n${abre}\n${b.output}\n[/tool_result:${b.name}]`;
+          }
+          return '';
+        });
+        const contenidoFinal = partes.filter(Boolean).join('\n\n');
+        agregarMensajeRico({ role: 'assistant', content: contenidoFinal, thinking: thinking || null });
+        await guardarMensaje(chatActualId.value, 'assistant', contenidoFinal);
       }
       await autoGuardar(historial.value, modeloSeleccionado.value);
       if (autoVoz.value && respuesta) {
@@ -250,11 +336,12 @@ export function Local() {
       }
     } catch (e) {
       streamingActual.value = '';
-      detenerTypewriter();
       agregarMensajeLocal('assistant', `Error: ${e.message}`);
     } finally {
       cargando.value = false;
       setNexusPendiente(null);
+      assistantMessageRef.current = { blocks: [] };
+      setAsistenteEnVivo({ blocks: [] });
     }
   }, [mensaje]);
 
@@ -289,11 +376,12 @@ export function Local() {
 
   const detenerGeneracion = useCallback(() => {
     cancelarMensaje();
-    detenerTypewriter();
     if (streamingActual.value) {
       agregarMensajeLocal('assistant', streamingActual.value);
       streamingActual.value = '';
     }
+    assistantMessageRef.current = { blocks: [] };
+    setAsistenteEnVivo({ blocks: [] });
     cargando.value = false;
   }, []);
 
@@ -318,6 +406,9 @@ export function Local() {
   }, [enviarMensaje]);
 
   const nuevoChat = useCallback(async () => {
+    cancelarMensaje();
+    assistantMessageRef.current = { blocks: [] };
+    setAsistenteEnVivo({ blocks: [] });
     limpiarHistorial();
     chatActualId.value = null;
     const chat = await crearChat('Chat sin nombre');
@@ -326,15 +417,6 @@ export function Local() {
 
   const cambiarChat = useCallback(id => {
     if (id) chatActualId.value = id;
-  }, []);
-
-  const setParametro = useCallback((clave, valor) => {
-    params.value = { ...params.value, [clave]: Number(valor) };
-  }, []);
-
-  const restablecerParametros = useCallback(() => {
-    guardarParametros({ temperatura: 0.7, top_p: 0.9, top_k: 40, seed: -1, num_ctx: 4096 });
-    Toast().setStatus('◉ Parámetros restablecidos');
   }, []);
 
   const cargarImagen = useCallback((blob) => {
@@ -445,7 +527,7 @@ export function Local() {
   }, []);
 
   const onChatScroll = useCallback(() => {
-    enFondo.current = estaCercaDelFondo(chatRef.current);
+    setEnFondo(estaCercaDelFondo(chatRef.current));
   }, []);
 
   const visibleMessages = historialVal.filter(m => !m._internal);
@@ -508,17 +590,11 @@ export function Local() {
             ${vocesVal.map(v => html`<option key=${v.id} value=${v.id}>${v.nombre}</option>`)}
           </select>
         `}
-        <span class=${'text-[10px] px-1.5 ' + (gemitaOnline ? 'text-aurora-success' : 'text-aurora-error')} title=${gemitaOnline ? 'Gemita online' : 'Gemita offline'}>●</span>
+        <span class=${'text-[10px] px-1.5 ' + (lyraOnline ? 'text-aurora-success' : 'text-aurora-error')} title=${lyraOnline ? 'Lyra online' : 'Lyra offline'}>●</span>
       </div>
 
       ${mostrarParametros && html`
-        <${ParamsPanel}
-          parametrosVal=${parametrosVal}
-          setParametro=${setParametro}
-          restablecerParametros=${restablecerParametros}
-          instruccionVal=${instruccionVal}
-          guardarParametros=${guardarParametros}
-        />
+        <${ParamsPanel} instruccionVal=${instruccionVal} />
       `}
 
       ${mostrarHistorial && html`
@@ -582,38 +658,107 @@ export function Local() {
         >
         ${visibleMessages.length === 0 && !streamingVal && html`
           <div class="empty-chat">
-            <p>⚡ Gemita — Local AI</p>
+            <p>⚡ Lyra — Local AI</p>
             <p class="hint">${offline
-              ? 'Gemita offline. Inicia el servidor Aurora primero.'
+              ? 'Lyra offline. Inicia el servidor Aurora primero.'
               : 'Envía un mensaje para comenzar'}</p>
           </div>
         `}
 
         ${visibleMessages.map((msg, idx) => {
           if (msg.role === 'system') return null;
-          if (msg._toolCall) return html`
-            <div key=${idx} class="message tool-call">
-              <span class="tool-call-icon">⚙</span>
-              <span class="tool-call-text">${formatearArgsToolCall(msg.tool_calls)}</span>
-            </div>
-          `;
-          if (msg._toolResult || msg.role === 'tool') return html`
-            <div key=${idx} class="message tool-result">
-              <span class="tool-result-icon">↩</span>
-              <span class="tool-result-name">${msg.name || 'tool'}</span>
-              <span class="tool-result-content">${(msg.content || '').slice(0, 200)}${msg.content?.length > 200 ? '…' : ''}</span>
-            </div>
-          `;
           const esExterno = msg._via === 'direct-ai' || msg._via === 'duo-external';
           const rolLabel = msg.role === 'user'
             ? '👤 Tú'
             : esExterno
               ? `${AI_ICONOS[cloudAiId] || '☁'} ${AI_LABELS[cloudAiId] || 'AI ext'}`
-              : '🦙 Gemita';
+              : '🦙 Lyra';
+
+          if (msg.role === 'assistant') {
+            const parsed = combinarPartesRicas(parsearMensajeRico(msg.content));
+            return html`
+              <div key=${idx} class="message assistant">
+                <div class="message-header">
+                  <span class="role">${rolLabel}</span>
+                  <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
+                  ${msg.id && html`
+                    <button
+                      class=${'msg-pin-btn' + (estaFijado(msg) ? ' fijado' : '')}
+                      onClick=${() => togglePin(msg)}
+                      title=${estaFijado(msg) ? 'Desfijar mensaje' : 'Fijar mensaje'}
+                    >${estaFijado(msg) ? '📌' : '📍'}</button>
+                  `}
+                  <button
+                    class="msg-speak-btn"
+                    onClick=${() => hablar(msg.content)}
+                    title="Releer mensaje"
+                  >🔊</button>
+                </div>
+                ${parsed.length ? parsed.map((p, i) => {
+                  if (p.tipo === 'thinking') {
+                    const key = `${idx}_${i}`;
+                    return html`
+                      <div key=${key} class="message-thinking">
+                        <button
+                          class="thinking-toggle-inline"
+                          onClick=${() => setExpandedThinking(prev => ({ ...prev, [key]: !prev[key] }))}
+                        >${expandedThinking[key] ? '▼' : '▶'} Thinking</button>
+                        ${expandedThinking[key] && html`
+                          <div class="thinking-content-inline"><pre>${p.contenido}</pre></div>
+                        `}
+                      </div>
+                    `;
+                  }
+                  if (p.tipo === 'text') {
+                    return html`
+                      <div key=${idx + '_' + i} class="message-content"
+                        dangerouslySetInnerHTML=${{ __html: renderizarContenido(p.contenido) }}
+                      ></div>
+                    `;
+                  }
+                  if (p.tipo === 'tool') {
+                    return html`
+                      <div key=${idx + '_' + i}>
+                        <div class="message tool-call">
+                          <span class="tool-call-icon">⚙</span>
+                          <span class="tool-call-text">▶ ${p.nombre} \`${p.args}\`</span>
+                        </div>
+                        ${p.output != null && html`
+                          <div class="message tool-result">
+                            <span class="tool-result-icon">↩</span>
+                            <span class="tool-result-name">${p.nombre}</span>
+                            <span class="tool-result-content">${p.isError ? '✗ ' : ''}${p.output}</span>
+                          </div>
+                        `}
+                      </div>
+                    `;
+                  }
+                  return null;
+                }) : html`
+                  <div class="message-content"
+                    dangerouslySetInnerHTML=${{ __html: renderizarContenido(msg.content) }}
+                  ></div>
+                `}
+                <div class=${quickActionsClass}>
+                  <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles">📋 Copiar</button>
+                  <button class=${actionChipClass} onClick=${() => añadirANotas(msg.content)} title="Añadir a notas">✎ A notas</button>
+                  <button class=${actionChipClass} onClick=${() => reformularRespuesta(regenerarRespuesta, msg)} title="Regenerar respuesta">↻ Regenerar</button>
+                  <button class=${actionChipClass} onClick=${() => leerMensaje(msg.content)} title="Leer mensaje">🔊 Leer</button>
+                </div>
+              </div>
+            `;
+          }
+
+          const esExternoFinal = msg._via === 'direct-ai' || msg._via === 'duo-external';
+          const rolLabelFinal = msg.role === 'user'
+            ? '👤 Tú'
+            : esExternoFinal
+              ? `${AI_ICONOS[cloudAiId] || '☁'} ${AI_LABELS[cloudAiId] || 'AI ext'}`
+              : '🦙 Lyra';
           return html`
-            <div key=${idx} class=${'message ' + msg.role + (esExterno ? ' direct-ai' : '')}>
+            <div key=${idx} class=${'message ' + msg.role + (esExternoFinal ? ' direct-ai' : '')}>
               <div class="message-header">
-                <span class="role">${rolLabel}</span>
+                <span class="role">${rolLabelFinal}</span>
                 <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
                 ${msg.id && html`
                   <button
@@ -622,77 +767,66 @@ export function Local() {
                     title=${estaFijado(msg) ? 'Desfijar mensaje' : 'Fijar mensaje'}
                   >${estaFijado(msg) ? '📌' : '📍'}</button>
                 `}
-                ${msg.role === 'assistant' && html`
-                  <button
-                    class="msg-speak-btn"
-                    onClick=${() => hablar(msg.content)}
-                    title="Releer mensaje"
-                  >🔊</button>
-                `}
               </div>
-              ${msg.role === 'assistant' && msg.thinking && html`
-                <div class="message-thinking">
-                  <button
-                    class="thinking-toggle-inline"
-                    onClick=${() => setExpandedThinking(prev => ({ ...prev, [idx]: !prev[idx] }))}
-                  >
-                    ${expandedThinking[idx] ? '▼' : '▶'} Thinking
-                  </button>
-                  ${expandedThinking[idx] && html`
-                    <div class="thinking-content-inline">
-                      <pre>${msg.thinking}</pre>
-                    </div>
-                  `}
-                </div>
-              `}
               <div class="message-content"
-                dangerouslySetInnerHTML=${{ __html: renderizarContenido(msg.content, { externo: esExterno }) }}
+                dangerouslySetInnerHTML=${{ __html: renderizarContenido(msg.content, { externo: esExternoFinal }) }}
               ></div>
-              ${msg.image && html`
-                <img class="msg-image-thumb" src=${'data:image/png;base64,' + msg.image} />
-              `}
-              ${msg.role === 'assistant' && html`
-                <div class=${quickActionsClass}>
-                  <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles">📋 Copiar</button>
-                  <button class=${actionChipClass} onClick=${() => añadirANotas(msg.content)} title="Añadir a notas">✎ A notas</button>
-                  <button class=${actionChipClass} onClick=${() => reformularRespuesta(regenerarRespuesta, msg)} title="Regenerar respuesta">↻ Regenerar</button>
-                  <button class=${actionChipClass} onClick=${() => leerMensaje(msg.content)} title="Leer mensaje">🔊 Leer</button>
-                </div>
-              `}
             </div>
           `;
         })}
 
-        ${thinkingVal && cargandoVal && !streamingVal && html`
-          <div class="message assistant">
-            <div class="message-thinking">
-              <button
-                class="thinking-toggle-inline"
-                onClick=${() => setExpandedThinking(prev => ({ ...prev, _live: !prev._live }))}
-              >${expandedThinking._live ? '▼' : '▶'} Thinking…</button>
-              ${expandedThinking._live && html`
-                <div class="thinking-content-inline"><pre>${thinkingVal}</pre></div>
-              `}
-            </div>
-          </div>
-        `}
-
-        ${streamingVal && html`
+        ${(streamingVal || asistenteEnVivo.blocks.length > 0) && html`
           <div class="message assistant streaming">
             <div class="message-header">
-              <span class="role">🦙 Gemita</span>
+              <span class="role">🦙 Lyra</span>
               <span class="streaming-dot">●</span>
             </div>
-            <div class="message-content"
-              dangerouslySetInnerHTML=${{ __html: (typewriterOn && typewriterHtml) || renderizarContenido(streamingVal) }}
-            ></div>
-            ${isTyping() && html`<span class="typewriter-cursor">▋</span>`}
+            ${asistenteEnVivo.blocks.map((b, i) => {
+              if (b.tipo === 'thinking') {
+                return html`
+                  <div key=${'b' + i} class="message-thinking">
+                    <button
+                      class="thinking-toggle-inline"
+                      onClick=${() => setExpandedThinking(prev => ({ ...prev, _live: !prev._live }))}
+                    >${expandedThinking._live ? '▼' : '▶'} Thinking</button>
+                    ${expandedThinking._live && html`
+                      <div class="thinking-content-inline"><pre>${b.contenido}</pre></div>
+                    `}
+                  </div>
+                `;
+              }
+              if (b.tipo === 'text') {
+                return html`
+                  <div key=${'b' + i} class="message-content"
+                    dangerouslySetInnerHTML=${{ __html: renderizarContenido(b.contenido) }}
+                  ></div>
+                `;
+              }
+              if (b.tipo === 'tool') {
+                return html`
+                  <div key=${'b' + i} class=${'message tool-execution ' + (b.status === 'error' ? 'tool-error' : b.status === 'running' ? 'tool-running' : 'tool-success')}>
+                    <div class="tool-execution-header">
+                      <span class="tool-execution-icon">${b.status === 'running' ? '⟳' : b.status === 'error' ? '✗' : '✓'}</span>
+                      <span class="tool-execution-name">${b.name}</span>
+                      <span class="tool-execution-preview">${b.args}</span>
+                    </div>
+                    ${b.output && html`
+                      <div class="tool-execution-output">
+                        <pre>${b.output.length > 1000 ? b.output.slice(0, 1000) + '\n…(truncado)' : b.output}</pre>
+                      </div>
+                    `}
+                  </div>
+                `;
+              }
+              return null;
+            })}
+            ${cargandoVal && asistenteEnVivo.blocks[asistenteEnVivo.blocks.length - 1]?.tipo === 'text' && html`<span class="typewriter-cursor">▋</span>`}
           </div>
         `}
 
         ${cargandoVal && !streamingVal && !thinkingVal && html`
           <div class="message assistant loading">
-            <div class="message-header"><span class="role">🦙 Gemita</span></div>
+            <div class="message-header"><span class="role">🦙 Lyra</span></div>
             <div class="message-content">
               <span class="typing-indicator">◌ Pensando…</span>
             </div>
@@ -705,21 +839,20 @@ export function Local() {
       ${toolActivityVal.length > 0 && html`
         <div class="tool-activity-bar fx-tool-activity" role="log" aria-label="Actividad de herramientas">
           <div class="tool-activity-head">
-            <span class="tool-activity-count">Tools ${toolActivityVal.length}</span>
+            <span class="tool-activity-count">Tools ${toolActivityVal.filter(e => e.status === 'running' || e.status === 'ok' || e.status === 'error').length}</span>
             <button class="act-clear" onClick=${clearActivity} title="Limpiar actividad">✕</button>
           </div>
           <div class="tool-activity-list">
-          ${toolActivityVal.slice(0, 12).map(e => html`
-            <div key=${e.id}
-              class=${'act-entry fx-tool-chip act-' + e.status}
-              title=${e.result || ''}
-            >
-              <span class="act-icon">${e.status === 'running' ? '⟳' : e.status === 'error' ? '✗' : '✓'}</span>
-              <span class="act-name">${e.name}</span>
-              ${e.preview && html`<span class="act-args">${e.preview}</span>`}
-              <span class="act-ms">${e.ms != null ? e.ms + 'ms' : '…'}</span>
-            </div>
-          `)}
+            ${toolActivityVal.filter(e => e.status === 'running' || e.status === 'ok' || e.status === 'error').map(e => html`
+              <div key=${e.id}
+                class=${'act-entry fx-tool-chip act-' + e.status}
+                title=${e.result || ''}
+              >
+                <span class="act-icon">${e.status === 'running' ? '⟳' : e.status === 'error' ? '✗' : '✓'}</span>
+                <span class="act-name">${e.name}</span>
+                ${e.preview && html`<span class="act-args">${e.preview}</span>`}
+              </div>
+            `)}
           </div>
         </div>
       `}
@@ -800,7 +933,7 @@ export function Local() {
           <button
             class=${'btn-duo ' + controlBtnIdle}
             onClick=${() => Toast().show('⇄ Duo requiere la extensión de browser (FASE extensions)', 'warning', 2500)}
-            title="Modo Duo — Gemita ↔ AI externo"
+            title="Modo Duo — Lyra ↔ AI externo"
           >⇄ Duo</button>
 
           <span class="flex-1"></span>
@@ -815,11 +948,6 @@ export function Local() {
             onClick=${toggleAutoVoz}
             title=${ttsEnabled ? 'Desactivar voz' : 'Activar voz'}
           >${ttsEnabled ? '🔊' : '🔇'}</button>
-          <button
-            class=${'btn-typewriter ' + (typewriterOn ? controlBtnActive : controlBtnIdle)}
-            onClick=${toggleTypewriter}
-            title=${typewriterOn ? 'Desactivar typewriter' : 'Typewriter — efecto de escritura'}
-          >⚡</button>
         </div>
 
         ${cloudMenu && html`
@@ -846,6 +974,27 @@ export function Local() {
         `}
 
         <div class="px-2 pt-1 pb-3 relative" style="z-index:5">
+          ${slashSel >= 0 && html`
+            <div class="slash-menu">
+              ${slashCmds.length === 0 && html`
+                <div class="slash-item slash-item--empty">
+                  ${comandosVal.length ? 'Sin comandos que coincidan' : 'Cargando comandos de pi…'}
+                </div>
+              `}
+              ${slashCmds.map((c, i) => html`
+                <div
+                  key=${c.name}
+                  class=${'slash-item' + (i === slashIdx ? ' slash-item--sel' : '')}
+                  onMouseDown=${e => { e.preventDefault(); elegirComando(c); }}
+                  onMouseEnter=${() => setSlashSel(i)}
+                >
+                  <span class="slash-item-icon">${iconoComando(c.source)}</span>
+                  <span class="slash-item-name">/${c.name}</span>
+                  <span class="slash-item-desc">${(c.description || '').split('\n')[0].slice(0, 90)}</span>
+                </div>
+              `)}
+            </div>
+          `}
           <div class=${'composer-box' + (mensaje.trim() || pendingImageDataUrlVal ? ' composer-box--expanded' : '')}>
 
             ${previewMd && mensaje.trim() && html`
@@ -856,8 +1005,23 @@ export function Local() {
             <textarea
               class="composer-textarea"
               value=${mensaje}
-              onInput=${e => setMensaje(e.target.value)}
+              onInput=${e => {
+                const v = e.target.value;
+                setMensaje(v);
+                if (v.startsWith('/') && !v.includes('\n')) {
+                  cargarComandos();
+                  setSlashSel(s => (s < 0 ? 0 : s));
+                } else {
+                  setSlashSel(-1);
+                }
+              }}
               onKeyDown=${e => {
+                if (slashSel >= 0) {
+                  if (e.key === 'ArrowDown' && slashCmds.length) { e.preventDefault(); setSlashSel((slashIdx + 1) % slashCmds.length); return; }
+                  if (e.key === 'ArrowUp' && slashCmds.length)   { e.preventDefault(); setSlashSel((slashIdx - 1 + slashCmds.length) % slashCmds.length); return; }
+                  if ((e.key === 'Tab' || e.key === 'Enter') && slashCmds.length) { e.preventDefault(); elegirComando(slashCmds[slashIdx]); return; }
+                  if (e.key === 'Escape') { setSlashSel(-1); return; }
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   enviarMensaje();
@@ -866,7 +1030,7 @@ export function Local() {
               onPaste=${handlePaste}
               onDrop=${handleDrop}
               onDragOver=${e => e.preventDefault()}
-              placeholder=${offline ? 'Gemita offline…' : 'Pregunta lo que quieras'}
+              placeholder=${offline ? 'Lyra offline…' : 'Pregunta lo que quieras'}
               rows="1"
             />
 
@@ -890,6 +1054,17 @@ export function Local() {
                 title="Vista previa Markdown"
                 onClick=${() => setPreviewMd(p => !p)}
               >👁</button>
+              <button
+                class=${'composer-icon-btn' + (slashSel >= 0 ? ' text-aurora-accent' : '')}
+                title="Comandos pi (/)"
+                onClick=${() => {
+                  if (slashSel >= 0) { setSlashSel(-1); return; }
+                  cargarComandos();
+                  if (!mensaje.startsWith('/')) setMensaje('/');
+                  setSlashSel(0);
+                  document.querySelector('.composer-textarea')?.focus();
+                }}
+              >/</button>
               ${plusOpen && html`
                 <div
                   class="composer-plus-menu"

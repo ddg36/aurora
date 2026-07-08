@@ -94,6 +94,83 @@ export function agregarMensajeRico(msg) {
   appendIfNotLast({ ts: Date.now(), ...msg });
 }
 
+export function parsearMensajeRico(content) {
+  if (!content) return [];
+  const partes = [];
+  const lineas = content.split('\n');
+  let i = 0;
+  while (i < lineas.length) {
+    const linea = lineas[i];
+    if (linea.startsWith('[thinking]')) {
+      const contenido = [];
+      i++;
+      while (i < lineas.length && lineas[i] !== '[/thinking]') {
+        contenido.push(lineas[i]);
+        i++;
+      }
+      partes.push({ tipo: 'thinking', contenido: contenido.join('\n').trim() });
+      i++;
+    } else if (linea.startsWith('[tool_call:')) {
+      const nombre = linea.slice('[tool_call:'.length, linea.lastIndexOf(']'));
+      const contenido = [];
+      i++;
+      while (i < lineas.length && lineas[i] !== `[/tool_call:${nombre}]`) {
+        contenido.push(lineas[i]);
+        i++;
+      }
+      partes.push({ tipo: 'tool_call', nombre, id: null, args: contenido.join('\n').trim() });
+      i++;
+    } else if (linea.startsWith('[tool_result:')) {
+      const rest = linea.slice('[tool_result:'.length, linea.lastIndexOf(']'));
+      const isError = rest.endsWith(':error');
+      const nombre = isError ? rest.slice(0, -':error'.length) : rest;
+      const contenido = [];
+      i++;
+      while (i < lineas.length && lineas[i] !== `[/tool_result:${nombre}]`) {
+        contenido.push(lineas[i]);
+        i++;
+      }
+      partes.push({ tipo: 'tool_result', nombre, id: null, output: contenido.join('\n').trim(), isError });
+      i++;
+    } else if (linea.trim()) {
+      const contenido = [];
+      while (i < lineas.length && !lineas[i].startsWith('[')) {
+        contenido.push(lineas[i]);
+        i++;
+      }
+      const texto = contenido.join('\n').trim();
+      if (texto) partes.push({ tipo: 'text', contenido: texto });
+    } else {
+      i++;
+    }
+  }
+  return partes.filter(p => p.contenido || p.tipo !== 'text');
+}
+
+// Empareja tool_call+tool_result consecutivos (mismo nombre) en un solo bloque
+// 'tool', preservando el orden cronológico real en que pi los generó.
+export function combinarPartesRicas(partes) {
+  const combinado = [];
+  for (let i = 0; i < partes.length; i++) {
+    const p = partes[i];
+    if (p.tipo !== 'tool_call') {
+      combinado.push(p);
+      continue;
+    }
+    const siguiente = partes[i + 1];
+    const conResultado = siguiente && siguiente.tipo === 'tool_result' && siguiente.nombre === p.nombre;
+    combinado.push({
+      tipo: 'tool',
+      nombre: p.nombre,
+      args: p.args,
+      output: conResultado ? siguiente.output : null,
+      isError: conResultado ? siguiente.isError : false,
+    });
+    if (conResultado) i++;
+  }
+  return combinado;
+}
+
 export function limpiarHistorial() {
   historial.value = [];
   limpiarStream();

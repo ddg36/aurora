@@ -1,0 +1,72 @@
+# ══════════════════════════════════════════════════════
+#  PI ROUTER — WebSocket /lyra (Lyra = chat local sobre pi).
+#  Mismo protocolo WS que usaba gemita: la UI no cambia.
+#  El chat corre como task; cancel/confirm entran por el
+#  loop receptor mientras pi streamea.
+# ══════════════════════════════════════════════════════
+
+import asyncio
+import logging
+
+from litestar import websocket
+from litestar.connection import WebSocket
+
+from .bridge import PiBridge
+
+log = logging.getLogger('aurora.pi')
+
+
+@websocket('/lyra')
+async def pi_ws(socket: WebSocket) -> None:
+    await socket.accept()
+    bridge = PiBridge(socket)
+
+    try:
+        await bridge.enviar_estado('session_init')
+
+        while True:
+            try:
+                msg = await socket.receive_json()
+            except Exception:
+                break
+            if not isinstance(msg, dict):
+                continue
+
+            tipo = msg.get('type')
+
+            if tipo == 'chat':
+                if bridge.chat_task and not bridge.chat_task.done():
+                    await bridge.send({'type': 'error', 'message': 'pi ocupado: ya hay un chat en curso'})
+                    continue
+                bridge.chat_task = asyncio.create_task(bridge.manejar_chat(msg))
+
+            elif tipo == 'cancel':
+                asyncio.create_task(bridge.cancelar())
+
+            elif tipo == 'confirm':
+                await bridge.responder_confirm(bool(msg.get('approved')))
+
+            elif tipo == 'models':
+                await bridge.manejar_models()
+
+            elif tipo == 'commands':
+                await bridge.manejar_commands()
+
+            elif tipo == 'reset':
+                await bridge.reset(msg)
+
+            elif tipo == 'status':
+                await bridge.enviar_estado('status')
+
+            elif tipo == 'hub_action_result':
+                log.info('hub_action_result ignorado con engine pi')
+
+            else:
+                await bridge.send({'type': 'error', 'message': f'Tipo de mensaje no soportado: {tipo}'})
+
+    finally:
+        if bridge.chat_task and not bridge.chat_task.done():
+            bridge.chat_task.cancel()
+
+
+PI_ROUTES = [pi_ws]
