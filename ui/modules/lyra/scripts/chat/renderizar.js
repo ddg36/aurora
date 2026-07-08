@@ -90,12 +90,91 @@ export function renderMarkdownLight(text) {
                `<pre>${hl}</pre>` +
              `</div>`;
     }
-    return escape(p.c)
-      .replace(/`([^`\n]+)`/g,       '<code>$1</code>')
-      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*([^*\n]+)\*/g,     '<em>$1</em>')
-      .replace(/\n/g,                '<br>');
+    return renderBloqueTexto(p.c);
   }).join('');
+}
+
+function inline(s) {
+  return escape(s)
+    .replace(/`([^`\n]+)`/g,       '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g,     '<em>$1</em>')
+    .replace(/\[([^\]\n]+)\]\(([^)\n]+)\)/g, '<a class="md-link" href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+function parseFilaTabla(linea) {
+  let celdas = linea.split('|');
+  if (celdas.length && celdas[0].trim() === '') celdas = celdas.slice(1);
+  if (celdas.length && celdas[celdas.length - 1].trim() === '') celdas = celdas.slice(0, -1);
+  return celdas.map(c => c.trim());
+}
+
+const SEPARADOR_TABLA = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+const RE_ENCABEZADO   = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
+const RE_BULLET       = /^\s*[-*•]\s+(.+)$/;
+const RE_NUMERADA     = /^\s*\d+\.\s+(.+)$/;
+
+function renderBloqueTexto(texto) {
+  const lineas = texto.split('\n');
+  const html = [];
+  let i = 0;
+
+  while (i < lineas.length) {
+    const linea = lineas[i];
+
+    if (!linea.trim()) { i++; continue; }
+
+    const encabezado = linea.match(RE_ENCABEZADO);
+    if (encabezado) {
+      const nivel = encabezado[1].length;
+      html.push(`<h${nivel} class="md-heading">${inline(encabezado[2])}</h${nivel}>`);
+      i++;
+      continue;
+    }
+
+    if (linea.includes('|') && lineas[i + 1] && SEPARADOR_TABLA.test(lineas[i + 1])) {
+      const cabecera = parseFilaTabla(linea);
+      i += 2;
+      const filas = [];
+      while (i < lineas.length && lineas[i].includes('|')) {
+        filas.push(parseFilaTabla(lineas[i]));
+        i++;
+      }
+      html.push(
+        '<table class="md-table"><thead><tr>' +
+        cabecera.map(c => `<th>${inline(c)}</th>`).join('') +
+        '</tr></thead><tbody>' +
+        filas.map(fila => '<tr>' + fila.map(c => `<td>${inline(c)}</td>`).join('') + '</tr>').join('') +
+        '</tbody></table>'
+      );
+      continue;
+    }
+
+    if (RE_BULLET.test(linea) || RE_NUMERADA.test(linea)) {
+      const numerada = RE_NUMERADA.test(linea);
+      const tag = numerada ? 'ol' : 'ul';
+      const re = numerada ? RE_NUMERADA : RE_BULLET;
+      const items = [];
+      while (i < lineas.length) {
+        const m = lineas[i].match(re);
+        if (!m) break;
+        items.push(`<li>${inline(m[1])}</li>`);
+        i++;
+      }
+      html.push(`<${tag} class="md-list">${items.join('')}</${tag}>`);
+      continue;
+    }
+
+    const parrafo = [];
+    while (i < lineas.length && lineas[i].trim() &&
+           !RE_ENCABEZADO.test(lineas[i]) && !RE_BULLET.test(lineas[i]) && !RE_NUMERADA.test(lineas[i])) {
+      parrafo.push(lineas[i]);
+      i++;
+    }
+    html.push(`<p class="md-p">${parrafo.map(inline).join('<br>')}</p>`);
+  }
+
+  return html.join('');
 }
 
 function _normalizarChatGPT(texto) {

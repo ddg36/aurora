@@ -16,7 +16,7 @@ import {
 } from '../scripts/voz/voz.js';
 import { canvasDoc, canvasVisible, CANVAS_TOOLS, toggleCanvas, canvasWrite, handleHubAction, cargarCanvas } from '../scripts/canvas/canvas.js';
 import {
-  renderizarContenido, formatearArgsToolCall, scrollAlFondo, estaCercaDelFondo, inicializarEventosCodigo,
+  renderizarContenido, scrollAlFondo, estaCercaDelFondo, inicializarEventosCodigo,
 } from '../scripts/chat/renderizar.js';
 import { toolActivity, trackStart, trackEnd, clearActivity } from '../scripts/chat/actividad.js';
 import { copiarMensaje, añadirANotas, reformularRespuesta, leerMensaje } from '../scripts/chat/acciones-rapidas.js';
@@ -113,6 +113,8 @@ export function Local() {
   const [mostrarToolbar, setMostrarToolbar]         = useState(false);
   const [expandedCategories, setExpandedCategories] = useState({});
   const [expandedThinking, setExpandedThinking]     = useState({});
+  const [expandedTools, setExpandedTools]           = useState({});
+  const toggleTool = (key) => setExpandedTools(prev => ({ ...prev, [key]: !prev[key] }));
   const [fijados, setFijados]                        = useState({});
   const [canvasLang, setCanvasLang]                 = useState('text');
   const [canvasTab, setCanvasTab]                   = useState('codigo');
@@ -254,12 +256,12 @@ export function Local() {
         },
         onToolCall: (name, args, risk) => {
           trackIds[name] = trackStart(name, args, { risk });
-          const argsStr = JSON.stringify(args || {});
+          const argsStr = JSON.stringify(args || {}, null, 2);
           const toolCallId = Date.now() + '_' + Math.random().toString(36).slice(2, 9);
-          const argsPreview = argsStr.length > 120 ? argsStr.slice(0, 120) + '…' : argsStr;
+          const argsPreview = argsStr.length > 120 ? argsStr.replace(/\s+/g, ' ').slice(0, 120) + '…' : argsStr;
           assistantMessageRef.current = {
             blocks: [...assistantMessageRef.current.blocks,
-              { tipo: 'tool', id: toolCallId, name, args: argsPreview, output: null, isError: false, status: 'running' }],
+              { tipo: 'tool', id: toolCallId, name, args: argsPreview, argsFull: argsStr, output: null, isError: false, status: 'running' }],
           };
           setAsistenteEnVivo(assistantMessageRef.current);
         },
@@ -334,7 +336,7 @@ export function Local() {
           if (b.tipo === 'thinking') return `[thinking]\n${b.contenido}\n[/thinking]`;
           if (b.tipo === 'text') return b.contenido;
           if (b.tipo === 'tool') {
-            const call = `[tool_call:${b.name}]\n${b.args}\n[/tool_call:${b.name}]`;
+            const call = `[tool_call:${b.name}]\n${b.argsFull || b.args}\n[/tool_call:${b.name}]`;
             if (b.output == null) return call;
             const abre = b.isError ? `[tool_result:${b.name}:error]` : `[tool_result:${b.name}]`;
             return `${call}\n${abre}\n${b.output}\n[/tool_result:${b.name}]`;
@@ -736,17 +738,24 @@ export function Local() {
                     `;
                   }
                   if (p.tipo === 'tool') {
+                    const key = `${idx}_${i}`;
+                    const abierto = expandedTools[key] ?? true;
                     return html`
-                      <div key=${idx + '_' + i}>
-                        <div class="message tool-call">
-                          <span class="tool-call-icon">⚙</span>
-                          <span class="tool-call-text">▶ ${p.nombre} \`${p.args}\`</span>
+                      <div key=${key} class=${'message tool-execution ' + (p.isError ? 'tool-error' : 'tool-success')}>
+                        <div class="tool-execution-header" onClick=${() => toggleTool(key)}>
+                          <span class="tool-toggle-chevron">${abierto ? '▼' : '▶'}</span>
+                          <span class="tool-execution-icon">${p.isError ? '✗' : '✓'}</span>
+                          <span class="tool-execution-name">${p.nombre}</span>
+                          <span class="tool-execution-preview">${String(p.args || '').replace(/\s+/g, ' ').slice(0, 100)}</span>
                         </div>
-                        ${p.output != null && html`
-                          <div class="message tool-result">
-                            <span class="tool-result-icon">↩</span>
-                            <span class="tool-result-name">${p.nombre}</span>
-                            <span class="tool-result-content">${p.isError ? '✗ ' : ''}${p.output}</span>
+                        ${abierto && html`
+                          <div class="tool-execution-body">
+                            <pre class="tool-execution-args">${p.args}</pre>
+                            ${p.output != null && html`
+                              <div class="tool-execution-output">
+                                <pre>${p.output}</pre>
+                              </div>
+                            `}
                           </div>
                         `}
                       </div>
@@ -822,16 +831,23 @@ export function Local() {
                 `;
               }
               if (b.tipo === 'tool') {
+                const abierto = expandedTools[b.id] ?? true;
                 return html`
                   <div key=${'b' + i} class=${'message tool-execution ' + (b.status === 'error' ? 'tool-error' : b.status === 'running' ? 'tool-running' : 'tool-success')}>
-                    <div class="tool-execution-header">
+                    <div class="tool-execution-header" onClick=${() => toggleTool(b.id)}>
+                      <span class="tool-toggle-chevron">${abierto ? '▼' : '▶'}</span>
                       <span class="tool-execution-icon">${b.status === 'running' ? '⟳' : b.status === 'error' ? '✗' : '✓'}</span>
                       <span class="tool-execution-name">${b.name}</span>
                       <span class="tool-execution-preview">${b.args}</span>
                     </div>
-                    ${b.output && html`
-                      <div class="tool-execution-output">
-                        <pre>${b.output.length > 1000 ? b.output.slice(0, 1000) + '\n…(truncado)' : b.output}</pre>
+                    ${abierto && html`
+                      <div class="tool-execution-body">
+                        <pre class="tool-execution-args">${b.argsFull || b.args}</pre>
+                        ${b.output && html`
+                          <div class="tool-execution-output">
+                            <pre>${b.output.length > 1000 ? b.output.slice(0, 1000) + '\n…(truncado)' : b.output}</pre>
+                          </div>
+                        `}
                       </div>
                     `}
                   </div>
