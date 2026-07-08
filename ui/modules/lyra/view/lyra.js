@@ -268,15 +268,16 @@ export function Local() {
         onToolResult: (name, output) => {
           const isErr = /^Error/i.test(String(output || ''));
           trackEnd(trackIds[name], isErr ? 'error' : 'ok', String(output ?? '').slice(0, 200));
+          // Sin truncar: la caja de salida ya scrollea sola (max-height +
+          // overflow-y), no hace falta cortar el texto para que quepa.
           const out = String(output ?? '').trim();
-          const corto = out.length > 700 ? out.slice(0, 700) + '\n…(truncado)' : out;
           const blocks = assistantMessageRef.current.blocks;
           let idx = -1;
           for (let i = blocks.length - 1; i >= 0; i--) {
             if (blocks[i].tipo === 'tool' && blocks[i].name === name && blocks[i].status === 'running') { idx = i; break; }
           }
           if (idx >= 0) {
-            const actualizado = { ...blocks[idx], output: corto, isError: isErr, status: isErr ? 'error' : 'success' };
+            const actualizado = { ...blocks[idx], output: out, isError: isErr, status: isErr ? 'error' : 'success' };
             assistantMessageRef.current = { blocks: [...blocks.slice(0, idx), actualizado, ...blocks.slice(idx + 1)] };
             setAsistenteEnVivo(assistantMessageRef.current);
           }
@@ -845,7 +846,7 @@ export function Local() {
                         <pre class="tool-execution-args">${b.argsFull || b.args}</pre>
                         ${b.output && html`
                           <div class="tool-execution-output">
-                            <pre>${b.output.length > 1000 ? b.output.slice(0, 1000) + '\n…(truncado)' : b.output}</pre>
+                            <pre>${b.output}</pre>
                           </div>
                         `}
                       </div>
