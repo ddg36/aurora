@@ -200,6 +200,16 @@ def _arbol_a_nodos(nodos: list, leaf_id) -> list:
     return visibles
 
 
+def _quitar_comillas(arg: str) -> str:
+    """pi soporta rutas entre comillas para /import y /export
+    (getPathCommandArgument, interactive-mode.js) — el split por espacio de
+    Aurora las dejaba pegadas al string y el archivo nunca existía."""
+    arg = arg.strip()
+    if len(arg) >= 2 and arg[0] == arg[-1] and arg[0] in ('"', "'"):
+        return arg[1:-1]
+    return arg
+
+
 def _leer_parent_session(ruta: pathlib.Path) -> str | None:
     """Primera línea de un .jsonl de pi es el SessionHeader — si tiene
     parentSession, permite reconstruir el linaje al importar."""
@@ -634,7 +644,11 @@ class PiBridge:
                 await avisar('Sesión pi:\n' + '\n'.join(lineas[:16]))
 
             elif nombre == 'export':
-                resp = await proceso.pedir({'type': 'export_html'}, timeout=60)
+                cmd_export = {'type': 'export_html'}
+                arg_export = _quitar_comillas(arg)
+                if arg_export:
+                    cmd_export['outputPath'] = arg_export
+                resp = await proceso.pedir(cmd_export, timeout=60)
                 data = resp.get('data') or {}
                 ruta = data.get('path') or data.get('file') or json.dumps(data)[:200]
                 await avisar(f'📄 Exportado: {ruta}')
@@ -707,13 +721,26 @@ class PiBridge:
                     await avisar(f'📋 Seleccioná para copiar:\n\n{texto_ult}')
 
             elif nombre == 'import':
-                if not arg:
+                arg_import = _quitar_comillas(arg)
+                if not arg_import:
                     await avisar('Uso: /import <ruta .jsonl>')
                 else:
-                    origen = pathlib.Path(arg).expanduser()
+                    origen = pathlib.Path(arg_import).expanduser()
                     if not origen.exists():
                         await avisar(f'No existe: {origen}')
                     else:
+                        # pi real siempre confirma antes de reemplazar la
+                        # sesión activa ("Replace current session with X?",
+                        # interactive-mode.js:handleImportCommand) — acá no
+                        # se preguntaba nada, se pisaba directo.
+                        ok = await self._pedir_confirmacion(
+                            'Importar sesión',
+                            f'¿Reemplazar la sesión actual con "{origen.name}"?',
+                            riesgo='medium',
+                        )
+                        if not ok:
+                            await avisar('Importación cancelada.')
+                            return
                         parent_session = _leer_parent_session(origen)
                         destino = pathlib.Path(config.SESSION_DIR) / f'imported-{int(time.time())}-{origen.name}'
                         shutil.copy(origen, destino)

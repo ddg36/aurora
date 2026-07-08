@@ -157,6 +157,23 @@ async def main():
     r = await comando("/import /ruta/que/no/existe.jsonl")
     assert "No existe" in r["data"]["texto"], r
 
+    # /import pide confirmación propia antes de reemplazar la sesión activa
+    # (igual que pi real: "Replace current session with X?") — se confirma
+    # o cancela en paralelo, mismo patrón que /quit más abajo.
+    async def confirmar_pronto():
+        for _ in range(50):
+            if br._builtin_confirm is not None:
+                await br.responder_confirm(True)
+                return
+            await asyncio.sleep(0.05)
+
+    async def cancelar_pronto():
+        for _ in range(50):
+            if br._builtin_confirm is not None:
+                await br.responder_confirm(False)
+                return
+            await asyncio.sleep(0.05)
+
     # Regresión: /import debe leer el SessionHeader (parentSession) y
     # resolverlo contra el mapa chat_id→sessionPath ya existente, para
     # que el chat importado aparezca con linaje sin trabajo manual.
@@ -172,7 +189,26 @@ async def main():
         + json.dumps({"type": "message", "id": "a", "parentId": None, "timestamp": "now",
                        "message": {"role": "user", "content": "hola desde pi cli"}}) + "\n"
     )
-    r = await comando(f"/import {jsonl_importado}")
+
+    # Cancelar la confirmación no debe importar nada.
+    sock.enviados.clear()
+    await asyncio.gather(
+        br.manejar_chat({"type": "chat", "message": f"/import {jsonl_importado}", "chat_id": None, "system": ""}),
+        cancelar_pronto(),
+    )
+    resultados = [m for m in sock.enviados if m["type"] == "command_result"]
+    assert resultados and "cancelada" in resultados[-1]["data"]["texto"], sock.enviados
+
+    # Confirmar sí importa, y respeta comillas en la ruta (pi soporta
+    # getPathCommandArgument con comillas — Aurora partía la ruta en el
+    # primer espacio y las dejaba pegadas al string).
+    sock.enviados.clear()
+    await asyncio.gather(
+        br.manejar_chat({"type": "chat", "message": f'/import "{jsonl_importado}"', "chat_id": None, "system": ""}),
+        confirmar_pronto(),
+    )
+    resultados = [m for m in sock.enviados if m["type"] == "command_result"]
+    r = resultados[-1]
     assert r["data"]["parentChatId"] == 777, r
     assert "importada" in r["data"]["texto"], r
 
@@ -180,12 +216,7 @@ async def main():
     assert "gh" in r["data"]["texto"], r  # gh no instalado en este entorno → mensaje de instalación
 
     # /quit pide confirmación propia (no de pi) — se confirma en paralelo
-    async def confirmar_pronto():
-        for _ in range(50):
-            if br._builtin_confirm is not None:
-                await br.responder_confirm(True)
-                return
-            await asyncio.sleep(0.05)
+    # (confirmar_pronto ya definida arriba, para /import)
     sock.enviados.clear()
     await asyncio.gather(
         br.manejar_chat({"type": "chat", "message": "/quit", "chat_id": None, "system": ""}),
