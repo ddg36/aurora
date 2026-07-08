@@ -8,6 +8,9 @@ import asyncio
 import json
 import logging
 import pathlib
+import shutil
+import subprocess
+import time
 
 from . import config
 from .proceso import PiProceso
@@ -21,19 +24,36 @@ _sesion_cargada: tuple = (0, None)
 _modelo_fijado: str | None = None
 
 _RUTA_MAPA = pathlib.Path(config.SESSION_DIR) / 'aurora-map.json'
+_RUTA_SCOPED = pathlib.Path(config.SESSION_DIR) / 'scoped-models.json'
+_RUTA_AUTH = pathlib.Path.home() / '.pi' / 'agent' / 'auth.json'
 
 _DIALOGOS = ('select', 'confirm', 'input', 'editor')
 
-# Builtins de pi ejecutables vía RPC — expuestos en el menú / de la UI.
-# (Los de la TUI pura — /settings, /themes, /scoped-models — no aplican en web.)
+# Los 22 comandos reales de pi (docs/usage.md) adaptados a Lyra — evidencia
+# en docs/superpowers/specs/2026-07-07-lyra-paridad-pi-design.md.
 _BUILTINS = {
-    'new':      'Sesión pi nueva para este chat (contexto limpio)',
-    'compact':  'Compacta el contexto: resume lo viejo, mantiene lo reciente',
-    'model':    'Ver modelos o cambiar: /model [id]',
-    'thinking': 'Nivel de razonamiento: /thinking off|minimal|low|medium|high|xhigh',
-    'name':     'Nombra la sesión pi: /name <nombre>',
-    'session':  'Estadísticas de la sesión pi actual',
-    'export':   'Exporta la sesión a HTML',
+    'new':           'Sesión pi nueva para este chat (contexto limpio)',
+    'compact':       'Compacta el contexto: resume lo viejo, mantiene lo reciente',
+    'model':         'Ver modelos o cambiar: /model [id]',
+    'scoped-models': 'Favoritos para ciclar con Alt+M: /scoped-models list|add|remove [id]',
+    'settings':      'Thinking level actual, o fijalo: /settings [off|minimal|low|medium|high|xhigh]',
+    'resume':        'Retomar una sesión anterior — usá el historial de chats en la barra lateral',
+    'name':          'Nombra la sesión pi: /name <nombre>',
+    'session':       'Estadísticas de la sesión pi actual',
+    'tree':          'Árbol de la sesión actual (ramas por steering/retries/forks)',
+    'trust':         'Confirma que el workspace de Aurora es de confianza',
+    'fork':          'Ramifica la sesión desde un mensaje anterior: /fork <entryId> (ver /tree)',
+    'clone':         'Duplica la rama activa en una sesión nueva',
+    'copy':          'Muestra el último mensaje de Lyra para copiarlo',
+    'export':        'Exporta la sesión a HTML',
+    'import':        'Importa una sesión desde un .jsonl del servidor: /import <ruta>',
+    'share':         'Sube la sesión como gist privado de GitHub (requiere `gh` instalado y logueado)',
+    'reload':        'Reinicia el motor pi — recarga extensiones, skills y prompt templates',
+    'hotkeys':       'Lista los atajos de teclado de Lyra',
+    'changelog':     'Historial de versiones de Lyra',
+    'login':         'Guarda una API key: /login <provider> <key> (ej: /login nvidia nvapi-...)',
+    'logout':        'Borra la API key guardada de un provider: /logout <provider>',
+    'quit':          'Detiene el motor pi compartido — pide confirmación (afecta TODOS los chats)',
 }
 
 
@@ -63,6 +83,49 @@ def _cargar_mapa() -> dict:
 def _guardar_mapa(mapa: dict):
     _RUTA_MAPA.parent.mkdir(parents=True, exist_ok=True)
     _RUTA_MAPA.write_text(json.dumps(mapa, ensure_ascii=False, indent=1), encoding='utf-8')
+
+
+def _cargar_scoped() -> list:
+    try:
+        return json.loads(_RUTA_SCOPED.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+
+
+def _guardar_scoped(favoritos: list):
+    _RUTA_SCOPED.parent.mkdir(parents=True, exist_ok=True)
+    _RUTA_SCOPED.write_text(json.dumps(favoritos, ensure_ascii=False, indent=1), encoding='utf-8')
+
+
+def _cargar_auth() -> dict:
+    try:
+        return json.loads(_RUTA_AUTH.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+
+
+def _guardar_auth(auth: dict):
+    # Nunca loguear ni devolver el contenido de este archivo — tiene API keys/tokens reales.
+    _RUTA_AUTH.parent.mkdir(parents=True, exist_ok=True)
+    _RUTA_AUTH.write_text(json.dumps(auth, ensure_ascii=False, indent=2), encoding='utf-8')
+    _RUTA_AUTH.chmod(0o600)
+
+
+def _formatear_arbol(nodos: list, leaf_id, profundidad: int = 0) -> list:
+    lineas = []
+    for nodo in nodos:
+        entry = nodo.get('entry') or {}
+        eid = entry.get('id') or ''
+        msg = entry.get('message') or {}
+        rol = msg.get('role') or entry.get('type') or '?'
+        contenido = msg.get('content')
+        if isinstance(contenido, list):
+            contenido = ' '.join(c.get('text', '') for c in contenido if isinstance(c, dict) and c.get('type') == 'text')
+        preview = str(contenido or '')[:50].replace('\n', ' ')
+        marca = '●' if eid == leaf_id else ' '
+        lineas.append(f"{'  ' * profundidad}{marca} [{eid[:8]}] {rol}: {preview}")
+        lineas.extend(_formatear_arbol(nodo.get('children') or [], leaf_id, profundidad + 1))
+    return lineas
 
 
 def _extraer_contenido(message) -> tuple[str, list]:
@@ -125,6 +188,7 @@ class PiBridge:
         self.inicio = asyncio.Event()
         self.chat_task: asyncio.Task | None = None
         self._confirm_id: str | None = None
+        self._builtin_confirm: asyncio.Future | None = None
 
     async def send(self, payload: dict):
         await self.socket.send_text(json.dumps(payload, ensure_ascii=False))
@@ -209,11 +273,26 @@ class PiBridge:
             await self.send({'type': 'token', 'content': f'🔔 {aviso}\n'})
 
     async def responder_confirm(self, approved: bool):
+        if self._builtin_confirm is not None and not self._builtin_confirm.done():
+            self._builtin_confirm.set_result(bool(approved))
+            return
         if self._confirm_id is None:
             return
         await get_proceso().enviar({'type': 'extension_ui_response', 'id': self._confirm_id,
                                     'confirmed': bool(approved)})
         self._confirm_id = None
+
+    async def _pedir_confirmacion(self, nombre: str, mensaje: str, riesgo: str = 'medium') -> bool:
+        """Confirmación propia de un builtin de Aurora (no un diálogo de pi)."""
+        fut = asyncio.get_running_loop().create_future()
+        self._builtin_confirm = fut
+        await self.send({'type': 'confirm_request', 'name': nombre, 'command': mensaje, 'risk': riesgo})
+        try:
+            return await asyncio.wait_for(fut, 30)
+        except asyncio.TimeoutError:
+            return False
+        finally:
+            self._builtin_confirm = None
 
     # ── mensajes UI → pi ──────────────────────────────
 
@@ -368,10 +447,18 @@ class PiBridge:
                         await proceso.pedir({'type': 'set_model', 'provider': m.get('provider'), 'modelId': m.get('id')})
                         await avisar(f"✔ Modelo: {m.get('provider')}/{m.get('id')}")
 
-            elif nombre == 'thinking':
+            elif nombre == 'settings':
                 niveles = ('off', 'minimal', 'low', 'medium', 'high', 'xhigh')
-                if arg not in niveles:
-                    await avisar(f'Uso: /thinking {"|".join(niveles)}')
+                if not arg:
+                    estado = await proceso.pedir({'type': 'get_state'})
+                    actual = (estado.get('data') or {}).get('thinkingLevel')
+                    await avisar(
+                        f'Thinking: {actual}\n'
+                        f'Cambialo con /settings {"|".join(niveles)}\n'
+                        'Tema y fondo: panel Ajustes de Aurora.'
+                    )
+                elif arg not in niveles:
+                    await avisar(f'Uso: /settings {"|".join(niveles)}')
                 else:
                     await proceso.pedir({'type': 'set_thinking_level', 'level': arg})
                     await avisar(f'✔ Thinking: {arg}')
@@ -394,6 +481,154 @@ class PiBridge:
                 data = resp.get('data') or {}
                 ruta = data.get('path') or data.get('file') or json.dumps(data)[:200]
                 await avisar(f'📄 Exportado: {ruta}')
+
+            elif nombre == 'scoped-models':
+                sub, _, resto = arg.partition(' ')
+                favoritos = _cargar_scoped()
+                if sub == 'add' and resto.strip():
+                    if resto.strip() not in favoritos:
+                        favoritos.append(resto.strip())
+                        _guardar_scoped(favoritos)
+                    await avisar(f'✔ Agregado a favoritos: {resto.strip()}')
+                elif sub == 'remove' and resto.strip():
+                    favoritos = [m for m in favoritos if m != resto.strip()]
+                    _guardar_scoped(favoritos)
+                    await avisar(f'✔ Sacado de favoritos: {resto.strip()}')
+                else:
+                    await avisar('Favoritos:\n' + ('\n'.join(favoritos) if favoritos else '(vacío — /scoped-models add <id>)'))
+
+            elif nombre == 'resume':
+                await avisar('📂 Abrí el historial de chats en la barra lateral para retomar cualquier sesión anterior.')
+
+            elif nombre == 'tree':
+                resp = await proceso.pedir({'type': 'get_tree'})
+                data = resp.get('data') or {}
+                lineas = _formatear_arbol(data.get('tree') or [], data.get('leafId'))
+                await avisar('Árbol de la sesión (● = rama actual):\n' + '\n'.join(lineas[:60]))
+
+            elif nombre == 'trust':
+                await avisar('✔ El workspace de Aurora es fijo y ya es de confianza — no hace falta nada más.')
+
+            elif nombre == 'fork':
+                if not arg:
+                    await avisar('Uso: /fork <entryId> — mirá los ids con /tree')
+                else:
+                    resp = await proceso.pedir({'type': 'fork', 'entryId': arg})
+                    data = resp.get('data') or {}
+                    if not resp.get('success'):
+                        await avisar(f'Error: {resp.get("error") or "no se pudo ramificar"}')
+                    else:
+                        await avisar(f'🌿 Ramificado desde: "{str(data.get("text") or "")[:80]}"')
+
+            elif nombre == 'clone':
+                resp = await proceso.pedir({'type': 'clone'})
+                if resp.get('success'):
+                    await avisar('✔ Rama activa duplicada en una sesión nueva.')
+                else:
+                    await avisar(f'Error: {resp.get("error") or "no se pudo clonar"}')
+
+            elif nombre == 'copy':
+                resp = await proceso.pedir({'type': 'get_last_assistant_text'})
+                texto_ult = (resp.get('data') or {}).get('text') or ''
+                if not texto_ult:
+                    await avisar('(sin mensajes de Lyra todavía)')
+                else:
+                    await avisar(f'📋 Seleccioná para copiar:\n\n{texto_ult}')
+
+            elif nombre == 'import':
+                if not arg:
+                    await avisar('Uso: /import <ruta .jsonl>')
+                else:
+                    origen = pathlib.Path(arg).expanduser()
+                    if not origen.exists():
+                        await avisar(f'No existe: {origen}')
+                    else:
+                        destino = pathlib.Path(config.SESSION_DIR) / f'imported-{int(time.time())}-{origen.name}'
+                        shutil.copy(origen, destino)
+                        resp = await proceso.pedir({'type': 'switch_session', 'sessionPath': str(destino)})
+                        if resp.get('success'):
+                            await avisar(f'✔ Sesión importada y cargada: {origen.name}')
+                        else:
+                            await avisar(f'Error al cargar: {resp.get("error")}')
+
+            elif nombre == 'share':
+                if not shutil.which('gh'):
+                    await avisar('`gh` no está instalado — instalalo y logueate (`gh auth login`) para usar /share.')
+                else:
+                    resp = await proceso.pedir({'type': 'export_html'}, timeout=60)
+                    ruta = (resp.get('data') or {}).get('path')
+                    if not ruta:
+                        await avisar('No se pudo exportar la sesión.')
+                    else:
+                        proc = await asyncio.create_subprocess_exec(
+                            'gh', 'gist', 'create', ruta, '--private',
+                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                        )
+                        salida, error = await proc.communicate()
+                        if proc.returncode == 0:
+                            await avisar(f'🔗 {salida.decode().strip()}')
+                        else:
+                            await avisar(f'Error de gh: {error.decode().strip()[:300]}')
+
+            elif nombre == 'reload':
+                chat_actual = _cargar_mapa().get(str(chat_id)) if chat_id is not None else None
+                await avisar('🔄 Reiniciando motor pi…')
+                await proceso.parar()
+                await proceso.ensure()
+                if chat_actual and pathlib.Path(chat_actual).exists():
+                    await proceso.pedir({'type': 'switch_session', 'sessionPath': chat_actual})
+                await avisar('Listo — extensiones, skills y prompt templates recargados.')
+
+            elif nombre == 'hotkeys':
+                await avisar(
+                    'Atajos de Lyra:\n'
+                    'Enter — enviar · Shift+Enter — nueva línea\n'
+                    '/ — abre comandos (↑↓ navega, Tab/Enter completa, Esc cierra)\n'
+                    'botón [ / ] — mismo menú de comandos'
+                )
+
+            elif nombre == 'changelog':
+                await avisar(
+                    'Lyra — historial reciente:\n'
+                    '- Motor: pi harness vía RPC (gemita retirado)\n'
+                    '- Streaming fiel a pi: sin efecto de tipeo falso\n'
+                    '- Tool calls y resultados en orden cronológico real\n'
+                    '- Comandos "/" con paridad completa contra pi CLI'
+                )
+
+            elif nombre == 'login':
+                provider, _, key = arg.partition(' ')
+                if not provider or not key.strip():
+                    await avisar('Uso: /login <provider> <key>')
+                else:
+                    auth = _cargar_auth()
+                    auth[provider] = {'type': 'api_key', 'key': key.strip()}
+                    _guardar_auth(auth)
+                    await avisar(f'✔ API key guardada para {provider}')
+
+            elif nombre == 'logout':
+                if not arg:
+                    await avisar('Uso: /logout <provider>')
+                else:
+                    auth = _cargar_auth()
+                    if auth.pop(arg, None) is None:
+                        await avisar(f'No había credencial guardada para {arg}')
+                    else:
+                        _guardar_auth(auth)
+                        await avisar(f'✔ Credencial de {arg} borrada')
+
+            elif nombre == 'quit':
+                ok = await self._pedir_confirmacion(
+                    'Detener motor pi',
+                    'Esto detiene el motor pi COMPARTIDO — corta todos los chats activos ahora mismo. ¿Confirmás?',
+                    riesgo='high',
+                )
+                if ok:
+                    await avisar('🛑 Deteniendo motor pi…')
+                    await proceso.parar()
+                    await avisar('Motor detenido. El próximo mensaje (de cualquier chat) lo vuelve a levantar.')
+                else:
+                    await avisar('Cancelado.')
 
         except Exception as exc:
             await avisar(f'Error en /{nombre}: {exc}')

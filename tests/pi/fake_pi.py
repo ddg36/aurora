@@ -50,7 +50,25 @@ for linea in sys.stdin:
 
     elif t == "get_state":
         out({"id": cid, "type": "response", "command": "get_state", "success": True,
-             "data": {**session(), "model": None, "isStreaming": False}})
+             "data": {**session(), "model": None, "isStreaming": False, "thinkingLevel": "medium"}})
+
+    elif t == "get_tree":
+        out({"id": cid, "type": "response", "command": "get_tree", "success": True,
+             "data": {"tree": [{
+                 "entry": {"id": "e1", "type": "message", "message": {"role": "user", "content": "hola"}},
+                 "children": [{
+                     "entry": {"id": "e2", "type": "message", "message": {"role": "assistant", "content": "hola de vuelta"}},
+                     "children": [],
+                 }],
+             }], "leafId": "e2"}})
+
+    elif t == "get_last_assistant_text":
+        out({"id": cid, "type": "response", "command": "get_last_assistant_text", "success": True,
+             "data": {"text": "ULTIMO_MENSAJE_DE_PRUEBA"}})
+
+    elif t == "fork":
+        out({"id": cid, "type": "response", "command": "fork", "success": True,
+             "data": {"text": "hola", "cancelled": False}})
 
     elif t == "new_session":
         state["n"] += 1

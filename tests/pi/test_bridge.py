@@ -77,7 +77,83 @@ async def main():
     assert len(resultados) == 1, resultados
     assert resultados[0]["output"] == "RESULTADO_REAL_DE_LA_TOOL", resultados[0]
 
-    await proceso.parar()
+    # ── Capa 1: comandos reales de pi como builtins ──
+    B._RUTA_SCOPED = pathlib.Path(tempfile.mkdtemp()) / "scoped-models.json"
+    B._RUTA_AUTH = pathlib.Path(tempfile.mkdtemp()) / "auth.json"  # nunca la real en tests
+
+    async def texto_comando(comando: str, chat_id=None) -> str:
+        sock.enviados.clear()
+        await br.manejar_chat({"type": "chat", "message": comando, "chat_id": chat_id, "system": ""})
+        return "".join(m["content"] for m in sock.enviados if m["type"] == "token")
+
+    r = await texto_comando("/settings")
+    assert "medium" in r, r
+
+    r = await texto_comando("/settings high")
+    assert "Thinking: high" in r, r
+
+    r = await texto_comando("/tree")
+    assert "hola" in r and "●" in r, r
+
+    r = await texto_comando("/copy")
+    assert "ULTIMO_MENSAJE_DE_PRUEBA" in r, r
+
+    r = await texto_comando("/fork e1")
+    assert "Ramificado" in r, r
+
+    r = await texto_comando("/clone")
+    assert "duplicada" in r, r
+
+    r = await texto_comando("/trust")
+    assert "confianza" in r, r
+
+    r = await texto_comando("/resume")
+    assert "historial" in r, r
+
+    r = await texto_comando("/hotkeys")
+    assert "Enter" in r, r
+
+    r = await texto_comando("/changelog")
+    assert "Lyra" in r, r
+
+    r = await texto_comando("/scoped-models add llamacpp")
+    assert "Agregado" in r, r
+    r = await texto_comando("/scoped-models")
+    assert "llamacpp" in r, r
+    r = await texto_comando("/scoped-models remove llamacpp")
+    assert "Sacado" in r, r
+
+    r = await texto_comando("/login nvidia clave-de-test-123")
+    assert "guardada" in r, r
+    auth = json.loads(B._RUTA_AUTH.read_text())
+    assert auth["nvidia"] == {"type": "api_key", "key": "clave-de-test-123"}, auth
+
+    r = await texto_comando("/logout nvidia")
+    assert "borrada" in r, r
+    assert "nvidia" not in json.loads(B._RUTA_AUTH.read_text())
+
+    r = await texto_comando("/import /ruta/que/no/existe.jsonl")
+    assert "No existe" in r, r
+
+    r = await texto_comando("/share")
+    assert "gh" in r, r  # gh no instalado en este entorno de test → mensaje de instalación
+
+    # /quit pide confirmación propia (no de pi) — se confirma en paralelo
+    async def confirmar_pronto():
+        for _ in range(50):
+            if br._builtin_confirm is not None:
+                await br.responder_confirm(True)
+                return
+            await asyncio.sleep(0.05)
+    sock.enviados.clear()
+    await asyncio.gather(
+        br.manejar_chat({"type": "chat", "message": "/quit", "chat_id": None, "system": ""}),
+        confirmar_pronto(),
+    )
+    r = "".join(m["content"] for m in sock.enviados if m["type"] == "token")
+    assert "Motor detenido" in r, r
+    assert not proceso.vivo
+
     print("OK — todos los asserts pasaron")
 
 
