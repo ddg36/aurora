@@ -34,6 +34,7 @@ class ChatUpdateBody:
     instruccion: str | None = None
     updatedAt: int | None = None
     mensajes: list | None = None
+    parent_chat_id: int | None = None
 
 
 @dataclass
@@ -53,7 +54,7 @@ class ChatsController(Controller):
         uid = request.state.usuario_id
         db = await get_db()
         async with db.execute(
-            """SELECT c.id, c.nombre, c.modelo_id, c.actualizado,
+            """SELECT c.id, c.nombre, c.modelo_id, c.actualizado, c.parent_chat_id,
                       (SELECT contenido FROM mensajes WHERE chat_id=c.id ORDER BY id DESC LIMIT 1) as ultimo_msg
                FROM chats c WHERE c.usuario_id=? ORDER BY c.actualizado DESC""",
             (uid,),
@@ -71,11 +72,14 @@ class ChatsController(Controller):
         uid = request.state.usuario_id
         db = await get_db()
         now = int(time.time())
+        # id en milisegundos: dos chats creados en el mismo segundo (ej. fork
+        # seguido de otro fork) chocaban contra la PK en segundos y tiraban 500.
+        chat_id = int(time.time() * 1000)
         await db.execute(
             """INSERT INTO chats (id, usuario_id, nombre, modelo_id, temperatura, top_p, top_k, seed, num_ctx, instruccion, creado_en, actualizado)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                now,
+                chat_id,
                 uid,
                 data.nombre,
                 data.modelo_id,
@@ -91,8 +95,8 @@ class ChatsController(Controller):
         )
         await db.commit()
         return {
-            "id": now,
-            "chat_id": now,
+            "id": chat_id,
+            "chat_id": chat_id,
             "nombre": data.nombre,
             "modelo_id": data.modelo_id,
             "modelo": data.modelo_id or "",
@@ -226,7 +230,7 @@ class ChatsController(Controller):
             fields.append("modelo_id=?")
             params.append(modelo_id)
 
-        for attr in ("temperatura", "top_p", "top_k", "seed", "num_ctx", "instruccion"):
+        for attr in ("temperatura", "top_p", "top_k", "seed", "num_ctx", "instruccion", "parent_chat_id"):
             value = getattr(data, attr)
             if value is not None:
                 fields.append(attr + "=?")

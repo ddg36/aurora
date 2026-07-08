@@ -33,18 +33,19 @@ CREATE TABLE urls_custom (
 
 -- ── CHATS ─────────────────────────────────
 CREATE TABLE chats (
-  id          INTEGER PRIMARY KEY,        -- timestamp original
-  usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
-  nombre      TEXT    NOT NULL,
-  modelo_id   TEXT,
-  temperatura REAL    DEFAULT 0.8,
-  top_p       REAL    DEFAULT 0.9,
-  top_k       INTEGER DEFAULT 40,
-  seed        INTEGER DEFAULT -1,
-  num_ctx     INTEGER DEFAULT 4096,
-  instruccion TEXT,
-  creado_en   INTEGER NOT NULL,
-  actualizado INTEGER NOT NULL
+  id             INTEGER PRIMARY KEY,        -- timestamp original
+  usuario_id     INTEGER NOT NULL REFERENCES usuarios(id),
+  nombre         TEXT    NOT NULL,
+  modelo_id      TEXT,
+  temperatura    REAL    DEFAULT 0.8,
+  top_p          REAL    DEFAULT 0.9,
+  top_k          INTEGER DEFAULT 40,
+  seed           INTEGER DEFAULT -1,
+  num_ctx        INTEGER DEFAULT 4096,
+  instruccion    TEXT,
+  parent_chat_id INTEGER REFERENCES chats(id),  -- fork/clone/import con linaje detectado
+  creado_en      INTEGER NOT NULL,
+  actualizado    INTEGER NOT NULL
 );
 
 CREATE TABLE mensajes (

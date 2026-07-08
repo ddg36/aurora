@@ -376,3 +376,125 @@
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
 }
+
+/* ── Overlay de comandos "/" — modal centrado, nunca es chat ─── */
+.comando-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+.comando-overlay-card {
+  width: min(480px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface2, var(--surface));
+  border: 1px solid var(--surface3);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  overflow: hidden;
+}
+.comando-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--surface3);
+}
+.comando-overlay-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+}
+.comando-overlay-close:hover { color: var(--text); }
+.comando-overlay-body {
+  padding: 10px 14px;
+  overflow-y: auto;
+}
+.comando-overlay-aplicando {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.9em;
+}
+.comando-overlay-texto {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--aurora-font-mono, monospace);
+  font-size: 0.85em;
+  color: var(--text);
+}
+.comando-overlay-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+.comando-overlay-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.88em;
+}
+.comando-overlay-item:hover { background: var(--surface3); }
+.comando-overlay-item--actual {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  cursor: default;
+}
+.comando-overlay-marca { flex: none; width: 1.2em; text-align: center; }
+.comando-overlay-rol { flex: none; font-weight: 700; opacity: 0.8; }
+.comando-overlay-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+.comando-overlay-vacio { padding: 12px; text-align: center; color: var(--text-dim); }
+.comando-overlay-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.comando-overlay-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--surface3);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.comando-overlay-chip:hover { border-color: var(--accent); }
+.comando-overlay-chip--actual {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.comando-overlay-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--surface3);
+  display: flex;
+  justify-content: flex-end;
+}
+.comando-overlay-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--surface3);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.comando-overlay-btn:hover { border-color: var(--accent); }

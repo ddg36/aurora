@@ -122,14 +122,14 @@ export async function sendToLyra({
   message, images, model, system = '', history = [], tools = [], pure_system = false, chat_id = null,
   onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
   onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
-  onHubAction, onConfirmRequest
+  onHubAction, onConfirmRequest, onCommandResult
 }) {
   const ws = await connectLyra();
   return new Promise((resolve, reject) => {
     _handlers = {
       onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
       onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
-      onHubAction, onConfirmRequest, resolve, reject
+      onHubAction, onConfirmRequest, onCommandResult, resolve, reject
     };
     const payload = { type: 'chat', message, model, system, history, tools, pure_system, chat_id };
     if (images && images.length > 0) {
@@ -156,6 +156,12 @@ export function enviarSteer(message, chat_id) {
 
 export function resetLyraSession() {
   _ws?.send(JSON.stringify({ type: 'reset' }));
+}
+
+// Tras fork/clone/import: el frontend ya creó el chat Aurora nuevo — esto
+// lo mapea a la sesión pi que quedó activa (sin new_session).
+export function linkSession(chat_id) {
+  _ws?.send(JSON.stringify({ type: 'link_session', chat_id }));
 }
 
 export function fetchModels() {
@@ -215,9 +221,10 @@ function _dispatch(msg) {
   const {
     onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
     onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
-    onHubAction, onConfirmRequest, resolve, reject
+    onHubAction, onConfirmRequest, onCommandResult, resolve, reject
   } = _handlers;
   switch (msg.type) {
+    case 'command_result': onCommandResult?.(msg.command, msg.interactive, msg.data); break;
     case 'token':          onToken?.(msg.content); break;
     case 'thinking':       onThinking?.(msg.content); break;
     case 'tool_call':      onToolCall?.(msg.name, msg.args, msg.risk); break;

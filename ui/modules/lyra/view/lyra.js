@@ -23,11 +23,12 @@ import { copiarMensaje, añadirANotas, reformularRespuesta, leerMensaje } from '
 import { exportarChatPDF } from '../scripts/chat/exportar-pdf.js';
 import { comandosPi, cargarComandos, filtrarComandos, iconoComando } from '../scripts/chat/comandos.js';
 import { HERRAMIENTAS_SISTEMA, promptParaHerramienta } from '../scripts/chat/herramientas.js';
-import { sendToLyra, fetchModels, connectLyra, cancelarMensaje, enviarSteer, onWidgetUpdate, cycleModel } from '../../../components/shared/lyra-ws.js';
+import { sendToLyra, fetchModels, connectLyra, cancelarMensaje, enviarSteer, onWidgetUpdate, cycleModel, linkSession } from '../../../components/shared/lyra-ws.js';
 import { CanvasPanel } from '../../../components/lyra.views/canvas.js';
 import { nexusOnline } from '../../../store.js';
 import { getJSON, patchJSON } from '../../../components/shared/api.js';
 import { ParamsPanel } from './params-panel.js';
+import { ComandoOverlay } from './comando-overlay.js';
 
 const Toast = () => globalThis.Toast || { show() {}, setStatus() {} };
 
@@ -130,6 +131,7 @@ export function Local() {
   const [asistenteEnVivo, setAsistenteEnVivo]       = useState({ blocks: [] });
   const [colaMensajes, setColaMensajes]             = useState({ steering: [], followUp: [] });
   const [widgets, setWidgets]                       = useState({});
+  const [comandoOverlay, setComandoOverlay]         = useState(null); // {comando, interactive, data, aplicando}
   const assistantMessageRef                          = useRef(asistenteEnVivo);
 
   const chatRef   = useRef(null);
@@ -312,6 +314,39 @@ export function Local() {
         onCompactionEnd: reason => {
           Toast().setStatus('');
         },
+        onCommandResult: async (comandoNombre, interactive, data) => {
+          if (comandoNombre === 'fork' || comandoNombre === 'clone' || comandoNombre === 'import') {
+            if (!data.sessionPath) {
+              Toast().show(data.texto || `Error en /${comandoNombre}`, 'error');
+              return;
+            }
+            const nombreNuevo = comandoNombre === 'fork' ? '🌿 Rama'
+              : comandoNombre === 'clone' ? '🌿 Clon' : '📥 Importado';
+            const chat = await crearChat(nombreNuevo);
+            if (chat) {
+              if (data.parentChatId != null) {
+                try { await patchJSON(`/db/chats/${chat.id}`, { parent_chat_id: data.parentChatId }); } catch {}
+              }
+              linkSession(chat.id);
+              await cargarChats();
+              chatActualId.value = chat.id;
+              Toast().show(data.texto || 'Nueva sesión creada', 'success');
+            }
+            setComandoOverlay(null);
+            return;
+          }
+          setComandoOverlay(prev => {
+            // Confirmación de una acción disparada DESDE este mismo overlay
+            // (elegir modelo o nivel de thinking) — cierra en vez de mostrar
+            // una segunda pantalla de "listo". /scoped-models en cambio
+            // siempre refresca la lista (se puede seguir marcando favoritos).
+            if (prev?.aplicando && (comandoNombre === 'model' || comandoNombre === 'settings')) {
+              Toast().show(data.texto || 'Listo', 'success');
+              return null;
+            }
+            return { comando: comandoNombre, interactive, data };
+          });
+        },
         onHubAction: (name, args, respond) => {
           handleHubAction(name, args, respond);
         },
@@ -440,6 +475,18 @@ export function Local() {
   const cambiarChat = useCallback(id => {
     if (id) chatActualId.value = id;
   }, []);
+
+  // Clicks dentro del modal de comandos — mandan el slash-command equivalente
+  // en silencio (mismo pipeline que escribirlo a mano, sin ensuciar el chat).
+  const manejarAccionOverlay = useCallback((accion, valor) => {
+    setComandoOverlay(prev => prev && ({ ...prev, aplicando: true }));
+    let texto;
+    if (accion === 'fork') texto = `/fork ${valor}`;
+    else if (accion === 'model') texto = `/model ${valor}`;
+    else if (accion === 'settings') texto = `/settings ${valor}`;
+    else if (accion === 'scoped-models') texto = `/scoped-models ${valor.quitar ? 'remove' : 'add'} ${valor.id}`;
+    if (texto) enviarMensaje({ message: texto, skipUserAppend: true, skipUserSave: true });
+  }, [enviarMensaje]);
 
   const cargarImagen = useCallback((blob) => {
     const MAX_BYTES = 5 * 1024 * 1024;
@@ -634,9 +681,10 @@ export function Local() {
             ${chatsVal.map(c => html`
               <div key=${c.id}
                 class=${'history-item flex items-center gap-1.5 px-2 py-1.5 rounded text-[11px] border border-transparent cursor-pointer transition ' + (c.id === chatIdVal ? 'active' : '')}
+                style=${c.parent_chat_id ? 'margin-left:14px' : ''}
                 onClick=${() => cambiarChat(c.id)}>
                 <div class="hi-info flex-1 overflow-hidden">
-                  <span class="hi-nombre block overflow-hidden text-ellipsis whitespace-nowrap">${c.nombre}</span>
+                  <span class="hi-nombre block overflow-hidden text-ellipsis whitespace-nowrap">${c.parent_chat_id ? '🌿 ' : ''}${c.nombre}</span>
                   <span class="hi-meta text-[10px] text-aurora-text-dim">${c.modelo || '—'} · ${fmtFecha(c.updatedAt ?? c.actualizado_en)}</span>
                 </div>
                 <button class="hi-del px-1 bg-transparent border-0 text-aurora-text-dim cursor-pointer"
@@ -1200,6 +1248,17 @@ export function Local() {
             onSendToAI=${code => enviarMensaje(`Revisá este código:\n\`\`\`\n${code}\n\`\`\``)}
           />
         </div>
+      `}
+
+      ${comandoOverlay && html`
+        <${ComandoOverlay}
+          comando=${comandoOverlay.comando}
+          interactive=${comandoOverlay.interactive}
+          data=${comandoOverlay.data}
+          aplicando=${comandoOverlay.aplicando}
+          onClose=${() => setComandoOverlay(null)}
+          onAction=${manejarAccionOverlay}
+        />
       `}
 
     </div>

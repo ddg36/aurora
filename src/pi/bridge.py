@@ -111,8 +111,11 @@ def _guardar_auth(auth: dict):
     _RUTA_AUTH.chmod(0o600)
 
 
-def _formatear_arbol(nodos: list, leaf_id, profundidad: int = 0) -> list:
-    lineas = []
+def _arbol_a_nodos(nodos: list, leaf_id, profundidad: int = 0) -> list:
+    """get_tree de pi, aplanado para el modal interactivo — la jerarquía
+    en sí (quién es hijo de quién) ya la resolvió pi, acá solo se aplana
+    con profundidad para pintar la indentación."""
+    resultado = []
     for nodo in nodos:
         entry = nodo.get('entry') or {}
         eid = entry.get('id') or ''
@@ -121,11 +124,27 @@ def _formatear_arbol(nodos: list, leaf_id, profundidad: int = 0) -> list:
         contenido = msg.get('content')
         if isinstance(contenido, list):
             contenido = ' '.join(c.get('text', '') for c in contenido if isinstance(c, dict) and c.get('type') == 'text')
-        preview = str(contenido or '')[:50].replace('\n', ' ')
-        marca = '●' if eid == leaf_id else ' '
-        lineas.append(f"{'  ' * profundidad}{marca} [{eid[:8]}] {rol}: {preview}")
-        lineas.extend(_formatear_arbol(nodo.get('children') or [], leaf_id, profundidad + 1))
-    return lineas
+        resultado.append({
+            'id': eid,
+            'rol': rol,
+            'preview': str(contenido or '')[:80].replace('\n', ' '),
+            'profundidad': profundidad,
+            'actual': eid == leaf_id,
+        })
+        resultado.extend(_arbol_a_nodos(nodo.get('children') or [], leaf_id, profundidad + 1))
+    return resultado
+
+
+def _leer_parent_session(ruta: pathlib.Path) -> str | None:
+    """Primera línea de un .jsonl de pi es el SessionHeader — si tiene
+    parentSession, permite reconstruir el linaje al importar."""
+    try:
+        with ruta.open('r', encoding='utf-8') as f:
+            primera = f.readline()
+        header = json.loads(primera)
+        return header.get('parentSession')
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
 
 
 def _extraer_contenido(message) -> tuple[str, list]:
@@ -432,7 +451,15 @@ class PiBridge:
         global _sesion_cargada
 
         async def avisar(texto):
-            await self.send({'type': 'token', 'content': texto})
+            """Comando estático: texto plano + botón Cerrar en el modal.
+            Nunca toca historial/DB/contexto — canal separado de 'token'."""
+            await self.send({'type': 'command_result', 'command': nombre,
+                             'interactive': False, 'data': {'texto': texto}})
+
+        async def responder(data, interactive=False):
+            """Comando con datos estructurados (interactivo o no)."""
+            await self.send({'type': 'command_result', 'command': nombre,
+                             'interactive': interactive, 'data': data})
 
         try:
             if nombre == 'new':
@@ -447,49 +474,44 @@ class PiBridge:
                 await avisar('🌱 Sesión nueva — contexto limpio')
 
             elif nombre == 'compact':
-                await avisar('🗜️ Compactando contexto…\n')
+                await avisar('🗜️ Compactando contexto…')
                 await proceso.pedir({'type': 'compact'}, timeout=180)
                 await avisar('Listo — lo viejo quedó resumido.')
 
             elif nombre == 'model':
                 resp = await proceso.pedir({'type': 'get_available_models'})
                 modelos = (resp.get('data') or {}).get('models') or []
-                if not arg:
-                    estado = await proceso.pedir({'type': 'get_state'})
-                    actual = ((estado.get('data') or {}).get('model') or {}).get('id')
-                    por_prov: dict = {}
-                    for m in modelos:
-                        por_prov.setdefault(m.get('provider'), []).append(m.get('id'))
-                    lineas = [f'Actual: {actual}']
-                    for prov, ids in sorted(por_prov.items()):
-                        if len(ids) <= 6:
-                            lineas += [f"{'→' if i == actual else ' '} {prov}/{i}" for i in ids]
-                        else:
-                            lineas.append(f'  {prov}: {len(ids)} modelos (usá /model <id>)')
-                    await avisar('\n'.join(lineas))
-                else:
+                if arg:
                     m = next((m for m in modelos if m.get('id') == arg or arg in str(m.get('id'))), None)
                     if not m:
                         await avisar(f'No encontré el modelo "{arg}"')
                     else:
                         await proceso.pedir({'type': 'set_model', 'provider': m.get('provider'), 'modelId': m.get('id')})
                         await avisar(f"✔ Modelo: {m.get('provider')}/{m.get('id')}")
+                else:
+                    estado = await proceso.pedir({'type': 'get_state'})
+                    actual = ((estado.get('data') or {}).get('model') or {}).get('id')
+                    favoritos = set(_cargar_scoped())
+                    await responder({
+                        'actual': actual,
+                        'modelos': [
+                            {'id': m.get('id'), 'provider': m.get('provider'),
+                             'favorito': m.get('id') in favoritos}
+                            for m in modelos
+                        ],
+                    }, interactive=True)
 
             elif nombre == 'settings':
                 niveles = ('off', 'minimal', 'low', 'medium', 'high', 'xhigh')
-                if not arg:
-                    estado = await proceso.pedir({'type': 'get_state'})
-                    actual = (estado.get('data') or {}).get('thinkingLevel')
-                    await avisar(
-                        f'Thinking: {actual}\n'
-                        f'Cambialo con /settings {"|".join(niveles)}\n'
-                        'Tema y fondo: panel Ajustes de Aurora.'
-                    )
-                elif arg not in niveles:
+                if arg and arg not in niveles:
                     await avisar(f'Uso: /settings {"|".join(niveles)}')
-                else:
+                elif arg:
                     await proceso.pedir({'type': 'set_thinking_level', 'level': arg})
                     await avisar(f'✔ Thinking: {arg}')
+                else:
+                    estado = await proceso.pedir({'type': 'get_state'})
+                    actual = (estado.get('data') or {}).get('thinkingLevel')
+                    await responder({'thinkingActual': actual, 'niveles': list(niveles)}, interactive=True)
 
             elif nombre == 'name':
                 if not arg:
@@ -517,13 +539,15 @@ class PiBridge:
                     if resto.strip() not in favoritos:
                         favoritos.append(resto.strip())
                         _guardar_scoped(favoritos)
-                    await avisar(f'✔ Agregado a favoritos: {resto.strip()}')
                 elif sub == 'remove' and resto.strip():
                     favoritos = [m for m in favoritos if m != resto.strip()]
                     _guardar_scoped(favoritos)
-                    await avisar(f'✔ Sacado de favoritos: {resto.strip()}')
-                else:
-                    await avisar('Favoritos:\n' + ('\n'.join(favoritos) if favoritos else '(vacío — /scoped-models add <id>)'))
+                resp = await proceso.pedir({'type': 'get_available_models'})
+                todos = (resp.get('data') or {}).get('models') or []
+                await responder({
+                    'favoritos': favoritos,
+                    'todos': [{'id': m.get('id'), 'provider': m.get('provider')} for m in todos],
+                }, interactive=True)
 
             elif nombre == 'resume':
                 await avisar('📂 Abrí el historial de chats en la barra lateral para retomar cualquier sesión anterior.')
@@ -531,8 +555,8 @@ class PiBridge:
             elif nombre == 'tree':
                 resp = await proceso.pedir({'type': 'get_tree'})
                 data = resp.get('data') or {}
-                lineas = _formatear_arbol(data.get('tree') or [], data.get('leafId'))
-                await avisar('Árbol de la sesión (● = rama actual):\n' + '\n'.join(lineas[:60]))
+                nodos = _arbol_a_nodos(data.get('tree') or [], data.get('leafId'))
+                await responder({'nodos': nodos[:200], 'leafId': data.get('leafId')}, interactive=True)
 
             elif nombre == 'trust':
                 await avisar('✔ El workspace de Aurora es fijo y ya es de confianza — no hace falta nada más.')
@@ -546,14 +570,26 @@ class PiBridge:
                     if not resp.get('success'):
                         await avisar(f'Error: {resp.get("error") or "no se pudo ramificar"}')
                     else:
-                        await avisar(f'🌿 Ramificado desde: "{str(data.get("text") or "")[:80]}"')
+                        estado = await proceso.pedir({'type': 'get_state'})
+                        ruta = (estado.get('data') or {}).get('sessionFile')
+                        await responder({
+                            'sessionPath': ruta,
+                            'parentChatId': chat_id,
+                            'texto': f'🌿 Ramificado desde: "{str(data.get("text") or "")[:80]}"',
+                        })
 
             elif nombre == 'clone':
                 resp = await proceso.pedir({'type': 'clone'})
-                if resp.get('success'):
-                    await avisar('✔ Rama activa duplicada en una sesión nueva.')
-                else:
+                if not resp.get('success'):
                     await avisar(f'Error: {resp.get("error") or "no se pudo clonar"}')
+                else:
+                    estado = await proceso.pedir({'type': 'get_state'})
+                    ruta = (estado.get('data') or {}).get('sessionFile')
+                    await responder({
+                        'sessionPath': ruta,
+                        'parentChatId': chat_id,
+                        'texto': '✔ Rama activa duplicada en una sesión nueva.',
+                    })
 
             elif nombre == 'copy':
                 resp = await proceso.pedir({'type': 'get_last_assistant_text'})
@@ -571,13 +607,25 @@ class PiBridge:
                     if not origen.exists():
                         await avisar(f'No existe: {origen}')
                     else:
+                        parent_session = _leer_parent_session(origen)
                         destino = pathlib.Path(config.SESSION_DIR) / f'imported-{int(time.time())}-{origen.name}'
                         shutil.copy(origen, destino)
                         resp = await proceso.pedir({'type': 'switch_session', 'sessionPath': str(destino)})
-                        if resp.get('success'):
-                            await avisar(f'✔ Sesión importada y cargada: {origen.name}')
-                        else:
+                        if not resp.get('success'):
                             await avisar(f'Error al cargar: {resp.get("error")}')
+                        else:
+                            parent_chat_id = None
+                            if parent_session:
+                                mapa = _cargar_mapa()
+                                for cid, ruta in mapa.items():
+                                    if ruta == parent_session:
+                                        parent_chat_id = int(cid) if cid.lstrip('-').isdigit() else cid
+                                        break
+                            await responder({
+                                'sessionPath': str(destino),
+                                'parentChatId': parent_chat_id,
+                                'texto': f'✔ Sesión importada y cargada: {origen.name}',
+                            })
 
             elif nombre == 'share':
                 if not shutil.which('gh'):
@@ -600,7 +648,6 @@ class PiBridge:
 
             elif nombre == 'reload':
                 chat_actual = _cargar_mapa().get(str(chat_id)) if chat_id is not None else None
-                await avisar('🔄 Reiniciando motor pi…')
                 await proceso.parar()
                 await proceso.ensure()
                 if chat_actual and pathlib.Path(chat_actual).exists():
@@ -621,7 +668,8 @@ class PiBridge:
                     '- Motor: pi harness vía RPC (gemita retirado)\n'
                     '- Streaming fiel a pi: sin efecto de tipeo falso\n'
                     '- Tool calls y resultados en orden cronológico real\n'
-                    '- Comandos "/" con paridad completa contra pi CLI'
+                    '- Comandos "/" con paridad completa contra pi CLI\n'
+                    '- Config/sesión en overlay propio, ya no ensucia el chat'
                 )
 
             elif nombre == 'login':
@@ -652,7 +700,6 @@ class PiBridge:
                     riesgo='high',
                 )
                 if ok:
-                    await avisar('🛑 Deteniendo motor pi…')
                     await proceso.parar()
                     await avisar('Motor detenido. El próximo mensaje (de cualquier chat) lo vuelve a levantar.')
                 else:
@@ -660,6 +707,19 @@ class PiBridge:
 
         except Exception as exc:
             await avisar(f'Error en /{nombre}: {exc}')
+
+    async def vincular_sesion_actual(self, chat_id):
+        """Después de crear un chat Aurora nuevo (fork/clone/import), lo
+        mapea a la sesión pi que quedó activa — sin llamar new_session."""
+        global _sesion_cargada
+        proceso = get_proceso()
+        estado = await proceso.pedir({'type': 'get_state'})
+        ruta = (estado.get('data') or {}).get('sessionFile')
+        if ruta:
+            mapa = _cargar_mapa()
+            mapa[str(chat_id)] = ruta
+            _guardar_mapa(mapa)
+            _sesion_cargada = (proceso.generacion, str(chat_id))
 
     async def manejar_cycle_model(self):
         """Alt+M: cicla /scoped-models si hay favoritos guardados; si no, cicla

@@ -41,6 +41,12 @@ async def init_db():
         await db.execute("ALTER TABLE mensajes ADD COLUMN fijado INTEGER NOT NULL DEFAULT 0")
         await db.commit()
 
+    async with db.execute(f"PRAGMA table_info(chats)") as cur:
+        has_parent = any(r["name"] == "parent_chat_id" for r in await cur.fetchall())
+    if not has_parent:
+        await db.execute("ALTER TABLE chats ADD COLUMN parent_chat_id INTEGER REFERENCES chats(id)")
+        await db.commit()
+
     await _ensure_productividad(db)
 
     async with db.execute(

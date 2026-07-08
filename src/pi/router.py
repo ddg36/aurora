@@ -57,6 +57,13 @@ async def pi_ws(socket: WebSocket) -> None:
             elif tipo == 'cycle_model':
                 await bridge.manejar_cycle_model()
 
+            elif tipo == 'link_session':
+                # Frontend ya creó el chat Aurora (tras fork/clone/import) —
+                # lo mapea a la sesión pi que quedó activa, sin new_session.
+                cid = msg.get('chat_id')
+                if cid is not None:
+                    await bridge.vincular_sesion_actual(cid)
+
             elif tipo == 'reset':
                 await bridge.reset(msg)
 
