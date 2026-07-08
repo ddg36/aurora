@@ -315,11 +315,8 @@ export function Local() {
           Toast().setStatus('');
         },
         onCommandResult: async (comandoNombre, interactive, data) => {
-          if (comandoNombre === 'fork' || comandoNombre === 'clone' || comandoNombre === 'import') {
-            if (!data.sessionPath) {
-              Toast().show(data.texto || `Error en /${comandoNombre}`, 'error');
-              return;
-            }
+          const esNuevaSesion = (comandoNombre === 'fork' || comandoNombre === 'clone' || comandoNombre === 'import') && data.sessionPath;
+          if (esNuevaSesion) {
             const nombreNuevo = comandoNombre === 'fork' ? '🌿 Rama'
               : comandoNombre === 'clone' ? '🌿 Clon' : '📥 Importado';
             const chat = await crearChat(nombreNuevo);
