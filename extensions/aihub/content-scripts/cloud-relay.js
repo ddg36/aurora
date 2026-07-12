@@ -300,10 +300,18 @@
       await new Promise(r => setTimeout(r, 400));
       submit(input);
       const submitAt = Date.now();   // t0 real: apenas se envía el prompt
+      // Throttle del posteo de chunks: sin esto, cada mutación del DOM de
+      // Gemini postea un AURORA_CLOUD_CHUNK — un flood de postMessages que
+      // satura el main thread de Aurora (congela la app). Posteamos como mucho
+      // cada CHUNK_MS; el texto es acumulativo, solo importa el último.
+      const CHUNK_MS = 140;
+      let ultimoPost = 0, chunkPend = null, chunkTimer = null;
+      const postChunk = () => { if (chunkPend != null) post({ type: 'AURORA_CLOUD_CHUNK', requestId, text: chunkPend }); chunkPend = null; ultimoPost = Date.now(); chunkTimer = null; };
       const res = await esperarRespuesta({
         base, cancelToken: cancel, submitAt,
-        onChunk: (text) => post({ type: 'AURORA_CLOUD_CHUNK', requestId, text }),
+        onChunk: (text) => { chunkPend = text; const d = Date.now() - ultimoPost; if (d >= CHUNK_MS) postChunk(); else if (!chunkTimer) chunkTimer = setTimeout(postChunk, CHUNK_MS - d); },
       });
+      if (chunkTimer) { clearTimeout(chunkTimer); chunkTimer = null; }
       post({ type: 'AURORA_CLOUD_ANSWER', requestId, ok: res.ok, text: res.text || '(sin respuesta detectada)',
              reason: res.reason, respondeMs: res.respondeMs, generaMs: res.generaMs });
     } catch (err) {

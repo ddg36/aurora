@@ -665,7 +665,15 @@ export function Local() {
     setEnFondo(estaCercaDelFondo(chatRef.current));
   }, []);
 
-  const visibleMessages = historialVal.filter(m => !m._internal);
+  // Cap de render: pintar TODOS los mensajes re-renderiza la lista entera en
+  // cada chunk del streaming → con conversaciones largas (80+ msgs) pinnea el
+  // main thread y congela la app (y cuelga el loop de tools de la nube). Solo
+  // los últimos MAX_RENDER se pintan; el resto sigue en historial/DB.
+  const MAX_RENDER = 50;
+  const _visiblesTodos = historialVal.filter(m => !m._internal);
+  const visibleMessages = _visiblesTodos.length > MAX_RENDER
+    ? _visiblesTodos.slice(-MAX_RENDER)
+    : _visiblesTodos;
 
   const estaFijado = (msg) => fijados[msg.id] !== undefined ? fijados[msg.id] : !!msg.fijado;
   const togglePin = async (msg) => {
@@ -826,16 +834,19 @@ export function Local() {
         ${visibleMessages.map((msg, idx) => {
           if (msg.role === 'system') return null;
           const esExterno = msg._via === 'direct-ai' || msg._via === 'duo-external';
+          const esPiTool = msg._via === 'pi-tool';
           const rolLabel = msg.role === 'user'
             ? '👤 Tú'
-            : esExterno
-              ? `${AI_ICONOS[cloudAiId] || '☁'} ${AI_LABELS[cloudAiId] || 'AI ext'}`
-              : '🦙 Lyra';
+            : esPiTool
+              ? '🔧 pi tool'
+              : esExterno
+                ? `${AI_ICONOS[cloudAiId] || '☁'} ${AI_LABELS[cloudAiId] || 'AI ext'}`
+                : '🦙 Lyra';
 
           if (msg.role === 'assistant') {
             const parsed = combinarPartesRicas(parsearMensajeRico(msg.content));
             return html`
-              <div key=${idx} class=${'message assistant' + (esExterno ? ' direct-ai' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
+              <div key=${idx} class=${'message assistant' + (esExterno ? ' direct-ai' : '') + (esPiTool ? ' pi-tool' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
                 <div class="message-header">
                   <span class="role">${rolLabel}</span>
                   <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>

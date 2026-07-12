@@ -189,10 +189,23 @@ function _normalizarChatGPT(texto) {
     });
 }
 
+// Cache LRU: renderizar markdown es caro y la lista re-renderiza TODOS los
+// mensajes en cada cambio (streaming). Sin cache, 77 mensajes × parse × 8/seg
+// pinnea el main thread → la app se congela. Con cache, solo el mensaje que
+// cambió (el que streamea) se re-parsea; los demás salen del cache.
+const _cacheRender = new Map();
+const _CACHE_MAX = 300;
+
 export function renderizarContenido(texto, opts = {}) {
   if (!texto) return '';
+  const key = (opts.externo ? 'e:' : 'n:') + texto;
+  const hit = _cacheRender.get(key);
+  if (hit !== undefined) return hit;
   const procesado = opts.externo ? _normalizarChatGPT(texto) : texto;
-  return renderMarkdownLight(procesado);
+  const html = renderMarkdownLight(procesado);
+  if (_cacheRender.size >= _CACHE_MAX) _cacheRender.delete(_cacheRender.keys().next().value);
+  _cacheRender.set(key, html);
+  return html;
 }
 
 export function formatearArgsToolCall(toolCalls) {

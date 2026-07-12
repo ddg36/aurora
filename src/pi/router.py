@@ -8,12 +8,24 @@
 import asyncio
 import logging
 
-from litestar import websocket
+from litestar import websocket, post
 from litestar.connection import WebSocket
 
 from .bridge import PiBridge
+from .cloud_tools import ejecutar_tool
 
 log = logging.getLogger('aurora.pi')
+
+
+@post('/pi/cloud-tool')
+async def cloud_tool(data: dict) -> dict:
+    """El LLM de la nube pidió una tool básica (read/bash/edit/write). Se ejecuta
+    DIRECTO (sin LLM intermediario): instantáneo y fiable. Devuelve
+    {ok, output, is_error} para inyectar de vuelta al iframe."""
+    tool = str(data.get('tool') or '').strip()
+    if not tool:
+        return {'ok': False, 'error': "Falta 'tool'", 'is_error': True, 'output': ''}
+    return await ejecutar_tool(tool, data.get('args') or {})
 
 
 @websocket('/lyra')
@@ -81,4 +93,4 @@ async def pi_ws(socket: WebSocket) -> None:
             bridge.chat_task.cancel()
 
 
-PI_ROUTES = [pi_ws]
+PI_ROUTES = [pi_ws, cloud_tool]

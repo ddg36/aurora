@@ -240,6 +240,18 @@
 .message.direct-ai .message-header .role {
   color: var(--aurora-accent);
 }
+/* pi tool: ejecución de herramienta pedida por la nube. Verde, monoespaciado,
+   claramente distinto de la nube (acento) y de Lyra (sin tinte). */
+.message.pi-tool {
+  border-left: 2px solid var(--aurora-success, #4ade80);
+  padding-left: 12px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--aurora-success, #4ade80) 8%, transparent), transparent 60%);
+  border-radius: 0 6px 6px 0;
+}
+.message.pi-tool .message-header .role { color: var(--aurora-success, #4ade80); }
+.message.pi-tool .message-content { font-family: ui-monospace, monospace; font-size: 11px; white-space: pre-wrap; }
+
 /* Turno de nube dentro de un Duo: mismo cian + pulso al llegar. */
 .message.direct-ai.duo-turn { animation: cloud-turn-in 0.35s ease-out; }
 @keyframes cloud-turn-in {
