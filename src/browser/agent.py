@@ -25,11 +25,13 @@ from browser_use.llm.openai.chat import ChatOpenAI
 from browser_use.llm.views import ChatInvokeCompletion
 from pydantic import BaseModel
 
+from llm.providers import DEFAULT_PROVIDERS
+
 T = TypeVar("T", bound=BaseModel)
 
 log = logging.getLogger("aurora.browser")
 
-LLAMA_BASE = "http://localhost:8088/v1"
+LLAMA_BASE = next(p.base_url for p in DEFAULT_PROVIDERS if p.id == "llamacpp")
 LLAMA_KEY = "no-key"
 CDP_HOST = "http://localhost:9222"
 
@@ -279,6 +281,8 @@ async def run_agent(
     sesion_id: int,
     on_log: Callable[[str, str, str | None], Awaitable[None]],
     max_steps: int = 30,
+    on_captura: Callable[[str], Awaitable[None]] | None = None,
+    al_crear: Callable[["Agent"], None] | None = None,
 ) -> str:
     """
     Ejecuta browser-use agent para un objetivo.
@@ -286,6 +290,9 @@ async def run_agent(
     - Conecta al Chrome del usuario via CDP si :9222 disponible, sino lanza Chrome propio headless.
     - Activa vision solo si el modelo la soporta.
     - on_log(tipo, mensaje, url) llamado en cada paso.
+    - on_captura(b64_png) llamado con el screenshot de cada paso, si hay.
+    - al_crear(agent) entrega el handle del Agent al caller (pause/resume/stop
+      para human-in-the-loop) antes de arrancar el run.
     """
     model_id, cdp_url = await asyncio.gather(_get_model_id(), _get_cdp_url())
     vision = await _detect_vision(model_id)
@@ -311,6 +318,8 @@ async def run_agent(
                 names = [a.model_dump(exclude_none=True) for a in model_output.action if a]
                 msg = str(names)[:200]
             await on_log("step", msg, url)
+            if on_captura and getattr(browser_state, "screenshot", None):
+                await on_captura(browser_state.screenshot)
         except Exception as e:
             log.warning("step_callback error: %s", e)
 
@@ -331,6 +340,9 @@ async def run_agent(
             keep_last_items=3,
         ),
     )
+
+    if al_crear:
+        al_crear(agent)
 
     await on_log("inicio", objetivo, None)
 

@@ -3,8 +3,10 @@ import shutil
 import subprocess
 
 from litestar import get, post
+from litestar.connection import Request
 
-from .config import IS_WIN, PY_WORKSPACE, TIMEOUT_RUN, clip
+from .audit import registrar
+from .config import IS_WIN, PY_WORKSPACE, TIMEOUT_RUN, bloqueo_solo_lectura, clip
 from .workspace import is_inside
 
 
@@ -37,6 +39,8 @@ async def py_status() -> dict:
 
 @post('/nexus/py/venv-create')
 async def py_venv_create() -> dict:
+    if bloqueo := bloqueo_solo_lectura():
+        return bloqueo
     venv = _venv()
     if venv.exists():
         return {'ok': True, 'venv': str(venv), 'content': 'Ya existe'}
@@ -53,7 +57,9 @@ async def py_venv_create() -> dict:
 
 
 @post('/nexus/py/run')
-async def py_run(data: dict) -> dict:
+async def py_run(request: Request, data: dict) -> dict:
+    if bloqueo := bloqueo_solo_lectura():
+        return bloqueo
     raw = str(data.get('path') or '.').replace('\\', '/')
     target = (PY_WORKSPACE / raw.lstrip('/')).resolve()
     if not is_inside(target, PY_WORKSPACE):
@@ -76,11 +82,14 @@ async def py_run(data: dict) -> dict:
         return {'ok': False, 'error': f'Timeout tras {timeout}s'}
     text = (result.stdout or '') + (('\n[stderr]\n' + result.stderr) if result.stderr else '')
     content, truncated = clip(text)
+    await registrar(request, 'py/run', {'path': raw, 'code': result.returncode})
     return {'ok': result.returncode == 0, 'code': result.returncode, 'content': content, 'truncated': truncated}
 
 
 @post('/nexus/py/pip-install')
-async def py_pip_install(data: dict) -> dict:
+async def py_pip_install(request: Request, data: dict) -> dict:
+    if bloqueo := bloqueo_solo_lectura():
+        return bloqueo
     packages = [str(p) for p in (data.get('packages') or [])]
     if not packages:
         return {'ok': False, 'error': 'pip-install requiere paquetes'}
@@ -92,6 +101,7 @@ async def py_pip_install(data: dict) -> dict:
     result = subprocess.run([py, '-m', 'pip', 'install', *packages], cwd=str(PY_WORKSPACE),
                             capture_output=True, text=True, timeout=180)
     content, truncated = clip((result.stdout or '') + (result.stderr or ''))
+    await registrar(request, 'py/pip-install', {'packages': packages, 'code': result.returncode})
     return {'ok': result.returncode == 0, 'packages': packages, 'content': content, 'truncated': truncated}
 
 

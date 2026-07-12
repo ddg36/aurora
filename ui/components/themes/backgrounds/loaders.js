@@ -1,5 +1,5 @@
 // Loaders lazy — solo se importa el background activo y su variante día/noche.
-const V = '?v=v2-visual-variants-1';
+const V = '?v=v2-visual-variants-2';
 const load = (file) => import(`${file}${V}`);
 const light = (name) => load('./light.js').then(m => m[name]);
 

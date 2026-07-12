@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Agujero negro con partículas en espiral.
 export class Void extends Component {
@@ -95,7 +95,7 @@ export class Void extends Component {
     const [_vr, _vg, _vb] = this.accent.state?.rgb ?? [139, 92, 246];
     ctx.fillStyle = `rgb(${Math.max(2,Math.round(_vr*0.02))},${Math.max(2,Math.round(_vg*0.01))},${Math.max(5,Math.round(_vb*0.04))})`;
     ctx.fillRect(0, 0, W, H);
-    particles = Array.from({ length: 180 }, makeParticle);
+    particles = Array.from({ length: esDispositivoLiviano() ? 45 : 180 }, makeParticle);
     draw();
   }
 

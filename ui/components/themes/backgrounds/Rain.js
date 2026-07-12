@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Neon Rain — lluvia de gotas neón estilo Blade Runner. Sin caracteres.
 export class Rain extends Component {
@@ -74,7 +74,7 @@ export class Rain extends Component {
     this._resize = resize;
     window.addEventListener('resize', resize);
     resize();
-    drops = Array.from({ length: 120 }, makeDrop);
+    drops = Array.from({ length: esDispositivoLiviano() ? 40 : 120 }, makeDrop);
     drops.forEach(d => { d.y = Math.random() * H; });
     draw();
   }

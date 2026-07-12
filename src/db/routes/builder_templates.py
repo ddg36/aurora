@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from litestar import Controller, delete, get, put
 from litestar.connection import Request
 
-from ..connection import get_db
+from ..connection import get_db, json_loose
 from ..auth import auth_guard
 
 
@@ -36,7 +36,7 @@ class BuilderTemplatesController(Controller):
         result = []
         for r in rows:
             d = dict(r)
-            d["datos"] = json.loads(d["datos"])
+            d["datos"] = json_loose(d["datos"], {})
             result.append(d)
         return result
 
@@ -51,7 +51,7 @@ class BuilderTemplatesController(Controller):
         if not row:
             return None
         d = dict(row)
-        d["datos"] = json.loads(d["datos"])
+        d["datos"] = json_loose(d["datos"], {})
         return d
 
     @put("/{tid:str}")

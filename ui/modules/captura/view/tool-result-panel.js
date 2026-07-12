@@ -3,6 +3,7 @@ const { useState, useRef, useMemo } = globalThis.preactHooks;
 
 import {
   Button,
+  Disclosure,
   ListActions,
   Panel,
   PanelBody,
@@ -59,16 +60,7 @@ export function ToolResultPanel({ result, onCopy, onClose, followUps, onAskFollo
           </${PanelBody}>
         `}
 
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 px-3 py-1.5 text-[10px] text-aurora-text-muted border-t border-aurora-border hover:bg-aurora-surface-hover transition-colors"
-          onClick=${() => setChatOpen(o => !o)}
-        >
-          <span>💬 Conversar sobre esto</span>
-          <span class="ml-auto text-[9px] opacity-50">${chatOpen ? '▲' : '▼'}</span>
-        </button>
-
-        ${chatOpen && html`
+        <${Disclosure} compact open=${chatOpen} onToggle=${() => setChatOpen(o => !o)} icon="💬" title="Conversar sobre esto">
           <div class="border-t border-aurora-border">
             ${followUps.map(fu => html`
               <div class="px-3 py-2 border-b border-aurora-border/50 last:border-b-0">
@@ -128,7 +120,7 @@ export function ToolResultPanel({ result, onCopy, onClose, followUps, onAskFollo
               </${Button}>
             </div>
           </div>
-        `}
+        </${Disclosure}>
 
         <${PanelFooter}>
           <span class="ml-auto text-[9px] text-aurora-text-dim">${result.length.toLocaleString()} caracteres</span>

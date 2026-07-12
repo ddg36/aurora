@@ -1,0 +1,47 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        { "header": "X-Frame-Options", "operation": "remove" },
+        { "header": "Frame-Options", "operation": "remove" }
+      ]
+    },
+    "condition": {
+      "urlFilter": "*",
+      "resourceTypes": ["sub_frame"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 2,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        { "header": "Content-Security-Policy", "operation": "remove" }
+      ]
+    },
+    "condition": {
+      "requestDomains": [
+        "chatgpt.com",
+        "chat.openai.com",
+        "auth.openai.com",
+        "claude.ai",
+        "gemini.google.com",
+        "grok.com",
+        "copilot.microsoft.com",
+        "chat.deepseek.com",
+        "chat.qwen.ai",
+        "www.meta.ai",
+        "chat.mistral.ai",
+        "you.com",
+        "poe.com",
+        "accounts.google.com",
+        "appleid.apple.com"
+      ],
+      "resourceTypes": ["sub_frame"]
+    }
+  }
+]

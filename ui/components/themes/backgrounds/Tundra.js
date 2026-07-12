@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Tundra — campo de hielo con cristales en el suelo, ventisca y auroras polares.
 export class Tundra extends Component {
@@ -43,8 +43,9 @@ export class Tundra extends Component {
 
     const init = () => {
       resize();
-      shards    = Array.from({ length: 60 }, makeShard);
-      snowdrift = Array.from({ length: 120 }, makeFlake);
+      const liviano = esDispositivoLiviano();
+      shards    = Array.from({ length: liviano ? 18 : 60 }, makeShard);
+      snowdrift = Array.from({ length: liviano ? 35 : 120 }, makeFlake);
     };
 
     let raf;

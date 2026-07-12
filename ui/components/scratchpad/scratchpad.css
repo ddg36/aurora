@@ -20,6 +20,8 @@
 
 
 .sp-page-main {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -37,13 +39,27 @@
   border-right: 1px solid var(--aurora-border, var(--surface2));
   background: color-mix(in srgb, var(--aurora-surface, var(--surface)) 78%, var(--aurora-bg, var(--bg)));
   transition: width .16s ease, padding .16s ease;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   z-index: 20;
 }
 
 .sp-workspace-nav.is-collapsed {
   width: 44px;
   padding: 10px 6px;
+}
+
+/* Expandido: overlay flotante (useFloatingMenu, position:fixed inline) —
+   nunca empuja .sp-page-main/.sp-document, sólo aparece encima. */
+.sp-workspace-nav-floating {
+  width: 260px;
+  height: auto;
+  overflow-y: auto;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
+  border-radius: 0 10px 10px 0;
+  border: 1px solid var(--aurora-border, var(--surface2));
+  border-right: 1px solid var(--aurora-border, var(--surface2));
+  background: var(--aurora-surface, var(--surface));
 }
 
 .sp-nav-toggle {
@@ -78,6 +94,15 @@
   font-size: 11px;
   font-weight: 750;
   flex: 0 0 auto;
+}
+
+/* Punto de estado online/offline — mismo patrón que el dot de Lyra junto
+   al toggle Cloud/Duo, no un ícono cuadrado como el resto de .sp-nav-brand span. */
+.sp-nav-brand .sp-nav-status {
+  width: auto;
+  height: auto;
+  background: none;
+  margin-left: auto;
 }
 
 .sp-nav-brand strong,
@@ -223,9 +248,10 @@
 
 .sp-document {
   width: min(860px, calc(100% - 28px));
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   margin: 0 auto;
-  padding: 8px 0 56px;
+  padding: 8px 0 16px;
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
@@ -234,8 +260,8 @@
   position: fixed;
   z-index: 40;
   top: 0;
-  right: 0;
-  width: min(284px, 86vw);
+  right: var(--aurora-rail-w, 0px);
+  width: min(284px, calc(86vw - var(--aurora-rail-w, 0px)));
   height: 100vh;
   border-left: 1px solid var(--aurora-border, var(--surface2));
   background: color-mix(in srgb, var(--aurora-surface, var(--surface)) 82%, var(--aurora-bg, var(--bg)));
@@ -337,22 +363,13 @@
   font-style: normal;
 }
 
+/* Sólo botones de acción (Insert/Save/Paste/Copy/Clear) — layout de
+   TOOLBAR_GROUP compartido (ui/components/shared/iconButton.js). Stats y
+   estado de conexión NO van acá: viven en el pie del documento y en el
+   nombre del workspace en la sidebar, respectivamente. */
 .sp-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 42px;
   margin-bottom: 18px;
   padding: 6px 0 8px;
-}
-
-.sp-topbar-left,
-.sp-topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
 }
 
 .sp-sync {
@@ -452,6 +469,20 @@
   flex-direction: column;
   gap: 2px;
   padding-bottom: 32px;
+}
+
+/* Pie fijo, fuera del scroll de .sp-document — mismo criterio que
+   statsSesion en Lyra (vive fuera de .chat-container, pegado abajo). */
+.sp-doc-stats {
+  flex-shrink: 0;
+  width: min(860px, calc(100% - 28px));
+  margin: 0 auto;
+  padding: 6px 0;
+  border-top: 1px solid var(--aurora-border, var(--surface2));
+  font-size: 10px;
+  font-family: var(--aurora-font-mono, monospace);
+  color: var(--aurora-text-muted, var(--text-muted));
+  white-space: nowrap;
 }
 
 .sp-block-row {
@@ -839,29 +870,18 @@
   padding: 0 6px !important;
 }
 
+/* Posicionamiento (position/top|bottom/left/width/z-index) lo pone el hook
+   useFloatingMenu vía inline style — acá sólo look visual. */
 .sp-type-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 100;
   display: flex;
   flex-direction: column;
   min-width: 140px;
+  max-height: 60vh;
+  overflow-y: auto;
   border: 1px solid var(--aurora-border, var(--surface2));
   border-radius: 6px;
   background: var(--aurora-surface, var(--surface));
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-  overflow: hidden;
-}
-
-.sp-type-menu.is-fixed {
-  position: fixed;
-  top: unset;
-  right: unset;
-  z-index: 9999;
-  max-height: 60vh;
-  overflow-y: auto;
-  transform: translateX(-100%);
 }
 
 .sp-type-option {
@@ -893,12 +913,9 @@
   cursor: default;
 }
 
+/* Posicionamiento (position/top|bottom/left/width/z-index) lo pone el hook
+   useFloatingMenu vía inline style — acá sólo look visual. */
 .sp-slash-menu {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 4px);
-  left: 0;
-  width: min(320px, 90vw);
   max-height: 310px;
   overflow: auto;
   padding: 6px;
@@ -1058,48 +1075,3 @@
   color: var(--aurora-text, var(--text));
 }
 
-@media (max-width: 720px) {
-  .sp-page {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .sp-workspace-nav {
-    position: relative;
-    width: 100%;
-    height: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--aurora-border, var(--surface2));
-  }
-
-  .sp-workspace-nav.is-collapsed {
-    width: 100%;
-    height: 44px;
-  }
-
-  .sp-workspace-nav.is-collapsed .sp-nav-toggle {
-    margin-left: auto;
-  }
-
-  .sp-document {
-    width: calc(100% - 18px);
-  }
-
-  .sp-topbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .sp-block-row {
-    grid-template-columns: 20px minmax(0, 1fr);
-  }
-
-  .sp-block-toolbar {
-    grid-column: 2;
-    flex-wrap: wrap;
-    opacity: 1;
-  }
-
-  .sp-board-cols {
-    grid-template-columns: repeat(3, minmax(150px, 1fr));
-  }
-}

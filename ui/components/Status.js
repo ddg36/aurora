@@ -1,3 +1,5 @@
+import { BTN_HEIGHT, BTN_SAFE } from './shared/iconButton.js';
+
 const { html } = globalThis;
 
 const TONES = {
@@ -7,9 +9,9 @@ const TONES = {
   loading: 'text-aurora-text-dim border-aurora-border',
 };
 
-export function Status({ tone = 'loading', children }) {
+export function Status({ tone = 'loading', title, children }) {
   return html`
-    <div class=${['rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors', TONES[tone] || TONES.loading].join(' ')}>
+    <div class=${['inline-flex items-center rounded-md border px-3 text-xs font-semibold transition-colors', BTN_HEIGHT, BTN_SAFE, TONES[tone] || TONES.loading].join(' ')} title=${title}>
       ${children}
     </div>
   `;

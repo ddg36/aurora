@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Partículas estelares con explosiones suaves cada 2.5s.
 export class Starfield extends Component {
@@ -95,7 +95,7 @@ export class Starfield extends Component {
     this._resize = resize;
     window.addEventListener('resize', resize);
     resize();
-    stars = Array.from({ length: 120 }, makeStar);
+    stars = Array.from({ length: esDispositivoLiviano() ? 40 : 120 }, makeStar);
     bursts = [];
     this._burstInterval = setInterval(spawnBurst, 2500);
     draw();

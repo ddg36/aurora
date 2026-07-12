@@ -554,7 +554,10 @@ CREATE TABLE productividad_price_checks (
 );
 
 -- ── ÍNDICES ───────────────────────────────
-CREATE INDEX idx_mensajes_chat          ON mensajes(chat_id);
+-- (chat_id, creado_en): cubre la query más caliente (cargar un chat en orden
+-- cronológico, WHERE chat_id=? ORDER BY creado_en) y también las que sólo
+-- filtran por chat_id — reemplaza al índice suelto de chat_id.
+CREATE INDEX idx_mensajes_chat_ts       ON mensajes(chat_id, creado_en);
 CREATE INDEX idx_mensajes_rol           ON mensajes(chat_id, rol);
 CREATE INDEX idx_chats_usuario          ON chats(usuario_id);
 CREATE INDEX idx_chats_actualizado      ON chats(usuario_id, actualizado);

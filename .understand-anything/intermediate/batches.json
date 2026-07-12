@@ -1,0 +1,3652 @@
+{
+  "schemaVersion": 1,
+  "algorithm": "louvain",
+  "totalFiles": 310,
+  "totalBatches": 19,
+  "exportsByPath": {
+    "extensions/aihub/app.js": [],
+    "extensions/aihub/background.js": [],
+    "extensions/aihub/background/browser-cabin.js": [],
+    "extensions/aihub/background/yt-history.js": [],
+    "extensions/aihub/content-scripts/ai-bridge.js": [],
+    "extensions/aihub/content-scripts/bold-hud.js": [],
+    "extensions/aihub/content-scripts/gem-observer.js": [],
+    "extensions/aihub/content-scripts/main.js": [],
+    "extensions/aihub/content-scripts/yt-captures.js": [],
+    "extensions/aihub/content-scripts/yt-noambient.js": [],
+    "extensions/aihub/sidepanel.js": [],
+    "scripts/aurora_mcp_stdio.py": [
+      "main"
+    ],
+    "src/__init__.py": [],
+    "src/browser/__init__.py": [],
+    "src/browser/agent.py": [
+      "_get_model_id",
+      "_detect_vision",
+      "_create_blank_tab",
+      "_get_cdp_url",
+      "_strip_markdown_json",
+      "RobustChatOpenAI",
+      "_safe_json_loads",
+      "_make_llm",
+      "run_agent"
+    ],
+    "src/browser/router.py": [
+      "_push",
+      "RunBody",
+      "_run_agent_task",
+      "nav_run",
+      "nav_stream"
+    ],
+    "src/db/__init__.py": [],
+    "src/db/auth.py": [
+      "auth_guard"
+    ],
+    "src/db/connection.py": [
+      "get_db",
+      "init_db",
+      "_ensure_productividad",
+      "_ensure_builder_templates",
+      "_ensure_team_roles",
+      "_ensure_creativity_ideas",
+      "seed_builder_data"
+    ],
+    "src/db/router.py": [],
+    "src/db/routes/__init__.py": [],
+    "src/db/routes/ajustes.py": [
+      "AjusteBody",
+      "AjustesController"
+    ],
+    "src/db/routes/ash.py": [
+      "ProyectoActivarBody",
+      "ContextoBody",
+      "DescargaBody",
+      "PromptCapturadoBody",
+      "PromptCapturadoPatchBody",
+      "ApprovalPatchBody",
+      "AshController"
+    ],
+    "src/db/routes/backup.py": [
+      "BackupController"
+    ],
+    "src/db/routes/bc.py": [
+      "SesionBody",
+      "BcController"
+    ],
+    "src/db/routes/builder_templates.py": [
+      "BuilderTemplateBody",
+      "BuilderTemplatesController"
+    ],
+    "src/db/routes/chats.py": [
+      "ChatBody",
+      "ChatUpdateBody",
+      "MensajeBody",
+      "ChatsController"
+    ],
+    "src/db/routes/creativity_ideas.py": [
+      "IdeasBody",
+      "CreativityIdeasController"
+    ],
+    "src/db/routes/eventos.py": [
+      "EventoBody",
+      "EventosController"
+    ],
+    "src/db/routes/ext_capturas.py": [
+      "ExtCapturaBody",
+      "ExtCapturasController"
+    ],
+    "src/db/routes/extensions.py": [
+      "ExtensionStateBody",
+      "ExtensionsController"
+    ],
+    "src/db/routes/jobs.py": [
+      "JobsController"
+    ],
+    "src/db/routes/llm.py": [
+      "HistoryBody",
+      "AdapterBody",
+      "ConversacionBody",
+      "MensajeCloudBody",
+      "LlmController"
+    ],
+    "src/db/routes/mdreader.py": [
+      "_safe_json",
+      "PrefsBody",
+      "IndexFile",
+      "IndexNode",
+      "IndexEdge",
+      "IndexBody",
+      "MDReaderController"
+    ],
+    "src/db/routes/nav.py": [
+      "SesionBody",
+      "SesionPatchBody",
+      "LogBody",
+      "CapturaBody",
+      "NavController"
+    ],
+    "src/db/routes/productividad.py": [
+      "_fo",
+      "_fa",
+      "ProductividadController",
+      "_infer_clipboard_tipo"
+    ],
+    "src/db/routes/prompts.py": [
+      "PromptBody",
+      "HistorialBody",
+      "GuardadoBody",
+      "PromptsController"
+    ],
+    "src/db/routes/scratchpad.py": [
+      "ImagenBody",
+      "ScratchpadController"
+    ],
+    "src/db/routes/sesiones.py": [
+      "SesionBody",
+      "SesionesController"
+    ],
+    "src/db/routes/stats.py": [
+      "StatsController"
+    ],
+    "src/db/routes/team_roles.py": [
+      "RoleBody",
+      "ReorderBody",
+      "TeamRolesController"
+    ],
+    "src/db/routes/tokens.py": [
+      "TokenAnalisisBody",
+      "TokensController"
+    ],
+    "src/db/routes/urls_custom.py": [
+      "UrlCustomBody",
+      "UrlsCustomController"
+    ],
+    "src/db/routes/usuarios.py": [
+      "InitBody",
+      "LoginBody",
+      "CrearBody",
+      "UsuariosController"
+    ],
+    "src/db/routes/wiki.py": [
+      "IndiceBody",
+      "WikiController"
+    ],
+    "src/db/routes/yt.py": [
+      "ExtraccionBody",
+      "YtController"
+    ],
+    "src/ext/__init__.py": [],
+    "src/ext/router.py": [
+      "ExtSession",
+      "get_active_session",
+      "ext_cmd",
+      "get_active_tab",
+      "ext_ws",
+      "_update_active_tab",
+      "ext_capture",
+      "ext_tab_change",
+      "ext_cmd_route",
+      "ext_tab",
+      "ext_tab_stream",
+      "ext_status"
+    ],
+    "src/gemita/__init__.py": [],
+    "src/gemita/bucle.py": [
+      "_project_context_intro",
+      "manejar_chat",
+      "delegar_hub_tool",
+      "_llamar_llama",
+      "_nombres_validos",
+      "_extraer_tool_calls_del_texto",
+      "_construir_historial",
+      "condensar_memoria"
+    ],
+    "src/gemita/config.py": [],
+    "src/gemita/providers.py": [
+      "LLMProvider",
+      "LLMModel",
+      "discover_providers",
+      "_probe_provider",
+      "_probe_vision",
+      "_refresh_models",
+      "list_models",
+      "choose_provider",
+      "stream_chat",
+      "_ollama_messages",
+      "complete_chat",
+      "_get_provider",
+      "_parse_models",
+      "_infer_capabilities",
+      "_stream_openai_compatible",
+      "_stream_ollama_native"
+    ],
+    "src/gemita/roles.py": [
+      "AgentRole",
+      "seleccionar_rol"
+    ],
+    "src/gemita/router.py": [
+      "GemitaSession",
+      "_session_init",
+      "_manejar_models",
+      "_correr_chat",
+      "gemita_ws"
+    ],
+    "src/gemita/shell.py": [
+      "ShellBash"
+    ],
+    "src/gemita/tools.py": [
+      "_resolve_path",
+      "_get_current_datetime",
+      "_run_bash",
+      "_nexus_run",
+      "_read_file",
+      "_write_file",
+      "_list_directory",
+      "_search_in_files",
+      "_find_files",
+      "_update_memory",
+      "_read_memory",
+      "_get_user_profile",
+      "_save_user_profile",
+      "_wiki_search",
+      "registrar_herramientas_python"
+    ],
+    "src/jobs/__init__.py": [],
+    "src/jobs/cleanup_capturas.py": [
+      "_config_usuario",
+      "_usuarios_con_capturas",
+      "cleanup_usuario",
+      "run_cleanup"
+    ],
+    "src/logging_config.py": [
+      "JSONFormatter",
+      "setup_logging"
+    ],
+    "src/main.py": [
+      "root",
+      "ping",
+      "health",
+      "favicon",
+      "on_startup",
+      "PrivateNetworkMiddleware"
+    ],
+    "src/mcp/__init__.py": [],
+    "src/mcp/config.py": [
+      "load_config",
+      "external_servers"
+    ],
+    "src/mcp/external.py": [
+      "list_external_servers",
+      "call_external"
+    ],
+    "src/mcp/prompts.py": [
+      "list_prompts",
+      "get_prompt"
+    ],
+    "src/mcp/protocol.py": [
+      "handle_rpc",
+      "_dispatch"
+    ],
+    "src/mcp/resources.py": [
+      "list_resources",
+      "read_resource",
+      "_db_rows"
+    ],
+    "src/mcp/router.py": [
+      "mcp_status",
+      "mcp_client_config",
+      "mcp_rpc",
+      "mcp_external_list",
+      "mcp_external_rpc"
+    ],
+    "src/nexus/__init__.py": [],
+    "src/nexus/approvals.py": [
+      "_pending_path",
+      "_load",
+      "_save",
+      "crear_aprobacion",
+      "listar_aprobaciones",
+      "aprobar",
+      "denegar"
+    ],
+    "src/nexus/config.py": [
+      "clip"
+    ],
+    "src/nexus/editor.py": [
+      "editor_run"
+    ],
+    "src/nexus/fs.py": [
+      "fs_list",
+      "fs_read",
+      "fs_head",
+      "fs_stat",
+      "fs_tree",
+      "fs_grep",
+      "fs_write",
+      "fs_patch",
+      "fs_delete",
+      "fs_move",
+      "fs_mkdir"
+    ],
+    "src/nexus/py.py": [
+      "_venv",
+      "_venv_python",
+      "py_status",
+      "py_venv_create",
+      "py_run",
+      "py_pip_install",
+      "py_pip_list"
+    ],
+    "src/nexus/router.py": [],
+    "src/nexus/shell.py": [
+      "ejecutar_shell_async",
+      "shell_run",
+      "ejecutar_shell"
+    ],
+    "src/nexus/tasks.py": [
+      "Job",
+      "create_job",
+      "list_tasks",
+      "kill_task",
+      "forget_task",
+      "task_stream"
+    ],
+    "src/nexus/workspace.py": [
+      "is_inside",
+      "safe",
+      "rel",
+      "make_backup"
+    ],
+    "src/parser/__init__.py": [],
+    "src/parser/index.py": [
+      "aurora_parse"
+    ],
+    "src/parser/normalizer.py": [
+      "normalize",
+      "_br_observer_action",
+      "_br_obs_params",
+      "_br_params",
+      "_pg_params",
+      "_resolve_workspace",
+      "_error"
+    ],
+    "src/parser/parsers/__init__.py": [],
+    "src/parser/parsers/br.py": [
+      "parse_br",
+      "br_flag_to_action",
+      "_unquote",
+      "_parse_kv",
+      "_parse_flags"
+    ],
+    "src/parser/parsers/nexus.py": [
+      "parse_nexus"
+    ],
+    "src/parser/parsers/nx.py": [
+      "parse_nx",
+      "parse_nxw",
+      "_extract",
+      "_decode_b64"
+    ],
+    "src/parser/parsers/pg.py": [
+      "parse_pg",
+      "pg_flag_to_action",
+      "_push",
+      "_parse_pg_flags"
+    ],
+    "src/parser/parsers/utils.py": [
+      "split_leading_control_flags",
+      "hash_id"
+    ],
+    "src/parser/router.py": [
+      "parser_parse"
+    ],
+    "src/parser/validator.py": [
+      "validate_normalized"
+    ],
+    "src/tools/__init__.py": [],
+    "src/tools/builtin.py": [
+      "workspace_list",
+      "workspace_read",
+      "workspace_search",
+      "nexus_shell_run",
+      "services_health",
+      "_uid",
+      "productividad_capture_page",
+      "productividad_research_page",
+      "productividad_task_from_capture",
+      "productividad_clipboard_save",
+      "productividad_forms_inspect",
+      "productividad_forms_fill",
+      "productividad_meeting_capture",
+      "productividad_tabs_list",
+      "productividad_tabs_archive",
+      "productividad_price_watch",
+      "productividad_price_scan",
+      "_json",
+      "register_builtin_tools"
+    ],
+    "src/tools/contract.py": [
+      "schema",
+      "ToolContract"
+    ],
+    "src/tools/registry.py": [
+      "register",
+      "get_tool",
+      "list_tools",
+      "to_openai_format",
+      "run_tool"
+    ],
+    "src/tools/router.py": [
+      "tools_list",
+      "tools_get",
+      "tools_run",
+      "tools_ocr"
+    ],
+    "src/voz/__init__.py": [],
+    "src/voz/router.py": [
+      "_get_modelo",
+      "stt",
+      "tts",
+      "voces"
+    ],
+    "ui/app.js": [
+      "App"
+    ],
+    "ui/boot.js": [],
+    "ui/components/Button.js": [
+      "Button"
+    ],
+    "ui/components/ChatMessage.js": [
+      "ChatMessage",
+      "ChatList"
+    ],
+    "ui/components/Chip.js": [
+      "Chip",
+      "ChipGroup"
+    ],
+    "ui/components/Dropdown.js": [
+      "Dropdown",
+      "DropdownItem"
+    ],
+    "ui/components/Empty.js": [
+      "Empty"
+    ],
+    "ui/components/footer/acciones-modulo.js": [
+      "ACCIONES_MODULO",
+      "ACCIONES_CAPTURA_RAPIDA"
+    ],
+    "ui/components/footer/footer.js": [
+      "Footer"
+    ],
+    "ui/components/footer/registry.js": [
+      "userSwitcherAbierto",
+      "notifAbierto",
+      "footActions",
+      "setViewActions",
+      "clearViewActions",
+      "setGlobalActions"
+    ],
+    "ui/components/index.js": [
+      "Button",
+      "Dropdown",
+      "DropdownItem",
+      "Status",
+      "Toolbar",
+      "ToolbarSpacer",
+      "Panel",
+      "PanelHeader",
+      "PanelBody",
+      "PanelFooter",
+      "PanelLabel",
+      "PanelValue",
+      "List",
+      "ListItem",
+      "ListActions",
+      "Empty",
+      "Chip",
+      "ChipGroup",
+      "Input",
+      "Textarea",
+      "Select",
+      "ChatMessage",
+      "ChatList"
+    ],
+    "ui/components/Input.js": [
+      "Input",
+      "Textarea",
+      "Select"
+    ],
+    "ui/components/List.js": [
+      "List",
+      "ListItem",
+      "ListActions"
+    ],
+    "ui/components/local.views/canvas.js": [
+      "CanvasPanel"
+    ],
+    "ui/components/nav/command-palette.js": [
+      "CommandPalette"
+    ],
+    "ui/components/nav/nav-tabs.js": [
+      "TABS"
+    ],
+    "ui/components/nav/notif-center.js": [
+      "NotifCenter"
+    ],
+    "ui/components/nav/sesion-ui.js": [
+      "restaurarTab",
+      "iniciarPersistenciaUI"
+    ],
+    "ui/components/nav/user-switcher.js": [
+      "UserSwitcher"
+    ],
+    "ui/components/Panel.js": [
+      "Panel",
+      "PanelHeader",
+      "PanelBody",
+      "PanelFooter",
+      "PanelLabel",
+      "PanelValue"
+    ],
+    "ui/components/scratchpad/index.js": [
+      "SCRATCHPAD_COMMANDS",
+      "ScratchpadPageShell",
+      "ScratchpadWorkspaceNav",
+      "ScratchpadTopBar",
+      "ScratchpadCreatePanel",
+      "ScratchpadBlockEditor",
+      "ScratchpadBlockRow",
+      "ScratchpadBulletListBlock",
+      "ScratchpadTodoListBlock",
+      "ScratchpadBlockToolbar",
+      "ScratchpadSlashMenu",
+      "ScratchpadToggleBlock",
+      "ScratchpadCalloutBlock",
+      "ScratchpadCodeBlock",
+      "ScratchpadImageBlock",
+      "ScratchpadBookmarkBlock",
+      "ScratchpadCollectionTable",
+      "ScratchpadCollectionBoard",
+      "ScratchpadEmptyState"
+    ],
+    "ui/components/shared/api-helpers.js": [
+      "cargarHealth"
+    ],
+    "ui/components/shared/api.js": [
+      "BASE",
+      "hdrs",
+      "getJSON",
+      "sendJSON",
+      "postJSON",
+      "putJSON",
+      "patchJSON",
+      "deleteJSON"
+    ],
+    "ui/components/shared/autosave.js": [
+      "crearAutosave"
+    ],
+    "ui/components/shared/builder-api.js": [
+      "getBuilderTemplate",
+      "saveBuilderTemplate",
+      "deleteBuilderTemplate",
+      "getTeamRoles",
+      "getTeamRole",
+      "createTeamRole",
+      "updateTeamRole",
+      "deleteTeamRole",
+      "reorderTeamRoles",
+      "getCreativityIdeas",
+      "getCreativityIdeasByTematica",
+      "saveCreativityIdeas",
+      "deleteCreativityIdeas"
+    ],
+    "ui/components/shared/clipboard.js": [
+      "copiarTexto",
+      "leerTexto"
+    ],
+    "ui/components/shared/ext-bridge.js": [
+      "bgRequest",
+      "initExtBridge"
+    ],
+    "ui/components/shared/FileTree.js": [
+      "FileTree"
+    ],
+    "ui/components/shared/flash.js": [
+      "mostrarTemporal",
+      "cancelarTemporal"
+    ],
+    "ui/components/shared/fs.js": [
+      "SKIP_DIRS",
+      "asegurarRaiz",
+      "listar",
+      "leer",
+      "escribir",
+      "borrar",
+      "crearDir",
+      "mover",
+      "stat",
+      "tree"
+    ],
+    "ui/components/shared/gemita-ws.js": [
+      "onSessionInfo",
+      "connectGemita",
+      "disconnectGemita",
+      "cancelarMensaje",
+      "getConnectionState",
+      "sendToGemita",
+      "confirmTool",
+      "resetGemitaSession",
+      "fetchModels"
+    ],
+    "ui/components/shared/JsonBlock.js": [
+      "JsonBlock"
+    ],
+    "ui/components/shared/markdown.js": [
+      "renderMarkdown"
+    ],
+    "ui/components/shared/toast.js": [
+      "Toast"
+    ],
+    "ui/components/Status.js": [
+      "Status"
+    ],
+    "ui/components/themes/backgrounds/Abyss.js": [
+      "Abyss"
+    ],
+    "ui/components/themes/backgrounds/Ash.js": [
+      "Ash"
+    ],
+    "ui/components/themes/backgrounds/Aurora.js": [
+      "Aurora"
+    ],
+    "ui/components/themes/backgrounds/Autumn.js": [
+      "Autumn"
+    ],
+    "ui/components/themes/backgrounds/Blizzard.js": [
+      "Blizzard"
+    ],
+    "ui/components/themes/backgrounds/Blood.js": [
+      "Blood"
+    ],
+    "ui/components/themes/backgrounds/Castle.js": [
+      "Castle"
+    ],
+    "ui/components/themes/backgrounds/Clouds.js": [
+      "Clouds"
+    ],
+    "ui/components/themes/backgrounds/Depths.js": [
+      "Depths"
+    ],
+    "ui/components/themes/backgrounds/Fireflies.js": [
+      "Fireflies"
+    ],
+    "ui/components/themes/backgrounds/Fog.js": [
+      "Fog"
+    ],
+    "ui/components/themes/backgrounds/Glitch.js": [
+      "Glitch"
+    ],
+    "ui/components/themes/backgrounds/Grid.js": [
+      "Grid"
+    ],
+    "ui/components/themes/backgrounds/Hellfire.js": [
+      "Hellfire"
+    ],
+    "ui/components/themes/backgrounds/Lava.js": [
+      "Lava"
+    ],
+    "ui/components/themes/backgrounds/light.js": [
+      "LightClouds",
+      "LightStarfield",
+      "LightVoid",
+      "LightNebula",
+      "LightAurora",
+      "LightParticles",
+      "LightMatrix",
+      "LightGrid",
+      "LightRain",
+      "LightGlitch",
+      "LightFireflies",
+      "LightCastle",
+      "LightAsh",
+      "LightFog",
+      "LightRavens",
+      "LightAbyss",
+      "LightDepths",
+      "LightHellfire",
+      "LightBlood",
+      "LightLava",
+      "LightSakura",
+      "LightAutumn",
+      "LightMoonlit",
+      "LightBlizzard",
+      "LightTundra"
+    ],
+    "ui/components/themes/backgrounds/loaders.js": [
+      "BACKGROUND_LOADERS"
+    ],
+    "ui/components/themes/backgrounds/Matrix.js": [
+      "Matrix"
+    ],
+    "ui/components/themes/backgrounds/Moonlit.js": [
+      "Moonlit"
+    ],
+    "ui/components/themes/backgrounds/Nebula.js": [
+      "Nebula"
+    ],
+    "ui/components/themes/backgrounds/Particles.js": [
+      "Particles"
+    ],
+    "ui/components/themes/backgrounds/Rain.js": [
+      "Rain"
+    ],
+    "ui/components/themes/backgrounds/Ravens.js": [
+      "Ravens"
+    ],
+    "ui/components/themes/backgrounds/Sakura.js": [
+      "Sakura"
+    ],
+    "ui/components/themes/backgrounds/Starfield.js": [
+      "Starfield"
+    ],
+    "ui/components/themes/backgrounds/Tundra.js": [
+      "Tundra"
+    ],
+    "ui/components/themes/backgrounds/Void.js": [
+      "Void"
+    ],
+    "ui/components/themes/hud/Candles.js": [
+      "Candles"
+    ],
+    "ui/components/themes/hud/Circuit.js": [
+      "Circuit"
+    ],
+    "ui/components/themes/hud/Compass.js": [
+      "Compass"
+    ],
+    "ui/components/themes/hud/Corners.js": [
+      "Corners"
+    ],
+    "ui/components/themes/hud/Drip.js": [
+      "Drip"
+    ],
+    "ui/components/themes/hud/Ember.js": [
+      "Ember"
+    ],
+    "ui/components/themes/hud/light.js": [
+      "LightLuna",
+      "LightPulseRings",
+      "LightScanlines",
+      "LightCircuit",
+      "LightCorners",
+      "LightCandles",
+      "LightRunes",
+      "LightDrip",
+      "LightSonar",
+      "LightEmber",
+      "LightTorii",
+      "LightCompass"
+    ],
+    "ui/components/themes/hud/loaders.js": [
+      "HUD_LOADERS"
+    ],
+    "ui/components/themes/hud/Luna.js": [
+      "Luna"
+    ],
+    "ui/components/themes/hud/PulseRings.js": [
+      "PulseRings"
+    ],
+    "ui/components/themes/hud/Runes.js": [
+      "Runes"
+    ],
+    "ui/components/themes/hud/Scanlines.js": [
+      "Scanlines"
+    ],
+    "ui/components/themes/hud/Sonar.js": [
+      "Sonar"
+    ],
+    "ui/components/themes/hud/Torii.js": [
+      "Torii"
+    ],
+    "ui/components/themes/index.js": [
+      "THEMES",
+      "BACKGROUNDS",
+      "HUDS"
+    ],
+    "ui/components/themes/lib.js": [
+      "hexToRgb",
+      "readThemeColors",
+      "createAccentWatcher"
+    ],
+    "ui/components/themes/manager.js": [
+      "aplicarTema"
+    ],
+    "ui/components/themes/tema-hora.js": [
+      "temaPorHora",
+      "iniciarTemaAuto",
+      "detenerTemaAuto"
+    ],
+    "ui/components/Toolbar.js": [
+      "Toolbar",
+      "ToolbarSpacer"
+    ],
+    "ui/modules/ajustes/scripts/export.js": [
+      "crearSnapshotAjustes",
+      "descargarJSON",
+      "leerJSONArchivo"
+    ],
+    "ui/modules/ajustes/scripts/llms.js": [
+      "llms",
+      "cargarLLMs",
+      "crearLLM",
+      "borrarLLM"
+    ],
+    "ui/modules/ajustes/scripts/tema.js": [
+      "cargarTema",
+      "guardarTema",
+      "guardarThemeMode",
+      "guardarBackground",
+      "guardarHud",
+      "theme",
+      "themeMode",
+      "background",
+      "hud"
+    ],
+    "ui/modules/ajustes/view/ajustes.js": [
+      "Ajustes"
+    ],
+    "ui/modules/aurora/scripts/mcp.js": [
+      "cargarMcpStatus",
+      "cargarMcpClientConfig",
+      "llamarMcp"
+    ],
+    "ui/modules/aurora/scripts/services.js": [
+      "cargarHealth"
+    ],
+    "ui/modules/aurora/scripts/tools.js": [
+      "cargarTools",
+      "ejecutarTool"
+    ],
+    "ui/modules/aurora/view/aurora.js": [
+      "AuroraControl"
+    ],
+    "ui/modules/captura/scripts/bridge.js": [
+      "extDisponible",
+      "getActiveTab",
+      "capturarTexto",
+      "capturarScreenshot",
+      "capturarYoutube",
+      "inyectarTextoEnAI",
+      "resumirTranscript",
+      "puntosClave",
+      "traducirTranscript",
+      "notasEstudio"
+    ],
+    "ui/modules/captura/scripts/historial.js": [
+      "historialCaptura",
+      "cargarHistorialCaptura",
+      "agregarAlHistorial",
+      "eliminarDelHistorial",
+      "limpiarHistorial",
+      "obtenerDetalleCaptura",
+      "buscarEnHistorial"
+    ],
+    "ui/modules/captura/view/captura.js": [
+      "Captura"
+    ],
+    "ui/modules/captura/view/historial-panel.js": [
+      "Historial"
+    ],
+    "ui/modules/captura/view/tool-result-panel.js": [
+      "ToolResultPanel"
+    ],
+    "ui/modules/captura/view/transcript-utils.js": [
+      "extractTimestamps",
+      "getVideoId",
+      "jumpToTimestamp",
+      "searchMatches",
+      "contextAround",
+      "classifyUrl"
+    ],
+    "ui/modules/chain/scripts/ejecutar.js": [
+      "ejecutarCadena",
+      "PLANTILLAS"
+    ],
+    "ui/modules/chain/view/chain.js": [
+      "Chain"
+    ],
+    "ui/modules/detective-tokens/scripts/analizar.js": [
+      "estimar",
+      "guardarAnalisis",
+      "cargarHistorial"
+    ],
+    "ui/modules/detective-tokens/view/detective.js": [
+      "DetectiveTokens"
+    ],
+    "ui/modules/editor/scripts/runner.js": [
+      "EDITOR_ROOT",
+      "listar",
+      "leer",
+      "escribir",
+      "detectarLang",
+      "ejecutar"
+    ],
+    "ui/modules/editor/view/editor.js": [
+      "Editor"
+    ],
+    "ui/modules/inicio/foot/actions.js": [
+      "QUICK_ACTIONS"
+    ],
+    "ui/modules/inicio/scripts/dashboard.js": [
+      "cargarHealth",
+      "pingAurora",
+      "cargarDashboardStats",
+      "formatBytes",
+      "formatUptime"
+    ],
+    "ui/modules/inicio/scripts/ping.js": [
+      "startPing",
+      "stopPing"
+    ],
+    "ui/modules/inicio/view/inicio.js": [
+      "Inicio"
+    ],
+    "ui/modules/llmcloud/scripts/duo-panel.js": [
+      "DuoPanel"
+    ],
+    "ui/modules/llmcloud/scripts/duo.js": [
+      "crearDuo"
+    ],
+    "ui/modules/llmcloud/scripts/urls.js": [
+      "LLM_PRESETS",
+      "cargarURLsCloud"
+    ],
+    "ui/modules/llmcloud/view/llmcloud.js": [
+      "LLMCloud"
+    ],
+    "ui/modules/local/scripts/canvas/canvas.js": [
+      "canvasDoc",
+      "canvasVisible",
+      "cargarCanvas",
+      "CANVAS_TOOLS",
+      "canvasWrite",
+      "toggleCanvas",
+      "handleHubAction"
+    ],
+    "ui/modules/local/scripts/chat/acciones-rapidas.js": [
+      "copiarMensaje",
+      "añadirANotas",
+      "reformularRespuesta",
+      "leerMensaje"
+    ],
+    "ui/modules/local/scripts/chat/actividad.js": [
+      "toolActivity",
+      "trackStart",
+      "trackEnd",
+      "clearActivity"
+    ],
+    "ui/modules/local/scripts/chat/exportar-pdf.js": [
+      "exportarChatPDF"
+    ],
+    "ui/modules/local/scripts/chat/herramientas.js": [
+      "HERRAMIENTAS_SISTEMA",
+      "promptParaHerramienta"
+    ],
+    "ui/modules/local/scripts/chat/historial.js": [
+      "chats",
+      "chatActualId",
+      "fmtFecha",
+      "cargarChats",
+      "crearChat",
+      "renombrarChat",
+      "eliminarChat",
+      "autoGuardar",
+      "exportarChat"
+    ],
+    "ui/modules/local/scripts/chat/instrucciones.js": [
+      "instruccion",
+      "cargarInstruccion",
+      "guardarInstruccion"
+    ],
+    "ui/modules/local/scripts/chat/mensajes.js": [
+      "historial",
+      "streamingActual",
+      "thinkingActual",
+      "toolEvents",
+      "cargando",
+      "registrarToolEvent",
+      "limpiarStream",
+      "cargarMensajes",
+      "guardarMensaje",
+      "borrarMensaje",
+      "agregarMensajeLocal",
+      "agregarMensajeRico",
+      "limpiarHistorial"
+    ],
+    "ui/modules/local/scripts/chat/parametros.js": [
+      "params",
+      "modeloSeleccionado",
+      "cargarParametros",
+      "guardarParametros",
+      "cargarModelo",
+      "guardarModelo"
+    ],
+    "ui/modules/local/scripts/chat/renderizar.js": [
+      "renderMarkdownLight",
+      "renderizarContenido",
+      "formatearArgsToolCall",
+      "scrollAlFondo",
+      "estaCercaDelFondo",
+      "inicializarEventosCodigo"
+    ],
+    "ui/modules/local/scripts/chat/typewriter.js": [
+      "typewriterEnabled",
+      "typewriterText",
+      "cargarTypewriterState",
+      "isTypewriterEnabled",
+      "toggleTypewriter",
+      "iniciarTypewriter",
+      "detenerTypewriter",
+      "getTypewriterText",
+      "isTyping"
+    ],
+    "ui/modules/local/scripts/chat/vision.js": [
+      "pendingImage",
+      "pendingImageDataUrl",
+      "setPendingImage",
+      "clearPendingImage"
+    ],
+    "ui/modules/local/scripts/voz/voz.js": [
+      "grabando",
+      "transcribiendo",
+      "hablando",
+      "autoVoz",
+      "vozSeleccionada",
+      "voces",
+      "cargarAjustesVoz",
+      "cargarVoces",
+      "setVoz",
+      "toggleAutoVoz",
+      "iniciarGrabacion",
+      "detenerGrabacion",
+      "hablar",
+      "detenerVoz"
+    ],
+    "ui/modules/local/view/local.js": [
+      "Local"
+    ],
+    "ui/modules/local/view/params-panel.js": [
+      "ParamsPanel"
+    ],
+    "ui/modules/md-reader/scripts/db.js": [
+      "getPrefs",
+      "savePrefs",
+      "saveIndex",
+      "loadIndex"
+    ],
+    "ui/modules/md-reader/scripts/fs.js": [
+      "MD_ROOT",
+      "SKIP_DIRS",
+      "asegurarRaiz",
+      "listar",
+      "leer",
+      "escribir",
+      "crearDir",
+      "stat",
+      "abrirEnExplorador",
+      "listarMarkdown",
+      "leerArchivosMarkdown",
+      "crearMissingNote"
+    ],
+    "ui/modules/md-reader/scripts/parser.js": [
+      "escapeHtml",
+      "escapeAttr",
+      "compact",
+      "lineOfIndex",
+      "slugify",
+      "safeDecodeUriComponent",
+      "stripAngleBrackets",
+      "stripFencedCode",
+      "stripTitleFromHref",
+      "splitHref",
+      "parseWikiLink",
+      "sanitizeMissingName",
+      "normalizeKey",
+      "posixBasename",
+      "posixDirname",
+      "joinPaths",
+      "findHeadingByHash",
+      "indexHeadings",
+      "makeFileIndex",
+      "resolveWikiTarget",
+      "resolveMarkdownHref",
+      "parseMarkdownFile",
+      "uniqueGraph",
+      "buildWorkspaceGraph",
+      "parseDocument",
+      "extractFrontmatter",
+      "renderMarkdown",
+      "layoutGraph",
+      "renderGraphHtml",
+      "renderGraphDetails",
+      "statsForGraph"
+    ],
+    "ui/modules/md-reader/view/md-reader.js": [
+      "MDReader"
+    ],
+    "ui/modules/productividad/scripts/productividad.js": [
+      "overview",
+      "listarCapturas",
+      "extCmd",
+      "capturarPagina",
+      "capturarScreenshot",
+      "obtenerCaptura",
+      "eliminarCaptura",
+      "crearResearch",
+      "listarResearch",
+      "crearTask",
+      "listarTasks",
+      "actualizarTask",
+      "guardarClipboard",
+      "listarClipboard",
+      "listarFormProfiles",
+      "crearFormProfile",
+      "listarFormTemplates",
+      "crearFormTemplate",
+      "listarMeetings",
+      "crearMeeting",
+      "listarTabSessions",
+      "crearTabSession",
+      "listarPrices",
+      "crearPrice",
+      "crearPriceCheck",
+      "scanPrice",
+      "runTool",
+      "extStatus"
+    ],
+    "ui/modules/productividad/view/productividad.js": [
+      "Productividad"
+    ],
+    "ui/modules/prompts/scripts/filtros.js": [
+      "filtrar",
+      "categorias"
+    ],
+    "ui/modules/prompts/scripts/guardar.js": [
+      "prompts",
+      "cargandoPrompts",
+      "cargarPrompts",
+      "guardarPrompt",
+      "borrarPrompt",
+      "toggleFavorito",
+      "registrarUso",
+      "addHistorial",
+      "getHistorial",
+      "clearHistorial",
+      "addGuardado",
+      "getGuardados",
+      "deleteGuardado",
+      "detectarVariables",
+      "reemplazarVariables"
+    ],
+    "ui/modules/prompts/scripts/ideas.js": [
+      "generarIdea",
+      "ideaAPrompt",
+      "getTematicas"
+    ],
+    "ui/modules/prompts/scripts/plantillas.js": [
+      "importarPlantillas"
+    ],
+    "ui/modules/prompts/view/editor-chips.js": [
+      "BuilderChipsEditor"
+    ],
+    "ui/modules/prompts/view/editor-ideas.js": [
+      "CreativityIdeasEditor"
+    ],
+    "ui/modules/prompts/view/editor-roles.js": [
+      "TeamRolesEditor"
+    ],
+    "ui/modules/prompts/view/prompts-comfyui.js": [
+      "TabComfyUI"
+    ],
+    "ui/modules/prompts/view/prompts-wan.js": [
+      "TabWan"
+    ],
+    "ui/modules/prompts/view/prompts.js": [
+      "Prompts"
+    ],
+    "ui/modules/scratchpad/scripts/notas.js": [
+      "NOTAS_ROOT",
+      "doc",
+      "DEFAULT_DOC",
+      "idGen",
+      "getSaveStatus",
+      "onSaveStatus",
+      "getScratchpadDoc",
+      "isScratchpadOnline",
+      "getWorkspaceRoot",
+      "cargarDoc",
+      "guardarDoc",
+      "exportarPaginaMd",
+      "exportScratchpadMarkdown",
+      "contarStats",
+      "descargarMd",
+      "ensureScratchpadDoc",
+      "guardarAhora",
+      "limpiar",
+      "copiar",
+      "pegarDesdePortapapeles",
+      "setScratchpadPage",
+      "createScratchpadPage",
+      "selectScratchpadPage",
+      "duplicateScratchpadPage",
+      "deleteScratchpadPage",
+      "addScratchpadBlock",
+      "updateScratchpadBlock",
+      "deleteScratchpadBlock",
+      "duplicateScratchpadBlock",
+      "moveScratchpadBlock",
+      "transformScratchpadBlock",
+      "updateScratchpadTable",
+      "updateScratchpadBoard",
+      "getContenido",
+      "setContenido",
+      "appendContenido",
+      "asegurarRaiz",
+      "escribirNota"
+    ],
+    "ui/modules/scratchpad/view/scratchpad.js": [
+      "Scratchpad"
+    ],
+    "ui/modules/stats/scripts/calcular.js": [
+      "cargarStats"
+    ],
+    "ui/modules/stats/view/stats.js": [
+      "Stats"
+    ],
+    "ui/modules/stylecatalog/scripts/catalogo.js": [
+      "PRIMITIVES",
+      "TOKENS",
+      "PATTERNS",
+      "resolveToken"
+    ],
+    "ui/modules/stylecatalog/view/stylecatalog.js": [
+      "StyleCatalog"
+    ],
+    "ui/modules/toolkit/scripts/herramientas.js": [
+      "HERRAMIENTAS"
+    ],
+    "ui/modules/toolkit/view/toolkit.js": [
+      "Toolkit"
+    ],
+    "ui/modules/webnavigator/scripts/capturas.js": [
+      "cargarCapturas"
+    ],
+    "ui/modules/webnavigator/scripts/log.js": [
+      "TIPO_COLOR",
+      "cargarLog"
+    ],
+    "ui/modules/webnavigator/scripts/sesion.js": [
+      "cargarSesiones",
+      "fechaCorta"
+    ],
+    "ui/modules/webnavigator/view/web-navigator.js": [
+      "WebNavigator"
+    ],
+    "ui/modules/wiki/scripts/fs.js": [
+      "WIKI_ROOT",
+      "asegurarRaiz",
+      "listar",
+      "leer",
+      "escribir",
+      "borrar",
+      "crearDir",
+      "mover"
+    ],
+    "ui/modules/wiki/view/wiki.js": [
+      "Wiki"
+    ],
+    "ui/store.js": [
+      "{ signal, computed }",
+      "activeTab",
+      "theme",
+      "themeMode",
+      "background",
+      "hud",
+      "nexusOnline",
+      "user",
+      "extContext",
+      "isOnline",
+      "enExtension",
+      "setTab",
+      "setTheme",
+      "setThemeMode",
+      "setBackground",
+      "setHud",
+      "setExtContext"
+    ]
+  },
+  "batches": [
+    {
+      "batchIndex": 1,
+      "files": [
+        {
+          "path": "config/extensions.toml",
+          "language": "toml",
+          "sizeLines": 9,
+          "fileCategory": "config"
+        },
+        {
+          "path": "config/llm.toml",
+          "language": "toml",
+          "sizeLines": 7,
+          "fileCategory": "config"
+        },
+        {
+          "path": "config/mcp.toml",
+          "language": "toml",
+          "sizeLines": 18,
+          "fileCategory": "config"
+        },
+        {
+          "path": "config/nexus.toml",
+          "language": "toml",
+          "sizeLines": 7,
+          "fileCategory": "config"
+        },
+        {
+          "path": "config/server.toml",
+          "language": "toml",
+          "sizeLines": 11,
+          "fileCategory": "config"
+        },
+        {
+          "path": "config/workspaces.toml",
+          "language": "toml",
+          "sizeLines": 10,
+          "fileCategory": "config"
+        }
+      ],
+      "batchImportData": {
+        "config/extensions.toml": [],
+        "config/llm.toml": [],
+        "config/mcp.toml": [],
+        "config/nexus.toml": [],
+        "config/server.toml": [],
+        "config/workspaces.toml": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 2,
+      "files": [
+        {
+          "path": "docs/ideas/aurora-components-ui.md",
+          "language": "markdown",
+          "sizeLines": 2435,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "docs/ideas/aurora-idea-mdreader.md",
+          "language": "markdown",
+          "sizeLines": 834,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "docs/ideas/aurora-ideas.md",
+          "language": "markdown",
+          "sizeLines": 549,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "docs/ideas/aurora-v2.md",
+          "language": "markdown",
+          "sizeLines": 739,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "docs/ideas/browser-use.md",
+          "language": "markdown",
+          "sizeLines": 230,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "docs/ideas/cdp-testing.md",
+          "language": "markdown",
+          "sizeLines": 277,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "docs/ideas/compact.md",
+          "language": "markdown",
+          "sizeLines": 369,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "docs/ideas/database.md",
+          "language": "markdown",
+          "sizeLines": 1350,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "docs/ideas/nexus.md",
+          "language": "markdown",
+          "sizeLines": 476,
+          "fileCategory": "docs"
+        }
+      ],
+      "batchImportData": {
+        "docs/ideas/aurora-components-ui.md": [],
+        "docs/ideas/aurora-idea-mdreader.md": [],
+        "docs/ideas/aurora-ideas.md": [],
+        "docs/ideas/aurora-v2.md": [],
+        "docs/ideas/browser-use.md": [],
+        "docs/ideas/cdp-testing.md": [],
+        "docs/ideas/compact.md": [],
+        "docs/ideas/database.md": [],
+        "docs/ideas/nexus.md": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 3,
+      "files": [
+        {
+          "path": "extensions/aihub/manifest.json",
+          "language": "json",
+          "sizeLines": 104,
+          "fileCategory": "config"
+        },
+        {
+          "path": "extensions/aihub/newtab.html",
+          "language": "html",
+          "sizeLines": 17,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "extensions/aihub/sidepanel.html",
+          "language": "html",
+          "sizeLines": 40,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "extensions/aihub/styles.css",
+          "language": "css",
+          "sizeLines": 74,
+          "fileCategory": "markup"
+        }
+      ],
+      "batchImportData": {
+        "extensions/aihub/manifest.json": [],
+        "extensions/aihub/newtab.html": [],
+        "extensions/aihub/sidepanel.html": [],
+        "extensions/aihub/styles.css": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 4,
+      "files": [
+        {
+          "path": "ui/components/fx.css",
+          "language": "css",
+          "sizeLines": 246,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/graph.css",
+          "language": "css",
+          "sizeLines": 103,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/markdown.css",
+          "language": "css",
+          "sizeLines": 287,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/tokens.css",
+          "language": "css",
+          "sizeLines": 70,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/ui.css",
+          "language": "css",
+          "sizeLines": 30,
+          "fileCategory": "markup"
+        }
+      ],
+      "batchImportData": {
+        "ui/components/fx.css": [],
+        "ui/components/graph.css": [],
+        "ui/components/markdown.css": [],
+        "ui/components/tokens.css": [],
+        "ui/components/ui.css": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 5,
+      "files": [
+        {
+          "path": "ui/components/globals/keyframes.css",
+          "language": "css",
+          "sizeLines": 43,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/globals/reset.css",
+          "language": "css",
+          "sizeLines": 93,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/globals/scrollbars.css",
+          "language": "css",
+          "sizeLines": 6,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/globals/shell-layout.css",
+          "language": "css",
+          "sizeLines": 56,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/globals/theme-mode.css",
+          "language": "css",
+          "sizeLines": 73,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/globals/utilities-lite.css",
+          "language": "css",
+          "sizeLines": 301,
+          "fileCategory": "markup"
+        }
+      ],
+      "batchImportData": {
+        "ui/components/globals/keyframes.css": [],
+        "ui/components/globals/reset.css": [],
+        "ui/components/globals/scrollbars.css": [],
+        "ui/components/globals/shell-layout.css": [],
+        "ui/components/globals/theme-mode.css": [],
+        "ui/components/globals/utilities-lite.css": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 6,
+      "files": [
+        {
+          "path": "ui/components/inject/buttons.css",
+          "language": "css",
+          "sizeLines": 107,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/inject/dropdown.css",
+          "language": "css",
+          "sizeLines": 53,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/inject/inject.css",
+          "language": "css",
+          "sizeLines": 16,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/inject/modal.css",
+          "language": "css",
+          "sizeLines": 144,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/inject/panel.css",
+          "language": "css",
+          "sizeLines": 81,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/inject/tokens.css",
+          "language": "css",
+          "sizeLines": 33,
+          "fileCategory": "markup"
+        }
+      ],
+      "batchImportData": {
+        "ui/components/inject/buttons.css": [],
+        "ui/components/inject/dropdown.css": [],
+        "ui/components/inject/inject.css": [],
+        "ui/components/inject/modal.css": [],
+        "ui/components/inject/panel.css": [],
+        "ui/components/inject/tokens.css": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 7,
+      "files": [
+        {
+          "path": "ui/components/local/local.canvas.css",
+          "language": "css",
+          "sizeLines": 404,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/local/local.composer-cloud.css",
+          "language": "css",
+          "sizeLines": 633,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/local/local.css",
+          "language": "css",
+          "sizeLines": 9,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/local/local.messages.css",
+          "language": "css",
+          "sizeLines": 604,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/local/local.panels.css",
+          "language": "css",
+          "sizeLines": 26,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/local/local.responsive.css",
+          "language": "css",
+          "sizeLines": 139,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/local/local.tools.css",
+          "language": "css",
+          "sizeLines": 318,
+          "fileCategory": "markup"
+        }
+      ],
+      "batchImportData": {
+        "ui/components/local/local.canvas.css": [],
+        "ui/components/local/local.composer-cloud.css": [],
+        "ui/components/local/local.css": [],
+        "ui/components/local/local.messages.css": [],
+        "ui/components/local/local.panels.css": [],
+        "ui/components/local/local.responsive.css": [],
+        "ui/components/local/local.tools.css": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 8,
+      "files": [
+        {
+          "path": "ui/modules/prompts/templates/prompts-imagen.tmpl.json",
+          "language": "json",
+          "sizeLines": 362,
+          "fileCategory": "config"
+        },
+        {
+          "path": "ui/modules/prompts/templates/prompts-sistema.tmpl.json",
+          "language": "json",
+          "sizeLines": 122,
+          "fileCategory": "config"
+        },
+        {
+          "path": "ui/modules/prompts/templates/prompts-wan.tmpl.json",
+          "language": "json",
+          "sizeLines": 167,
+          "fileCategory": "config"
+        }
+      ],
+      "batchImportData": {
+        "ui/modules/prompts/templates/prompts-imagen.tmpl.json": [],
+        "ui/modules/prompts/templates/prompts-sistema.tmpl.json": [],
+        "ui/modules/prompts/templates/prompts-wan.tmpl.json": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 9,
+      "files": [
+        {
+          "path": "docs/mapa/mapa.md",
+          "language": "markdown",
+          "sizeLines": 102,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "extensions/aihub/app.js",
+          "language": "javascript",
+          "sizeLines": 93,
+          "fileCategory": "code"
+        },
+        {
+          "path": "extensions/aihub/background.js",
+          "language": "javascript",
+          "sizeLines": 1546,
+          "fileCategory": "code"
+        },
+        {
+          "path": "extensions/aihub/background/browser-cabin.js",
+          "language": "javascript",
+          "sizeLines": 1382,
+          "fileCategory": "code"
+        },
+        {
+          "path": "extensions/aihub/background/yt-history.js",
+          "language": "javascript",
+          "sizeLines": 48,
+          "fileCategory": "code"
+        },
+        {
+          "path": "extensions/aihub/content-scripts/ai-bridge.js",
+          "language": "javascript",
+          "sizeLines": 91,
+          "fileCategory": "code"
+        },
+        {
+          "path": "extensions/aihub/content-scripts/bold-hud.js",
+          "language": "javascript",
+          "sizeLines": 569,
+          "fileCategory": "code"
+        },
+        {
+          "path": "extensions/aihub/content-scripts/gem-observer.js",
+          "language": "javascript",
+          "sizeLines": 334,
+          "fileCategory": "code"
+        },
+        {
+          "path": "extensions/aihub/content-scripts/main.js",
+          "language": "javascript",
+          "sizeLines": 28,
+          "fileCategory": "code"
+        },
+        {
+          "path": "extensions/aihub/content-scripts/yt-captures.js",
+          "language": "javascript",
+          "sizeLines": 477,
+          "fileCategory": "code"
+        },
+        {
+          "path": "extensions/aihub/content-scripts/yt-noambient.js",
+          "language": "javascript",
+          "sizeLines": 128,
+          "fileCategory": "code"
+        },
+        {
+          "path": "extensions/aihub/sidepanel.js",
+          "language": "javascript",
+          "sizeLines": 120,
+          "fileCategory": "code"
+        },
+        {
+          "path": "extensions/README.md",
+          "language": "markdown",
+          "sizeLines": 17,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "extensions/registry.json",
+          "language": "json",
+          "sizeLines": 96,
+          "fileCategory": "config"
+        },
+        {
+          "path": "requirements.txt",
+          "language": "txt",
+          "sizeLines": 5,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "scripts/aurora_mcp_stdio.py",
+          "language": "python",
+          "sizeLines": 37,
+          "fileCategory": "code"
+        },
+        {
+          "path": "scripts/start.bat",
+          "language": "batch",
+          "sizeLines": 13,
+          "fileCategory": "script"
+        },
+        {
+          "path": "scripts/start.sh",
+          "language": "shell",
+          "sizeLines": 18,
+          "fileCategory": "script"
+        },
+        {
+          "path": "src/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/browser/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/browser/agent.py",
+          "language": "python",
+          "sizeLines": 352,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/browser/router.py",
+          "language": "python",
+          "sizeLines": 161,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/auth.py",
+          "language": "python",
+          "sizeLines": 18,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/connection.py",
+          "language": "python",
+          "sizeLines": 463,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "docs/mapa/mapa.md": [],
+        "extensions/aihub/app.js": [],
+        "extensions/aihub/background.js": [],
+        "extensions/aihub/background/browser-cabin.js": [],
+        "extensions/aihub/background/yt-history.js": [],
+        "extensions/aihub/content-scripts/ai-bridge.js": [],
+        "extensions/aihub/content-scripts/bold-hud.js": [],
+        "extensions/aihub/content-scripts/gem-observer.js": [],
+        "extensions/aihub/content-scripts/main.js": [],
+        "extensions/aihub/content-scripts/yt-captures.js": [],
+        "extensions/aihub/content-scripts/yt-noambient.js": [],
+        "extensions/aihub/sidepanel.js": [],
+        "extensions/README.md": [],
+        "extensions/registry.json": [],
+        "requirements.txt": [],
+        "scripts/aurora_mcp_stdio.py": [],
+        "scripts/start.bat": [],
+        "scripts/start.sh": [],
+        "src/__init__.py": [],
+        "src/browser/__init__.py": [],
+        "src/browser/agent.py": [],
+        "src/browser/router.py": [],
+        "src/db/__init__.py": [],
+        "src/db/auth.py": [],
+        "src/db/connection.py": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 10,
+      "files": [
+        {
+          "path": "src/db/router.py",
+          "language": "python",
+          "sizeLines": 53,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/ajustes.py",
+          "language": "python",
+          "sizeLines": 57,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/ash.py",
+          "language": "python",
+          "sizeLines": 235,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/backup.py",
+          "language": "python",
+          "sizeLines": 90,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/bc.py",
+          "language": "python",
+          "sizeLines": 64,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/builder_templates.py",
+          "language": "python",
+          "sizeLines": 78,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/chats.py",
+          "language": "python",
+          "sizeLines": 262,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/creativity_ideas.py",
+          "language": "python",
+          "sizeLines": 80,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/eventos.py",
+          "language": "python",
+          "sizeLines": 70,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/ext_capturas.py",
+          "language": "python",
+          "sizeLines": 91,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/extensions.py",
+          "language": "python",
+          "sizeLines": 77,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/jobs.py",
+          "language": "python",
+          "sizeLines": 35,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/llm.py",
+          "language": "python",
+          "sizeLines": 162,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/mdreader.py",
+          "language": "python",
+          "sizeLines": 232,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/nav.py",
+          "language": "python",
+          "sizeLines": 129,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/productividad.py",
+          "language": "python",
+          "sizeLines": 458,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/prompts.py",
+          "language": "python",
+          "sizeLines": 197,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/scratchpad.py",
+          "language": "python",
+          "sizeLines": 53,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/sesiones.py",
+          "language": "python",
+          "sizeLines": 47,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/stats.py",
+          "language": "python",
+          "sizeLines": 39,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/team_roles.py",
+          "language": "python",
+          "sizeLines": 110,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/tokens.py",
+          "language": "python",
+          "sizeLines": 55,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/urls_custom.py",
+          "language": "python",
+          "sizeLines": 67,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/usuarios.py",
+          "language": "python",
+          "sizeLines": 107,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "src/db/router.py": [],
+        "src/db/routes/__init__.py": [],
+        "src/db/routes/ajustes.py": [],
+        "src/db/routes/ash.py": [],
+        "src/db/routes/backup.py": [],
+        "src/db/routes/bc.py": [],
+        "src/db/routes/builder_templates.py": [],
+        "src/db/routes/chats.py": [],
+        "src/db/routes/creativity_ideas.py": [],
+        "src/db/routes/eventos.py": [],
+        "src/db/routes/ext_capturas.py": [],
+        "src/db/routes/extensions.py": [],
+        "src/db/routes/jobs.py": [],
+        "src/db/routes/llm.py": [],
+        "src/db/routes/mdreader.py": [],
+        "src/db/routes/nav.py": [],
+        "src/db/routes/productividad.py": [],
+        "src/db/routes/prompts.py": [],
+        "src/db/routes/scratchpad.py": [],
+        "src/db/routes/sesiones.py": [],
+        "src/db/routes/stats.py": [],
+        "src/db/routes/team_roles.py": [],
+        "src/db/routes/tokens.py": [],
+        "src/db/routes/urls_custom.py": [],
+        "src/db/routes/usuarios.py": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 11,
+      "files": [
+        {
+          "path": "src/db/routes/wiki.py",
+          "language": "python",
+          "sizeLines": 106,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/routes/yt.py",
+          "language": "python",
+          "sizeLines": 86,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/db/schema.sql",
+          "language": "sql",
+          "sizeLines": 593,
+          "fileCategory": "data"
+        },
+        {
+          "path": "src/ext/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/ext/router.py",
+          "language": "python",
+          "sizeLines": 235,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/gemita/__init__.py",
+          "language": "python",
+          "sizeLines": 1,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/gemita/bucle.py",
+          "language": "python",
+          "sizeLines": 345,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/gemita/config.py",
+          "language": "python",
+          "sizeLines": 28,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/gemita/providers.py",
+          "language": "python",
+          "sizeLines": 361,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/gemita/roles.py",
+          "language": "python",
+          "sizeLines": 124,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/gemita/router.py",
+          "language": "python",
+          "sizeLines": 145,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/gemita/shell.py",
+          "language": "python",
+          "sizeLines": 92,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/gemita/tools.py",
+          "language": "python",
+          "sizeLines": 359,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/jobs/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/jobs/cleanup_capturas.py",
+          "language": "python",
+          "sizeLines": 111,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/logging_config.py",
+          "language": "python",
+          "sizeLines": 44,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/main.py",
+          "language": "python",
+          "sizeLines": 129,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/mcp/__init__.py",
+          "language": "python",
+          "sizeLines": 3,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/mcp/config.py",
+          "language": "python",
+          "sizeLines": 21,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/mcp/external.py",
+          "language": "python",
+          "sizeLines": 54,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/mcp/prompts.py",
+          "language": "python",
+          "sizeLines": 70,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/mcp/protocol.py",
+          "language": "python",
+          "sizeLines": 73,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/mcp/resources.py",
+          "language": "python",
+          "sizeLines": 77,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/mcp/router.py",
+          "language": "python",
+          "sizeLines": 65,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/nexus/__init__.py",
+          "language": "python",
+          "sizeLines": 1,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "src/db/routes/wiki.py": [],
+        "src/db/routes/yt.py": [],
+        "src/db/schema.sql": [],
+        "src/ext/__init__.py": [],
+        "src/ext/router.py": [],
+        "src/gemita/__init__.py": [],
+        "src/gemita/bucle.py": [],
+        "src/gemita/config.py": [],
+        "src/gemita/providers.py": [],
+        "src/gemita/roles.py": [],
+        "src/gemita/router.py": [],
+        "src/gemita/shell.py": [],
+        "src/gemita/tools.py": [],
+        "src/jobs/__init__.py": [],
+        "src/jobs/cleanup_capturas.py": [],
+        "src/logging_config.py": [],
+        "src/main.py": [],
+        "src/mcp/__init__.py": [],
+        "src/mcp/config.py": [],
+        "src/mcp/external.py": [],
+        "src/mcp/prompts.py": [],
+        "src/mcp/protocol.py": [],
+        "src/mcp/resources.py": [],
+        "src/mcp/router.py": [],
+        "src/nexus/__init__.py": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 12,
+      "files": [
+        {
+          "path": "src/nexus/approvals.py",
+          "language": "python",
+          "sizeLines": 104,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/nexus/config.py",
+          "language": "python",
+          "sizeLines": 29,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/nexus/editor.py",
+          "language": "python",
+          "sizeLines": 66,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/nexus/fs.py",
+          "language": "python",
+          "sizeLines": 175,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/nexus/py.py",
+          "language": "python",
+          "sizeLines": 108,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/nexus/router.py",
+          "language": "python",
+          "sizeLines": 8,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/nexus/shell.py",
+          "language": "python",
+          "sizeLines": 83,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/nexus/tasks.py",
+          "language": "python",
+          "sizeLines": 189,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/nexus/workspace.py",
+          "language": "python",
+          "sizeLines": 45,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/parser/__init__.py",
+          "language": "python",
+          "sizeLines": 1,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/parser/index.py",
+          "language": "python",
+          "sizeLines": 32,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/parser/normalizer.py",
+          "language": "python",
+          "sizeLines": 147,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/parser/parsers/__init__.py",
+          "language": "python",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/parser/parsers/br.py",
+          "language": "python",
+          "sizeLines": 141,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/parser/parsers/nexus.py",
+          "language": "python",
+          "sizeLines": 28,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/parser/parsers/nx.py",
+          "language": "python",
+          "sizeLines": 44,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/parser/parsers/pg.py",
+          "language": "python",
+          "sizeLines": 45,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/parser/parsers/utils.py",
+          "language": "python",
+          "sizeLines": 40,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/parser/router.py",
+          "language": "python",
+          "sizeLines": 11,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/parser/validator.py",
+          "language": "python",
+          "sizeLines": 30,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/tools/__init__.py",
+          "language": "python",
+          "sizeLines": 3,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/tools/builtin.py",
+          "language": "python",
+          "sizeLines": 430,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/tools/contract.py",
+          "language": "python",
+          "sizeLines": 25,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/tools/registry.py",
+          "language": "python",
+          "sizeLines": 49,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/tools/router.py",
+          "language": "python",
+          "sizeLines": 80,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "src/nexus/approvals.py": [],
+        "src/nexus/config.py": [],
+        "src/nexus/editor.py": [],
+        "src/nexus/fs.py": [],
+        "src/nexus/py.py": [],
+        "src/nexus/router.py": [],
+        "src/nexus/shell.py": [],
+        "src/nexus/tasks.py": [],
+        "src/nexus/workspace.py": [],
+        "src/parser/__init__.py": [],
+        "src/parser/index.py": [],
+        "src/parser/normalizer.py": [],
+        "src/parser/parsers/__init__.py": [],
+        "src/parser/parsers/br.py": [],
+        "src/parser/parsers/nexus.py": [],
+        "src/parser/parsers/nx.py": [],
+        "src/parser/parsers/pg.py": [],
+        "src/parser/parsers/utils.py": [],
+        "src/parser/router.py": [],
+        "src/parser/validator.py": [],
+        "src/tools/__init__.py": [],
+        "src/tools/builtin.py": [],
+        "src/tools/contract.py": [],
+        "src/tools/registry.py": [],
+        "src/tools/router.py": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 13,
+      "files": [
+        {
+          "path": "src/voz/__init__.py",
+          "language": "python",
+          "sizeLines": 1,
+          "fileCategory": "code"
+        },
+        {
+          "path": "src/voz/router.py",
+          "language": "python",
+          "sizeLines": 118,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/app.js",
+          "language": "javascript",
+          "sizeLines": 394,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/boot.js",
+          "language": "javascript",
+          "sizeLines": 265,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/Button.js",
+          "language": "javascript",
+          "sizeLines": 22,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/ChatMessage.js",
+          "language": "javascript",
+          "sizeLines": 27,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/Chip.js",
+          "language": "javascript",
+          "sizeLines": 22,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/Dropdown.js",
+          "language": "javascript",
+          "sizeLines": 22,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/Empty.js",
+          "language": "javascript",
+          "sizeLines": 11,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/footer/acciones-modulo.js",
+          "language": "javascript",
+          "sizeLines": 162,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/footer/footer.js",
+          "language": "javascript",
+          "sizeLines": 49,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/footer/registry.js",
+          "language": "javascript",
+          "sizeLines": 34,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/index.js",
+          "language": "javascript",
+          "sizeLines": 14,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/Input.js",
+          "language": "javascript",
+          "sizeLines": 45,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/List.js",
+          "language": "javascript",
+          "sizeLines": 24,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/local.views/canvas.js",
+          "language": "javascript",
+          "sizeLines": 181,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/nav/command-palette.js",
+          "language": "javascript",
+          "sizeLines": 126,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/nav/nav-tabs.js",
+          "language": "javascript",
+          "sizeLines": 44,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/nav/notif-center.js",
+          "language": "javascript",
+          "sizeLines": 128,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/nav/sesion-ui.js",
+          "language": "javascript",
+          "sizeLines": 25,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/nav/user-switcher.js",
+          "language": "javascript",
+          "sizeLines": 78,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/Panel.js",
+          "language": "javascript",
+          "sizeLines": 44,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/scratchpad/index.js",
+          "language": "javascript",
+          "sizeLines": 890,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/scratchpad/scratchpad.css",
+          "language": "css",
+          "sizeLines": 1105,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/components/shared/api-helpers.js",
+          "language": "javascript",
+          "sizeLines": 11,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "src/voz/__init__.py": [],
+        "src/voz/router.py": [],
+        "ui/app.js": [],
+        "ui/boot.js": [],
+        "ui/components/Button.js": [],
+        "ui/components/ChatMessage.js": [],
+        "ui/components/Chip.js": [],
+        "ui/components/Dropdown.js": [],
+        "ui/components/Empty.js": [],
+        "ui/components/footer/acciones-modulo.js": [],
+        "ui/components/footer/footer.js": [],
+        "ui/components/footer/registry.js": [],
+        "ui/components/index.js": [],
+        "ui/components/Input.js": [],
+        "ui/components/List.js": [],
+        "ui/components/local.views/canvas.js": [],
+        "ui/components/nav/command-palette.js": [],
+        "ui/components/nav/nav-tabs.js": [],
+        "ui/components/nav/notif-center.js": [],
+        "ui/components/nav/sesion-ui.js": [],
+        "ui/components/nav/user-switcher.js": [],
+        "ui/components/Panel.js": [],
+        "ui/components/scratchpad/index.js": [],
+        "ui/components/scratchpad/scratchpad.css": [],
+        "ui/components/shared/api-helpers.js": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 14,
+      "files": [
+        {
+          "path": "ui/components/shared/api.js",
+          "language": "javascript",
+          "sizeLines": 24,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/shared/autosave.js",
+          "language": "javascript",
+          "sizeLines": 64,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/shared/builder-api.js",
+          "language": "javascript",
+          "sizeLines": 54,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/shared/clipboard.js",
+          "language": "javascript",
+          "sizeLines": 37,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/shared/ext-bridge.js",
+          "language": "javascript",
+          "sizeLines": 47,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/shared/FileTree.js",
+          "language": "javascript",
+          "sizeLines": 46,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/shared/flash.js",
+          "language": "javascript",
+          "sizeLines": 28,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/shared/fs.js",
+          "language": "javascript",
+          "sizeLines": 45,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/shared/gemita-ws.js",
+          "language": "javascript",
+          "sizeLines": 166,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/shared/JsonBlock.js",
+          "language": "javascript",
+          "sizeLines": 5,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/shared/markdown.js",
+          "language": "javascript",
+          "sizeLines": 32,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/shared/toast.js",
+          "language": "javascript",
+          "sizeLines": 37,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/Status.js",
+          "language": "javascript",
+          "sizeLines": 16,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Abyss.js",
+          "language": "javascript",
+          "sizeLines": 145,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Ash.js",
+          "language": "javascript",
+          "sizeLines": 92,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Aurora.js",
+          "language": "javascript",
+          "sizeLines": 122,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Autumn.js",
+          "language": "javascript",
+          "sizeLines": 219,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Blizzard.js",
+          "language": "javascript",
+          "sizeLines": 154,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Blood.js",
+          "language": "javascript",
+          "sizeLines": 191,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Castle.js",
+          "language": "javascript",
+          "sizeLines": 385,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Clouds.js",
+          "language": "javascript",
+          "sizeLines": 175,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Depths.js",
+          "language": "javascript",
+          "sizeLines": 143,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Fireflies.js",
+          "language": "javascript",
+          "sizeLines": 85,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Fog.js",
+          "language": "javascript",
+          "sizeLines": 84,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Glitch.js",
+          "language": "javascript",
+          "sizeLines": 103,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "ui/components/shared/api.js": [],
+        "ui/components/shared/autosave.js": [],
+        "ui/components/shared/builder-api.js": [],
+        "ui/components/shared/clipboard.js": [],
+        "ui/components/shared/ext-bridge.js": [],
+        "ui/components/shared/FileTree.js": [],
+        "ui/components/shared/flash.js": [],
+        "ui/components/shared/fs.js": [],
+        "ui/components/shared/gemita-ws.js": [],
+        "ui/components/shared/JsonBlock.js": [],
+        "ui/components/shared/markdown.js": [],
+        "ui/components/shared/toast.js": [],
+        "ui/components/Status.js": [],
+        "ui/components/themes/backgrounds/Abyss.js": [],
+        "ui/components/themes/backgrounds/Ash.js": [],
+        "ui/components/themes/backgrounds/Aurora.js": [],
+        "ui/components/themes/backgrounds/Autumn.js": [],
+        "ui/components/themes/backgrounds/Blizzard.js": [],
+        "ui/components/themes/backgrounds/Blood.js": [],
+        "ui/components/themes/backgrounds/Castle.js": [],
+        "ui/components/themes/backgrounds/Clouds.js": [],
+        "ui/components/themes/backgrounds/Depths.js": [],
+        "ui/components/themes/backgrounds/Fireflies.js": [],
+        "ui/components/themes/backgrounds/Fog.js": [],
+        "ui/components/themes/backgrounds/Glitch.js": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 15,
+      "files": [
+        {
+          "path": "ui/components/themes/backgrounds/Grid.js",
+          "language": "javascript",
+          "sizeLines": 45,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Hellfire.js",
+          "language": "javascript",
+          "sizeLines": 236,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Lava.js",
+          "language": "javascript",
+          "sizeLines": 176,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/light.js",
+          "language": "javascript",
+          "sizeLines": 1139,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/loaders.js",
+          "language": "javascript",
+          "sizeLines": 45,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Matrix.js",
+          "language": "javascript",
+          "sizeLines": 65,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Moonlit.js",
+          "language": "javascript",
+          "sizeLines": 162,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Nebula.js",
+          "language": "javascript",
+          "sizeLines": 64,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Particles.js",
+          "language": "javascript",
+          "sizeLines": 89,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Rain.js",
+          "language": "javascript",
+          "sizeLines": 91,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Ravens.js",
+          "language": "javascript",
+          "sizeLines": 138,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Sakura.js",
+          "language": "javascript",
+          "sizeLines": 182,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Starfield.js",
+          "language": "javascript",
+          "sizeLines": 114,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Tundra.js",
+          "language": "javascript",
+          "sizeLines": 147,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/backgrounds/Void.js",
+          "language": "javascript",
+          "sizeLines": 111,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/Candles.js",
+          "language": "javascript",
+          "sizeLines": 159,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/Circuit.js",
+          "language": "javascript",
+          "sizeLines": 27,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/Compass.js",
+          "language": "javascript",
+          "sizeLines": 181,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/Corners.js",
+          "language": "javascript",
+          "sizeLines": 23,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/Drip.js",
+          "language": "javascript",
+          "sizeLines": 165,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/Ember.js",
+          "language": "javascript",
+          "sizeLines": 136,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/light.js",
+          "language": "javascript",
+          "sizeLines": 143,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/loaders.js",
+          "language": "javascript",
+          "sizeLines": 32,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/Luna.js",
+          "language": "javascript",
+          "sizeLines": 69,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/PulseRings.js",
+          "language": "javascript",
+          "sizeLines": 15,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "ui/components/themes/backgrounds/Grid.js": [],
+        "ui/components/themes/backgrounds/Hellfire.js": [],
+        "ui/components/themes/backgrounds/Lava.js": [],
+        "ui/components/themes/backgrounds/light.js": [],
+        "ui/components/themes/backgrounds/loaders.js": [],
+        "ui/components/themes/backgrounds/Matrix.js": [],
+        "ui/components/themes/backgrounds/Moonlit.js": [],
+        "ui/components/themes/backgrounds/Nebula.js": [],
+        "ui/components/themes/backgrounds/Particles.js": [],
+        "ui/components/themes/backgrounds/Rain.js": [],
+        "ui/components/themes/backgrounds/Ravens.js": [],
+        "ui/components/themes/backgrounds/Sakura.js": [],
+        "ui/components/themes/backgrounds/Starfield.js": [],
+        "ui/components/themes/backgrounds/Tundra.js": [],
+        "ui/components/themes/backgrounds/Void.js": [],
+        "ui/components/themes/hud/Candles.js": [],
+        "ui/components/themes/hud/Circuit.js": [],
+        "ui/components/themes/hud/Compass.js": [],
+        "ui/components/themes/hud/Corners.js": [],
+        "ui/components/themes/hud/Drip.js": [],
+        "ui/components/themes/hud/Ember.js": [],
+        "ui/components/themes/hud/light.js": [],
+        "ui/components/themes/hud/loaders.js": [],
+        "ui/components/themes/hud/Luna.js": [],
+        "ui/components/themes/hud/PulseRings.js": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 16,
+      "files": [
+        {
+          "path": "ui/components/themes/hud/Runes.js",
+          "language": "javascript",
+          "sizeLines": 132,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/Scanlines.js",
+          "language": "javascript",
+          "sizeLines": 13,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/Sonar.js",
+          "language": "javascript",
+          "sizeLines": 145,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/hud/Torii.js",
+          "language": "javascript",
+          "sizeLines": 137,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/index.js",
+          "language": "javascript",
+          "sizeLines": 115,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/lib.js",
+          "language": "javascript",
+          "sizeLines": 134,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/manager.js",
+          "language": "javascript",
+          "sizeLines": 193,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/themes/tema-hora.js",
+          "language": "javascript",
+          "sizeLines": 37,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/components/Toolbar.js",
+          "language": "javascript",
+          "sizeLines": 19,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/index.html",
+          "language": "html",
+          "sizeLines": 20,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/modules/ajustes/scripts/export.js",
+          "language": "javascript",
+          "sizeLines": 44,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/ajustes/scripts/llms.js",
+          "language": "javascript",
+          "sizeLines": 26,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/ajustes/scripts/tema.js",
+          "language": "javascript",
+          "sizeLines": 39,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/ajustes/view/ajustes.js",
+          "language": "javascript",
+          "sizeLines": 230,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/aurora/scripts/mcp.js",
+          "language": "javascript",
+          "sizeLines": 13,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/aurora/scripts/services.js",
+          "language": "javascript",
+          "sizeLines": 1,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/aurora/scripts/tools.js",
+          "language": "javascript",
+          "sizeLines": 14,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/aurora/view/aurora.js",
+          "language": "javascript",
+          "sizeLines": 363,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/captura/scripts/bridge.js",
+          "language": "javascript",
+          "sizeLines": 138,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/captura/scripts/historial.js",
+          "language": "javascript",
+          "sizeLines": 82,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/captura/view/captura.js",
+          "language": "javascript",
+          "sizeLines": 755,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/captura/view/historial-panel.js",
+          "language": "javascript",
+          "sizeLines": 120,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/captura/view/tool-result-panel.js",
+          "language": "javascript",
+          "sizeLines": 139,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/captura/view/transcript-utils.js",
+          "language": "javascript",
+          "sizeLines": 70,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/chain/scripts/ejecutar.js",
+          "language": "javascript",
+          "sizeLines": 51,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "ui/components/themes/hud/Runes.js": [],
+        "ui/components/themes/hud/Scanlines.js": [],
+        "ui/components/themes/hud/Sonar.js": [],
+        "ui/components/themes/hud/Torii.js": [],
+        "ui/components/themes/index.js": [],
+        "ui/components/themes/lib.js": [],
+        "ui/components/themes/manager.js": [],
+        "ui/components/themes/tema-hora.js": [],
+        "ui/components/Toolbar.js": [],
+        "ui/index.html": [],
+        "ui/modules/ajustes/scripts/export.js": [],
+        "ui/modules/ajustes/scripts/llms.js": [],
+        "ui/modules/ajustes/scripts/tema.js": [],
+        "ui/modules/ajustes/view/ajustes.js": [],
+        "ui/modules/aurora/scripts/mcp.js": [],
+        "ui/modules/aurora/scripts/services.js": [],
+        "ui/modules/aurora/scripts/tools.js": [],
+        "ui/modules/aurora/view/aurora.js": [],
+        "ui/modules/captura/scripts/bridge.js": [],
+        "ui/modules/captura/scripts/historial.js": [],
+        "ui/modules/captura/view/captura.js": [],
+        "ui/modules/captura/view/historial-panel.js": [],
+        "ui/modules/captura/view/tool-result-panel.js": [],
+        "ui/modules/captura/view/transcript-utils.js": [],
+        "ui/modules/chain/scripts/ejecutar.js": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 17,
+      "files": [
+        {
+          "path": "ui/modules/chain/view/chain.js",
+          "language": "javascript",
+          "sizeLines": 152,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/detective-tokens/scripts/analizar.js",
+          "language": "javascript",
+          "sizeLines": 27,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/detective-tokens/view/detective.js",
+          "language": "javascript",
+          "sizeLines": 83,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/editor/scripts/runner.js",
+          "language": "javascript",
+          "sizeLines": 28,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/editor/view/editor.js",
+          "language": "javascript",
+          "sizeLines": 128,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/inicio/foot/actions.js",
+          "language": "javascript",
+          "sizeLines": 10,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/inicio/inicio.css",
+          "language": "css",
+          "sizeLines": 143,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/modules/inicio/scripts/dashboard.js",
+          "language": "javascript",
+          "sizeLines": 34,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/inicio/scripts/ping.js",
+          "language": "javascript",
+          "sizeLines": 23,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/inicio/view/inicio.js",
+          "language": "javascript",
+          "sizeLines": 112,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/llmcloud/scripts/duo-panel.js",
+          "language": "javascript",
+          "sizeLines": 158,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/llmcloud/scripts/duo.js",
+          "language": "javascript",
+          "sizeLines": 122,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/llmcloud/scripts/urls.js",
+          "language": "javascript",
+          "sizeLines": 16,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/llmcloud/view/llmcloud.js",
+          "language": "javascript",
+          "sizeLines": 120,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/canvas/canvas.js",
+          "language": "javascript",
+          "sizeLines": 71,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/chat/acciones-rapidas.js",
+          "language": "javascript",
+          "sizeLines": 54,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/chat/actividad.js",
+          "language": "javascript",
+          "sizeLines": 55,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/chat/exportar-pdf.js",
+          "language": "javascript",
+          "sizeLines": 179,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/chat/herramientas.js",
+          "language": "javascript",
+          "sizeLines": 20,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/chat/historial.js",
+          "language": "javascript",
+          "sizeLines": 131,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/chat/instrucciones.js",
+          "language": "javascript",
+          "sizeLines": 25,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/chat/mensajes.js",
+          "language": "javascript",
+          "sizeLines": 100,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/chat/parametros.js",
+          "language": "javascript",
+          "sizeLines": 54,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/chat/renderizar.js",
+          "language": "javascript",
+          "sizeLines": 201,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/chat/typewriter.js",
+          "language": "javascript",
+          "sizeLines": 82,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "ui/modules/chain/view/chain.js": [],
+        "ui/modules/detective-tokens/scripts/analizar.js": [],
+        "ui/modules/detective-tokens/view/detective.js": [],
+        "ui/modules/editor/scripts/runner.js": [],
+        "ui/modules/editor/view/editor.js": [],
+        "ui/modules/inicio/foot/actions.js": [],
+        "ui/modules/inicio/inicio.css": [],
+        "ui/modules/inicio/scripts/dashboard.js": [],
+        "ui/modules/inicio/scripts/ping.js": [],
+        "ui/modules/inicio/view/inicio.js": [],
+        "ui/modules/llmcloud/scripts/duo-panel.js": [],
+        "ui/modules/llmcloud/scripts/duo.js": [],
+        "ui/modules/llmcloud/scripts/urls.js": [],
+        "ui/modules/llmcloud/view/llmcloud.js": [],
+        "ui/modules/local/scripts/canvas/canvas.js": [],
+        "ui/modules/local/scripts/chat/acciones-rapidas.js": [],
+        "ui/modules/local/scripts/chat/actividad.js": [],
+        "ui/modules/local/scripts/chat/exportar-pdf.js": [],
+        "ui/modules/local/scripts/chat/herramientas.js": [],
+        "ui/modules/local/scripts/chat/historial.js": [],
+        "ui/modules/local/scripts/chat/instrucciones.js": [],
+        "ui/modules/local/scripts/chat/mensajes.js": [],
+        "ui/modules/local/scripts/chat/parametros.js": [],
+        "ui/modules/local/scripts/chat/renderizar.js": [],
+        "ui/modules/local/scripts/chat/typewriter.js": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 18,
+      "files": [
+        {
+          "path": "ui/modules/local/scripts/chat/vision.js",
+          "language": "javascript",
+          "sizeLines": 15,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/scripts/voz/voz.js",
+          "language": "javascript",
+          "sizeLines": 137,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/view/local.js",
+          "language": "javascript",
+          "sizeLines": 967,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/local/view/params-panel.js",
+          "language": "javascript",
+          "sizeLines": 54,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/md-reader/md-reader.css",
+          "language": "css",
+          "sizeLines": 330,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/modules/md-reader/scripts/db.js",
+          "language": "javascript",
+          "sizeLines": 89,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/md-reader/scripts/fs.js",
+          "language": "javascript",
+          "sizeLines": 69,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/md-reader/scripts/parser.js",
+          "language": "javascript",
+          "sizeLines": 683,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/md-reader/view/md-reader.js",
+          "language": "javascript",
+          "sizeLines": 890,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/package.json",
+          "language": "json",
+          "sizeLines": 1,
+          "fileCategory": "config"
+        },
+        {
+          "path": "ui/modules/productividad/scripts/productividad.js",
+          "language": "javascript",
+          "sizeLines": 125,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/productividad/view/productividad.js",
+          "language": "javascript",
+          "sizeLines": 420,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/prompts/prompts.css",
+          "language": "css",
+          "sizeLines": 606,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "ui/modules/prompts/scripts/filtros.js",
+          "language": "javascript",
+          "sizeLines": 18,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/prompts/scripts/guardar.js",
+          "language": "javascript",
+          "sizeLines": 74,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/prompts/scripts/ideas.js",
+          "language": "javascript",
+          "sizeLines": 44,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/prompts/scripts/plantillas.js",
+          "language": "javascript",
+          "sizeLines": 46,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/prompts/view/editor-chips.js",
+          "language": "javascript",
+          "sizeLines": 95,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/prompts/view/editor-ideas.js",
+          "language": "javascript",
+          "sizeLines": 119,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/prompts/view/editor-roles.js",
+          "language": "javascript",
+          "sizeLines": 124,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/prompts/view/prompts-comfyui.js",
+          "language": "javascript",
+          "sizeLines": 229,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/prompts/view/prompts-wan.js",
+          "language": "javascript",
+          "sizeLines": 205,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/prompts/view/prompts.js",
+          "language": "javascript",
+          "sizeLines": 557,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/scratchpad/scripts/notas.js",
+          "language": "javascript",
+          "sizeLines": 813,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/scratchpad/view/scratchpad.js",
+          "language": "javascript",
+          "sizeLines": 350,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "ui/modules/local/scripts/chat/vision.js": [],
+        "ui/modules/local/scripts/voz/voz.js": [],
+        "ui/modules/local/view/local.js": [],
+        "ui/modules/local/view/params-panel.js": [],
+        "ui/modules/md-reader/md-reader.css": [],
+        "ui/modules/md-reader/scripts/db.js": [],
+        "ui/modules/md-reader/scripts/fs.js": [],
+        "ui/modules/md-reader/scripts/parser.js": [],
+        "ui/modules/md-reader/view/md-reader.js": [],
+        "ui/modules/package.json": [],
+        "ui/modules/productividad/scripts/productividad.js": [],
+        "ui/modules/productividad/view/productividad.js": [],
+        "ui/modules/prompts/prompts.css": [],
+        "ui/modules/prompts/scripts/filtros.js": [],
+        "ui/modules/prompts/scripts/guardar.js": [],
+        "ui/modules/prompts/scripts/ideas.js": [],
+        "ui/modules/prompts/scripts/plantillas.js": [],
+        "ui/modules/prompts/view/editor-chips.js": [],
+        "ui/modules/prompts/view/editor-ideas.js": [],
+        "ui/modules/prompts/view/editor-roles.js": [],
+        "ui/modules/prompts/view/prompts-comfyui.js": [],
+        "ui/modules/prompts/view/prompts-wan.js": [],
+        "ui/modules/prompts/view/prompts.js": [],
+        "ui/modules/scratchpad/scripts/notas.js": [],
+        "ui/modules/scratchpad/view/scratchpad.js": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 19,
+      "files": [
+        {
+          "path": "ui/modules/stats/scripts/calcular.js",
+          "language": "javascript",
+          "sizeLines": 5,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/stats/view/stats.js",
+          "language": "javascript",
+          "sizeLines": 77,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/stylecatalog/scripts/catalogo.js",
+          "language": "javascript",
+          "sizeLines": 99,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/stylecatalog/view/stylecatalog.js",
+          "language": "javascript",
+          "sizeLines": 203,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/toolkit/scripts/herramientas.js",
+          "language": "javascript",
+          "sizeLines": 58,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/toolkit/view/toolkit.js",
+          "language": "javascript",
+          "sizeLines": 109,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/webnavigator/scripts/capturas.js",
+          "language": "javascript",
+          "sizeLines": 6,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/webnavigator/scripts/log.js",
+          "language": "javascript",
+          "sizeLines": 13,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/webnavigator/scripts/sesion.js",
+          "language": "javascript",
+          "sizeLines": 19,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/webnavigator/view/web-navigator.js",
+          "language": "javascript",
+          "sizeLines": 217,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/wiki/scripts/fs.js",
+          "language": "javascript",
+          "sizeLines": 5,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/modules/wiki/view/wiki.js",
+          "language": "javascript",
+          "sizeLines": 180,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/store.js",
+          "language": "javascript",
+          "sizeLines": 22,
+          "fileCategory": "code"
+        },
+        {
+          "path": "ui/tasks.html",
+          "language": "html",
+          "sizeLines": 164,
+          "fileCategory": "markup"
+        }
+      ],
+      "batchImportData": {
+        "ui/modules/stats/scripts/calcular.js": [],
+        "ui/modules/stats/view/stats.js": [],
+        "ui/modules/stylecatalog/scripts/catalogo.js": [],
+        "ui/modules/stylecatalog/view/stylecatalog.js": [],
+        "ui/modules/toolkit/scripts/herramientas.js": [],
+        "ui/modules/toolkit/view/toolkit.js": [],
+        "ui/modules/webnavigator/scripts/capturas.js": [],
+        "ui/modules/webnavigator/scripts/log.js": [],
+        "ui/modules/webnavigator/scripts/sesion.js": [],
+        "ui/modules/webnavigator/view/web-navigator.js": [],
+        "ui/modules/wiki/scripts/fs.js": [],
+        "ui/modules/wiki/view/wiki.js": [],
+        "ui/store.js": [],
+        "ui/tasks.html": []
+      },
+      "neighborMap": {}
+    }
+  ]
+}

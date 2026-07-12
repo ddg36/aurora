@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Abyss — océano profundo con bioluminiscencia, partículas flotantes y pulsos de medusa.
 export class Abyss extends Component {
@@ -44,8 +44,9 @@ export class Abyss extends Component {
 
     const init = () => {
       resize();
-      particles = Array.from({ length: 120 }, makeParticle);
-      jellyfish = Array.from({ length: 5 }, makeJelly);
+      const liviano = esDispositivoLiviano();
+      particles = Array.from({ length: liviano ? 30 : 120 }, makeParticle);
+      jellyfish = Array.from({ length: liviano ? 2 : 5 }, makeJelly);
     };
 
     const drawJelly = (j) => {

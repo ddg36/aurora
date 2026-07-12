@@ -23,6 +23,13 @@ function handleMessage(e) {
       setter({
         id:         e.data.extensionId || 'unknown',
         extensions: e.data.extensions  || [],
+        caps:       e.data.caps        || [],
+        // 'sidepanel' | 'newtab' | undefined (browser suelto, sin extensión).
+        // Features que sólo tienen sentido en un side panel real (ej. capturar
+        // LA MISMA pestaña que aloja a Aurora no tiene sentido en newtab,
+        // donde Aurora ES la pestaña activa) pueden avisar en vez de fallar
+        // silencioso comparando esto, sin necesidad de otro campo nuevo.
+        surface:    e.data.surface     || null,
       });
     }
     try { window.parent.postMessage({ type: 'AURORA_EXT_ACK' }, '*'); } catch (_) {}

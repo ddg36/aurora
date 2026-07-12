@@ -3,11 +3,13 @@ const { useState, useEffect, useMemo, useRef } = globalThis.preactHooks;
 
 import { MD_ROOT, asegurarRaiz, listarMarkdown, leerArchivosMarkdown, leer, escribir, crearMissingNote, listar, crearDir, abrirEnExplorador, stat } from '../scripts/fs.js';
 import { setViewActions, clearViewActions } from '../../../components/footer/registry.js';
-import { sendToGemita } from '../../../components/shared/gemita-ws.js';
+import { sendToLyra } from '../../../components/shared/lyra-ws.js';
 import { Toast } from '../../../components/shared/toast.js';
 import { putJSON } from '../../../components/shared/api.js';
 import { Button } from '../../../components/Button.js';
 import { Chip } from '../../../components/Chip.js';
+import { AutoFitChips, useFloatingMenu } from '../../../components/shared/iconButton.js';
+import { usePersistedState } from '../../../components/shared/persisted-state.js';
 import { Empty } from '../../../components/Empty.js';
 import { Input, Select, Textarea } from '../../../components/Input.js';
 import { getPrefs, savePrefs, saveIndex, loadIndex } from '../scripts/db.js';
@@ -181,10 +183,6 @@ function Stat({ label, value, tone = '' }) {
   return html`<div class="mdr-stat" style=${toneStyle(tone)}><span>${formatNumber(value)}</span><small>${label}</small></div>`;
 }
 
-function ModeButton({ active, onClick, children }) {
-  return html`<button type="button" class=${clsx('mdr-mode-btn', active && 'is-active')} onClick=${onClick}>${children}</button>`;
-}
-
 function PanelSection({ title, children }) {
   return html`
     <div class="mdr-panel-section">
@@ -225,9 +223,18 @@ export default function MDReader() {
   const [temaActivo, setTemaActivo] = useState(theme.value);
   const [fondoActivo, setFondoActivo] = useState(background.value);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [treeOpen, setTreeOpen] = useState(true);
+  const [treeOpen, setTreeOpen] = usePersistedState('md_reader_tree_open', true);
+  const [sidePanelOpen, setSidePanelOpen] = useState(true);
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
+  // Colapsado (44px) es real, siempre en flujo; expandido flota encima y
+  // nunca empuja .mdr-main — mismo criterio que Scratchpad/Lyra.
+  const sidebarMenu = useFloatingMenu({ anchor: 'fill', openControlled: treeOpen });
+  // El drawer de resumen usaba position:fixed + calc()/min() a mano contra
+  // --aurora-rail-w — en viewports muy angostos (sidepanel de extensión)
+  // esa cuenta se desbordaba por el borde izquierdo. useFloatingMenu ya
+  // resuelve esto una sola vez para toda la app.
+  const summaryMenu = useFloatingMenu({ anchor: 'center', openControlled: !!summary });
 
   useEffect(() => {
     asegurarRaiz().catch(() => {});
@@ -569,7 +576,7 @@ export default function MDReader() {
     setSummarizing(true);
     setSummary('');
     try {
-      await sendToGemita({
+      await sendToLyra({
         message: `Resume este Markdown para Aurora MD Reader. Incluye: resumen corto, puntos clave, decisiones, tareas, preguntas abiertas y próximos pasos.\n\n${content.slice(0, 14000)}`,
         system: 'Eres Aurora MD Reader. Responde en Markdown conciso, en español, útil para lectura rápida.',
         onToken: token => setSummary(s => s + token),
@@ -594,44 +601,57 @@ export default function MDReader() {
     search: 'Buscar',
   }[mode] || mode;
 
+  // Mismo patrón que ScratchpadNavContent: un solo bloque de contenido,
+  // reusado tal cual en el rail colapsado (CSS le esconde el texto, deja
+  // sólo íconos) y en el panel flotante (texto completo) — nunca dos
+  // versiones distintas del mismo header/lista escritas a mano.
+  const sidebarContent = html`
+    <div class="mdr-sidebar-head">
+      <div class="mdr-brand">
+        <span class="mdr-brand-mark">M</span>
+        <div>
+          <strong>MD Reader</strong>
+          <small>${loading ? 'Indexando' : `${formatNumber(files.length)} notas`}</small>
+        </div>
+      </div>
+    </div>
+
+    <nav class="sp-nav-links">
+      <button type="button" onClick=${nuevaNota} title="Nueva nota"><span>+</span><em>Nueva nota</em></button>
+      <button type="button" onClick=${openFileDialog} title="Abrir archivo"><span>▤</span><em>Archivo</em></button>
+      <button type="button" onClick=${openFolderDialog} title="Abrir carpeta"><span>⌂</span><em>Carpeta</em></button>
+    </nav>
+
+    <div class="mdr-sidebar-tools">
+      <${Input}
+        class="mdr-input"
+        placeholder="Filtrar notas..."
+        value=${treeQuery}
+        onInput=${e => setTreeQuery(e.target.value)}
+      />
+    </div>
+
+    <div class="mdr-file-list">
+      ${visibleFiles.length === 0 && html`<${Empty} title="Sin Markdown">No hay archivos .md en esta vista.</${Empty}>`}
+      <${TreeBranch} entries=${visibleFiles} nivel=${0} abierto=${abierto} onToggle=${toggleDir} onOpen=${onTreeOpen} seleccion=${activePath} root=${root} />
+    </div>
+  `;
+
   return html`
-    <div class=${clsx('mdr-shell', !treeOpen && 'is-sidebar-collapsed')}>
-      <aside class=${clsx('mdr-sidebar', !treeOpen && 'is-hidden')}>
-        <div class="mdr-sidebar-head">
-          <div class="mdr-brand">
-            <span class="mdr-brand-mark">M</span>
-            <div>
-              <strong>MD Reader</strong>
-              <small>${loading ? 'Indexando' : `${formatNumber(files.length)} notas`}</small>
-            </div>
-          </div>
-          <button type="button" class="mdr-icon-btn" title="Ocultar biblioteca" onClick=${() => setTreeOpen(false)}>‹</button>
-        </div>
-
-        <div class="mdr-sidebar-tools">
-          <${Input}
-            class="mdr-input"
-            placeholder="Filtrar notas..."
-            value=${treeQuery}
-            onInput=${e => setTreeQuery(e.target.value)}
-          />
-          <div class="mdr-sidebar-actions">
-            <${Button} size="sm" onClick=${openFileDialog}>Archivo</${Button}>
-            <${Button} size="sm" onClick=${openFolderDialog}>Carpeta</${Button}>
-            <${Button} size="sm" onClick=${nuevaNota}>Nueva</${Button}>
-          </div>
-        </div>
-
-        <div class="mdr-file-list">
-          ${visibleFiles.length === 0 && html`<${Empty} title="Sin Markdown">No hay archivos .md en esta vista.</${Empty}>`}
-          <${TreeBranch} entries=${visibleFiles} nivel=${0} abierto=${abierto} onToggle=${toggleDir} onOpen=${onTreeOpen} seleccion=${activePath} root=${root} />
-        </div>
+    <div class="mdr-shell">
+      <aside class="mdr-sidebar is-collapsed">
+        <${Button} iconOnly btnRef=${sidebarMenu.anchorRef} class="sp-nav-toggle" title="Mostrar biblioteca" onClick=${() => setTreeOpen(true)}>☰<//>
+        ${sidebarContent}
       </aside>
 
-      <section class="mdr-main">
+      <${sidebarMenu.FloatingMenu} class="mdr-sidebar mdr-sidebar-floating">
+        <${Button} iconOnly class="sp-nav-toggle" title="Ocultar biblioteca" onClick=${() => setTreeOpen(false)}>✕<//>
+        ${sidebarContent}
+      <//>
+
+      <section class="mdr-main" data-float-bounds>
         <header class="mdr-topbar">
           <div class="mdr-title-block">
-            ${!treeOpen && html`<button type="button" class="mdr-icon-btn" title="Mostrar biblioteca" onClick=${() => setTreeOpen(true)}>›</button>`}
             <div class="mdr-doc-icon">md</div>
             <div class="mdr-doc-title">
               <span>${modeLabel}</span>
@@ -640,21 +660,24 @@ export default function MDReader() {
             </div>
           </div>
           <div class="mdr-primary-actions">
-            <${Button} size="sm" variant=${rawDirty ? 'primary' : undefined} onClick=${guardarActual} disabled=${!activePath || !rawDirty}>Guardar</${Button}>
-            <${Button} size="sm" active=${editMode} onClick=${() => setEditMode(v => !v)} disabled=${!activePath}>Editar</${Button}>
-            <${Button} size="sm" onClick=${resumirActual} disabled=${!content.trim() || summarizing}>${summarizing ? 'Resumen...' : 'Resumen'}</${Button}>
-            <button type="button" class="mdr-icon-btn" title="Ajustes" onClick=${() => setPanelOpen(true)}>⚙</button>
+            <${Button} iconOnly variant=${rawDirty ? 'primary' : undefined} onClick=${guardarActual} disabled=${!activePath || !rawDirty} title="Guardar">💾<//>
+            <${Button} iconOnly active=${editMode} onClick=${() => setEditMode(v => !v)} disabled=${!activePath} title="Editar">✎<//>
+            <${Button} iconOnly btnRef=${summaryMenu.anchorRef} active=${!!summary} onClick=${resumirActual} disabled=${!content.trim() || summarizing} title=${summarizing ? 'Generando resumen…' : 'Resumen'}>${summarizing ? '◌' : '📝'}<//>
+            ${['read', 'doc', 'workspace'].includes(mode) && !sidePanelOpen && html`
+              <${Button} iconOnly title="Mostrar panel lateral" onClick=${() => setSidePanelOpen(true)}>‹<//>
+            `}
+            <${Button} iconOnly title="Ajustes" onClick=${() => setPanelOpen(true)}>⚙<//>
           </div>
           <input ref=${fileInputRef} type="file" accept=".md,text/markdown" multiple style="display:none" onChange=${onFilesSelected} />
           <input ref=${folderInputRef} type="file" webkitdirectory="" directory="" multiple style="display:none" onChange=${onFolderSelected} />
         </header>
 
         <div class="mdr-commandbar">
-          <div class="mdr-mode-tabs">
+          <${AutoFitChips} class="mdr-mode-tabs">
             ${MODE_TABS.map(item => html`
-              <${ModeButton} key=${item.id} active=${mode === item.id} onClick=${() => setMode(item.id)}>${item.label}</${ModeButton}>
+              <${Chip} key=${item.id} active=${mode === item.id} onClick=${() => setMode(item.id)}>${item.label}<//>
             `)}
-          </div>
+          <//>
           <div class="mdr-searchbox">
             <${Input}
               class="mdr-input"
@@ -665,8 +688,8 @@ export default function MDReader() {
             />
           </div>
           <div class="mdr-command-actions">
-            <${Button} size="sm" onClick=${abrirExplorador} disabled=${!activePath && !root}>Explorador</${Button}>
-            <${Button} size="sm" onClick=${() => loadWorkspace(root)} disabled=${loading}>${loading ? 'Indexando...' : 'Refrescar'}</${Button}>
+            <${Button} iconOnly onClick=${abrirExplorador} disabled=${!activePath && !root} title="Abrir en el explorador del sistema">📂<//>
+            <${Button} iconOnly onClick=${() => loadWorkspace(root)} disabled=${loading} title=${loading ? 'Indexando…' : 'Refrescar workspace'}>${loading ? '◌' : '↻'}<//>
           </div>
         </div>
 
@@ -678,14 +701,14 @@ export default function MDReader() {
                 <strong>Ajustes de lectura</strong>
                 <small>${loading ? 'Indexando Markdown...' : `${formatNumber(files.length)} archivos Markdown`}</small>
               </div>
-              <button type="button" class="mdr-icon-btn" title="Cerrar" onClick=${() => setPanelOpen(false)}>×</button>
+              <${Button} iconOnly title="Cerrar" onClick=${() => setPanelOpen(false)}>×<//>
             </div>
 
             <div class="mdr-drawer-body">
               <${PanelSection} title="Modo">
                 <div class="mdr-wrap">
                   ${MODE_TABS.map(item => html`
-                    <${ModeButton} key=${item.id} active=${mode === item.id} onClick=${() => setMode(item.id)}>${item.label}</${ModeButton}>
+                    <${Chip} key=${item.id} active=${mode === item.id} onClick=${() => setMode(item.id)}>${item.label}<//>
                   `)}
                 </div>
               </${PanelSection}>
@@ -747,7 +770,7 @@ export default function MDReader() {
         `}
 
         ${mode === 'read' && rendered && html`
-          <div class="mdr-reader-layout">
+          <div class=${clsx('mdr-reader-layout', !sidePanelOpen && 'is-panel-collapsed')}>
             <div id="md-reader-scroll" class="mdr-reader-scroll" onScroll=${onReaderScroll} onClick=${handleContentClick}>
               <article class="mdr-reader-page">
                 <header class="mdr-document-head">
@@ -775,10 +798,11 @@ export default function MDReader() {
                 <div class="markdown-body" dangerouslySetInnerHTML=${{ __html: rendered.html }} />
               </article>
             </div>
-            <aside class="mdr-outline">
+            <aside class=${clsx('mdr-outline', !sidePanelOpen && 'is-hidden')}>
               <div class="mdr-outline-head">
                 <strong>Outline</strong>
                 <small>${rendered.headings.length}</small>
+                <${Button} iconOnly title="Ocultar outline" onClick=${() => setSidePanelOpen(false)}>›<//>
               </div>
               ${rendered.headings.map(h => html`
                 <button
@@ -805,9 +829,15 @@ export default function MDReader() {
         `}
 
         ${mode === 'doc' && rendered && html`
-          <div class="mdr-graph-layout">
+          <div class=${clsx('mdr-graph-layout', !sidePanelOpen && 'is-panel-collapsed')}>
             <div class="mdr-graph-canvas" onClick=${handleGraphClick} dangerouslySetInnerHTML=${{ __html: renderGraphHtml(docGraph, { width: 900, height: 620 }) }} />
-            <aside class="mdr-graph-detail" dangerouslySetInnerHTML=${{ __html: renderGraphDetails(docGraph, selectedNode?.id) }} />
+            <aside class=${clsx('mdr-graph-detail', !sidePanelOpen && 'is-hidden')}>
+              <div class="mdr-graph-detail-head">
+                <strong>Detalle</strong>
+                <${Button} iconOnly title="Ocultar detalle" onClick=${() => setSidePanelOpen(false)}>›<//>
+              </div>
+              <div dangerouslySetInnerHTML=${{ __html: renderGraphDetails(docGraph, selectedNode?.id) }} />
+            </aside>
           </div>
         `}
 
@@ -818,9 +848,15 @@ export default function MDReader() {
         `}
 
         ${mode === 'workspace' && html`
-          <div class="mdr-graph-layout">
+          <div class=${clsx('mdr-graph-layout', !sidePanelOpen && 'is-panel-collapsed')}>
             <div class="mdr-graph-canvas" onClick=${handleGraphClick} dangerouslySetInnerHTML=${{ __html: renderGraphHtml(filteredWorkspaceGraph, { width: 980, height: 640 }) }} />
-            <aside class="mdr-graph-detail" dangerouslySetInnerHTML=${{ __html: renderGraphDetails(filteredWorkspaceGraph, selectedNode?.id) }} />
+            <aside class=${clsx('mdr-graph-detail', !sidePanelOpen && 'is-hidden')}>
+              <div class="mdr-graph-detail-head">
+                <strong>Detalle</strong>
+                <${Button} iconOnly title="Ocultar detalle" onClick=${() => setSidePanelOpen(false)}>›<//>
+              </div>
+              <div dangerouslySetInnerHTML=${{ __html: renderGraphDetails(filteredWorkspaceGraph, selectedNode?.id) }} />
+            </aside>
           </div>
         `}
 
@@ -875,15 +911,13 @@ export default function MDReader() {
           </div>
         `}
 
-        ${summary && html`
-          <div class="mdr-summary">
-            <div class="mdr-summary-head">
-              <strong>Resumen Aurora</strong>
-              <${Button} size="sm" onClick=${() => setSummary('')}>Cerrar</${Button}>
-            </div>
-            <div class="mdr-summary-body markdown-body" dangerouslySetInnerHTML=${{ __html: renderMarkdown(summary, 'resumen.md').html }} />
+        <${summaryMenu.FloatingMenu} class="mdr-summary">
+          <div class="mdr-summary-head">
+            <strong>Resumen Aurora</strong>
+            <${Button} iconOnly onClick=${() => setSummary('')} title="Cerrar">✕<//>
           </div>
-        `}
+          <div class="mdr-summary-body markdown-body" dangerouslySetInnerHTML=${{ __html: renderMarkdown(summary, 'resumen.md').html }} />
+        <//>
       </section>
     </div>
   `;

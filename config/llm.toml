@@ -2,10 +2,13 @@
 [pi]
 bin = "/home/deml/.bun/bin/pi"
 runtime = "/home/deml/.bun/bin/bun"
-session_dir = "databases/pi-sessions"
+# session_dir = ""    # sin setear: pi usa su default real (~/.pi/agent/sessions/),
+#                     # igual que correr `pi` a mano — Aurora es una interfaz
+#                     # distinta sobre el MISMO pi, no debe redirigir sus datos.
 # cwd = ""            # workspace del agente — default: raíz de aurora
 # extra_args = []     # flags extra para pi (ej: ["--no-extensions"])
 
 [llama]
-base_url = "http://localhost:11434"
+# base_url no aplica acá: cada proveedor local (llamacpp/lmstudio/ollama) tiene
+# su propio endpoint fijo en src/llm/providers.py DEFAULT_PROVIDERS.
 default_model = ""

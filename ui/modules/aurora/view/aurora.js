@@ -1,11 +1,12 @@
 const { html } = globalThis;
 const { useEffect, useMemo, useState } = globalThis.preactHooks;
 
-import { Button, Chip, ChipGroup, Empty, List, ListItem, Panel, PanelBody, PanelHeader, Select, Status, Textarea } from '../../../components/index.js';
+import { Button, Chip, ChipGroup, AutoFitChips, Empty, List, ListItem, Panel, PanelBody, PanelHeader, Select, Status, Textarea } from '../../../components/index.js';
 import { JsonBlock } from '../../../components/shared/JsonBlock.js';
 import { cargarHealth } from '../scripts/services.js';
 import { cargarTools, ejecutarTool } from '../scripts/tools.js';
 import { cargarMcpClientConfig, cargarMcpStatus, llamarMcp } from '../scripts/mcp.js';
+import { copiarTexto } from '../../../components/shared/clipboard.js';
 
 const SECTIONS = ['Services', 'LLM', 'Tools', 'MCP'];
 
@@ -15,11 +16,11 @@ function tone(ok) {
 
 function Shell({ active, setActive }) {
   return html`
-    <div class="flex flex-wrap gap-2">
+    <${AutoFitChips}>
       ${SECTIONS.map(item => html`
-        <${Button} size="sm" active=${active === item} onClick=${() => setActive(item)}>${item}</${Button}>
+        <${Chip} key=${item} active=${active === item} onClick=${() => setActive(item)}>${item}<//>
       `)}
-    </div>
+    <//>
   `;
 }
 
@@ -201,9 +202,11 @@ function McpView({ tools, status, clientConfig, reload }) {
 
   async function copyClientConfig() {
     const text = JSON.stringify(clientConfig?.claude_desktop || {}, null, 2);
-    await navigator.clipboard?.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1400);
+    const ok = await copiarTexto(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    }
   }
 
   return html`

@@ -2,10 +2,14 @@ const html = (...args) => globalThis.html(...args);
 const { useState, useEffect, useRef, useCallback } = globalThis.preactHooks;
 
 import {
-  historial, streamingActual, thinkingActual, cargando,
+  historial, streamingActual, thinkingActual, cargando, cloudGenerando,
   cargarMensajes, guardarMensaje, agregarMensajeLocal, agregarMensajeRico, limpiarHistorial,
   limpiarStream, borrarMensaje, parsearMensajeRico, combinarPartesRicas,
 } from '../scripts/chat/mensajes.js';
+import { enviarACloud } from '../scripts/chat/cloud.js';
+import { detenerCloud } from '../../../components/shared/cloud-ask.js';
+import { crearDuoLyraCloud } from '../scripts/chat/duo.js';
+import { urlRestaurada } from '../../../components/shared/llm-sesiones.js';
 import { chats, chatActualId, cargarChats, crearChat, eliminarChat, autoGuardar, fmtFecha, exportarChat } from '../scripts/chat/historial.js';
 import { modeloSeleccionado, cargarModelo, guardarModelo } from '../scripts/chat/parametros.js';
 import { instruccion, cargarInstruccion } from '../scripts/chat/instrucciones.js';
@@ -103,6 +107,7 @@ export function Local() {
   const streamingVal                       = useSig(streamingActual);
   const thinkingVal                        = useSig(thinkingActual);
   const cargandoVal                        = useSig(cargando);
+  const cloudGenerandoVal                  = useSig(cloudGenerando);
   const chatsVal                           = useSig(chats);
   const chatIdVal                          = useSig(chatActualId);
   const modeloVal                          = useSig(modeloSeleccionado);
@@ -134,6 +139,8 @@ export function Local() {
   const [cloudHidden, setCloudHidden]               = useState(false);
   const [cloudUrl, setCloudUrl]                     = useState(AI_URLS.gemini);
   const [cloudAiId, setCloudAiId]                   = useState('gemini');
+  const [duoActivo, setDuoActivo]                   = useState(false);
+  const duoRef                                      = useRef(null);
   const [cloudMenu, setCloudMenu]                   = useState(null);
   const [plusOpen, setPlusOpen]                     = useState(null);
   const [nexusPendiente, setNexusPendiente]         = useState(null);
@@ -203,6 +210,15 @@ export function Local() {
     const texto = (typeof textoDirecto === 'string' ? textoDirecto : opciones.message ?? mensaje).trim();
     const imagenDataUrl = opciones.skipUserAppend ? null : pendingImageDataUrl.value;
     if (!texto && !imagenDataUrl) return;
+
+    // Cloud activo: el mensaje va al LLM de la nube (iframe), NO a pi.
+    // Comandos "/" siguen siendo de Lyra. Respuesta marcada _via:'direct-ai',
+    // memoria propia en cloud_mensajes — la sesión de pi ni se entera.
+    if (cloudVisible && !texto.startsWith('/') && !opciones.skipUserAppend) {
+      setMensaje('');
+      await enviarACloud({ iframe: iframeRef.current, texto, aiId: cloudAiId, url: cloudUrl });
+      return;
+    }
 
     // Steering: Lyra ya está respondiendo — Enter no bloquea, encola el
     // mensaje y pi lo entrega apenas termine el turno de tool-calls actual.
@@ -390,21 +406,23 @@ export function Local() {
       streamingActual.value = '';
       if (!opciones.skipUserSave) await guardarMensaje(chatActualId.value, 'user', texto);
       if (assistantMessageRef.current.blocks.length) {
-        // Serializa los bloques EN ORDEN cronológico real — mismo criterio
-        // que message.content de pi, para que al recargar el chat se vea
-        // exactamente en la secuencia en que pasó.
-        const partes = assistantMessageRef.current.blocks.map(b => {
-          if (b.tipo === 'thinking') return `[thinking]\n${b.contenido}\n[/thinking]`;
-          if (b.tipo === 'text') return b.contenido;
-          if (b.tipo === 'tool') {
-            const call = `[tool_call:${b.name}]\n${b.argsFull || b.args}\n[/tool_call:${b.name}]`;
-            if (b.output == null) return call;
-            const abre = b.isError ? `[tool_result:${b.name}:error]` : `[tool_result:${b.name}]`;
-            return `${call}\n${abre}\n${b.output}\n[/tool_result:${b.name}]`;
+        const serializarBloques = blocks => {
+          const partes = [];
+          for (const b of blocks) {
+            if (b.tipo === 'thinking') partes.push(`[thinking]\n${b.contenido}\n[/thinking]`);
+            else if (b.tipo === 'text') partes.push(b.contenido);
+            else if (b.tipo === 'tool') {
+              const tid = b.id || '';
+              const call = `[tool_call:${b.name}${tid ? ':' + tid : ''}]\n${b.argsFull || b.args}\n[/tool_call:${b.name}${tid ? ':' + tid : ''}]`;
+              partes.push(call);
+              if (b.output == null) continue;
+              const abre = b.isError ? `[tool_result:${b.name}${tid ? ':' + tid : ''}:error]` : `[tool_result:${b.name}${tid ? ':' + tid : ''}]`;
+              partes.push(`${call}\n${abre}\n${b.output}\n[/tool_result:${b.name}${tid ? ':' + tid : ''}]`);
+            }
           }
-          return '';
-        });
-        const contenidoFinal = partes.filter(Boolean).join('\n\n');
+          return partes.filter(Boolean).join('\n\n');
+        };
+        const contenidoFinal = serializarBloques(assistantMessageRef.current.blocks);
         agregarMensajeRico({ role: 'assistant', content: contenidoFinal, thinking: thinking || null });
         await guardarMensaje(chatActualId.value, 'assistant', contenidoFinal);
       }
@@ -455,6 +473,8 @@ export function Local() {
   }, [enviarMensaje]);
 
   const detenerGeneracion = useCallback(() => {
+    // Cloud generando: cortar la nube (cancela captura + clickea su stop).
+    if (cloudGenerando.value) { detenerCloud(iframeRef.current); cloudGenerando.value = false; cargando.value = false; return; }
     cancelarMensaje();
     if (streamingActual.value) {
       agregarMensajeLocal('assistant', streamingActual.value);
@@ -578,12 +598,33 @@ export function Local() {
       if (abriendo) {
         setCloudExpanded(false);
         setCloudHidden(false);
-        requestAnimationFrame(() => recargarCloudIframe(cloudUrl));
+        // setTimeout, NO requestAnimationFrame: en pestaña oculta RAF no
+        // dispara y el iframe quedaba en about:blank. Restaura último hilo.
+        urlRestaurada(cloudUrl).then(u => {
+          if (u !== cloudUrl) setCloudUrl(u);
+          setTimeout(() => recargarCloudIframe(u), 80);
+        });
       }
       Toast().show(abriendo ? '☁️ Cloud Backend activado' : '☁️ Cloud Backend desactivado', 'info', 2000);
       return abriendo;
     });
   }, [cloudUrl, recargarCloudIframe]);
+
+  // Duo Lyra ↔ Nube: pi y el LLM externo conversan por turnos en el hilo.
+  const toggleDuo = useCallback(() => {
+    if (duoActivo) { duoRef.current?.detener(); setDuoActivo(false); return; }
+    if (!cloudVisible || !iframeRef.current) { Toast().show('Abrí ☁ Cloud primero', 'warning', 2500); return; }
+    if (cargando.value) { Toast().show('Esperá a que Lyra termine', 'warning', 2000); return; }
+    const duo = crearDuoLyraCloud();
+    duoRef.current = duo;
+    setDuoActivo(true);
+    Toast().show('⇆ Duo iniciado — Lyra ↔ ' + (AI_LABELS[cloudAiId] || 'Nube'), 'info', 2000);
+    duo.iniciar(
+      { iframe: iframeRef.current, model: modeloSeleccionado.value },
+      { onEstado: e => { if (['fin', 'cancelado', 'error'].includes(e)) setDuoActivo(false); },
+        onError: m => Toast().show('Duo: ' + m, 'error', 3000) },
+    );
+  }, [duoActivo, cloudVisible, cloudAiId]);
 
   const cycleCloudPanel = useCallback(() => {
     if (cloudExpanded) {
@@ -794,7 +835,7 @@ export function Local() {
           if (msg.role === 'assistant') {
             const parsed = combinarPartesRicas(parsearMensajeRico(msg.content));
             return html`
-              <div key=${idx} class="message assistant">
+              <div key=${idx} class=${'message assistant' + (esExterno ? ' direct-ai' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
                 <div class="message-header">
                   <span class="role">${rolLabel}</span>
                   <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
@@ -863,6 +904,11 @@ export function Local() {
                     dangerouslySetInnerHTML=${{ __html: renderizarContenido(msg.content) }}
                   ></div>
                 `}
+                ${msg._timing && html`
+                  <div class="text-[10px] text-aurora-text-muted font-mono mt-1 opacity-70">
+                    ⏱ responde ${(msg._timing.responde / 1000).toFixed(1)}s · genera ${(msg._timing.genera / 1000).toFixed(1)}s
+                  </div>
+                `}
                 <div class=${quickActionsClass}>
                   <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles">📋 Copiar</button>
                   <button class=${actionChipClass} onClick=${() => añadirANotas(msg.content)} title="Añadir a notas">✎ A notas</button>
@@ -880,7 +926,7 @@ export function Local() {
               ? `${AI_ICONOS[cloudAiId] || '☁'} ${AI_LABELS[cloudAiId] || 'AI ext'}`
               : '🦙 Lyra';
           return html`
-            <div key=${idx} class=${'message ' + msg.role + (esExternoFinal ? ' direct-ai' : '')}>
+            <div key=${idx} class=${'message ' + msg.role + (esExternoFinal ? ' direct-ai' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
               <div class="message-header">
                 <span class="role">${rolLabelFinal}</span>
                 <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
@@ -895,6 +941,11 @@ export function Local() {
               <div class="message-content"
                 dangerouslySetInnerHTML=${{ __html: renderizarContenido(msg.content, { externo: esExternoFinal }) }}
               ></div>
+              ${msg._timing && html`
+                <div class="text-[10px] text-aurora-text-muted font-mono mt-1 opacity-70">
+                  ⏱ responde ${(msg._timing.responde / 1000).toFixed(1)}s · genera ${(msg._timing.genera / 1000).toFixed(1)}s
+                </div>
+              `}
             </div>
           `;
         })}
@@ -955,12 +1006,17 @@ export function Local() {
           </div>
         `}
 
-        ${cargandoVal && !streamingVal && !thinkingVal && html`
+        ${cargandoVal && !streamingVal && !thinkingVal && !cloudGenerandoVal && html`
           <div class="message assistant loading">
             <div class="message-header"><span class="role">🦙 Lyra</span></div>
             <div class="message-content">
               <span class="typing-indicator">◌ Pensando…</span>
             </div>
+          </div>
+        `}
+        ${cloudGenerandoVal && html`
+          <div class="message assistant loading direct-ai">
+            <div class="message-content"><span class="typing-indicator">☁ generando…</span></div>
           </div>
         `}
         </div>
@@ -1062,10 +1118,10 @@ export function Local() {
             `}
           </div>
           <button
-            class=${'btn-duo ' + controlBtnIdle}
-            onClick=${() => Toast().show('⇄ Duo requiere la extensión de browser (FASE extensions)', 'warning', 2500)}
-            title="Modo Duo — Lyra ↔ AI externo"
-          >⇄ Duo</button>
+            class=${'btn-duo ' + (duoActivo ? controlBtnActive : controlBtnIdle)}
+            onClick=${toggleDuo}
+            title="Modo Duo — Lyra ↔ LLM de la nube conversan por turnos"
+          >${duoActivo ? '⇆ Duo…' : '⇄ Duo'}</button>
 
           <span class="flex-1"></span>
 

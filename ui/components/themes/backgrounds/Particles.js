@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Puntos flotantes que se conectan al acercarse.
 export class Particles extends Component {
@@ -15,7 +15,7 @@ export class Particles extends Component {
     const canvas = this.canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const COUNT = 60;
+    const COUNT = esDispositivoLiviano() ? 24 : 60;
     const CONNECT_DIST = 130;
     let W, H, particles;
 

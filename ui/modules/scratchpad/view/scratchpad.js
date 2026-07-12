@@ -30,6 +30,7 @@ import {
 } from '../scripts/notas.js?v=v2-clean-ui-4';
 import { ScratchpadPageShell, ScratchpadBlockEditor, SCRATCHPAD_COMMANDS } from '../../../components/scratchpad/index.js?v=v2-clean-ui-4';
 import { setViewActions, clearViewActions } from '../../../components/footer/registry.js';
+import { usePersistedState } from '../../../components/shared/persisted-state.js';
 
 const STATUS_LABEL = {
   idle: { text: 'Ready', tone: 'neutral' },
@@ -65,11 +66,11 @@ export default function Scratchpad() {
   const [snapshot, setSnapshot] = useState(getScratchpadDoc());
   const [ui, setUi] = useState({
     activeBlockId: null,
-    navCollapsed: true,
     createPanelOpen: false,
     noteQuery: '',
     slash: { blockId: null, query: '' },
   });
+  const [navCollapsed, setNavCollapsed] = usePersistedState('scratchpad_nav_collapsed', true);
 
   const currentDoc = snapshot || getScratchpadDoc();
   const page = pageFromDoc(currentDoc);
@@ -299,14 +300,14 @@ export default function Scratchpad() {
         pages=${currentDoc.pages}
         activePageId=${currentDoc.activePageId}
         blocks=${currentDoc.blocks}
-        navCollapsed=${ui.navCollapsed}
+        navCollapsed=${navCollapsed}
         noteQuery=${ui.noteQuery}
         createPanelOpen=${ui.createPanelOpen}
         stats=${stats}
         statusLabel=${status.text}
         statusTone=${status.tone}
         nexusOk=${nexusOk}
-        onToggleNav=${() => patchUi({ navCollapsed: !ui.navCollapsed })}
+        onToggleNav=${() => setNavCollapsed(v => !v)}
         onNoteQuery=${(noteQuery) => patchUi({ noteQuery })}
         onToggleCreatePanel=${() => patchUi({ createPanelOpen: !ui.createPanelOpen })}
         onAddBlock=${(type) => addFromCreatePanel(type)}

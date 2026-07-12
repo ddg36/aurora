@@ -10,18 +10,22 @@ from litestar.static_files import create_static_files_router
 from litestar.types import ASGIApp, Receive, Scope, Send
 from litestar.middleware import MiddlewareProtocol
 
-from db.connection import DB_PATH, init_db
+from db.auth import auth_guard_global
+from db.connection import DB_PATH, get_db, init_db, schema_version
 from db.router import ALL_CONTROLLERS
+from eventos_ws import EVENTOS_WS_ROUTES
 from llm.providers import discover_providers
 from pi.router import PI_ROUTES
+from pi.bridge import get_proceso
 from mcp.router import MCP_ROUTES
+from nexus.config import SOLO_LECTURA
 from nexus.router import NEXUS_ROUTES
-from parser.router import PARSER_ROUTES
 from tools.router import TOOLS_ROUTES
 from voz.router import VOZ_ROUTES
-from ext.router import EXT_ROUTES
-from browser.router import NAV_BROWSER_ROUTES
+from ext.router import EXT_ROUTES, get_active_session
+from browser.router import NAV_BROWSER_ROUTES, browser_use_disponible
 from jobs.cleanup_capturas import run_cleanup
+from jobs.db_maintenance import run_mantenimiento
 from logging_config import setup_logging
 
 log = setup_logging()
@@ -48,12 +52,19 @@ async def health() -> dict:
     modelos = sum(len(p["models"]) for p in online)
 
     db_bytes = 0
+    db_version = 0
     db_ok = DB_PATH.exists()
     if db_ok:
         try:
             db_bytes = DB_PATH.stat().st_size
+            db_version = await schema_version(await get_db())
         except OSError:
             db_ok = False
+        except Exception:
+            pass
+
+    proceso = get_proceso()
+    ext_sess = get_active_session()
 
     return {
         "ok": True,
@@ -65,7 +76,12 @@ async def health() -> dict:
             "modelos": modelos,
         },
         "llm": {"providers": providers, "modelos": modelos},
-        "db": {"ok": db_ok, "bytes": db_bytes, "path": str(DB_PATH)},
+        "pi": {"ok": bool(proceso and proceso.vivo)},
+        "extension": {"conectada": ext_sess is not None,
+                      "id": ext_sess.extension_id if ext_sess else None},
+        "webnavigator": {"disponible": browser_use_disponible()},
+        "nexus": {"solo_lectura": SOLO_LECTURA},
+        "db": {"ok": db_ok, "bytes": db_bytes, "path": str(DB_PATH), "schema": db_version},
     }
 
 
@@ -88,10 +104,14 @@ async def on_startup() -> None:
             log.info("startup cleanup: %d capturas borradas en %d usuarios", total, len(resultados))
     except Exception as e:
         log.warning("startup cleanup error: %s", e)
+    try:
+        await run_mantenimiento()
+    except Exception as e:
+        log.warning("mantenimiento DB error: %s", e)
     log.info("Aurora Server ready — LLM engine: pi")
 
 
-ROUTES = [root, ping, health, favicon] + PI_ROUTES + VOZ_ROUTES + NEXUS_ROUTES + PARSER_ROUTES + TOOLS_ROUTES + MCP_ROUTES + EXT_ROUTES + ALL_CONTROLLERS + NAV_BROWSER_ROUTES
+ROUTES = [root, ping, health, favicon] + EVENTOS_WS_ROUTES + PI_ROUTES + VOZ_ROUTES + NEXUS_ROUTES + TOOLS_ROUTES + MCP_ROUTES + EXT_ROUTES + ALL_CONTROLLERS + NAV_BROWSER_ROUTES
 
 if UI_DIR.exists():
     ROUTES.append(
@@ -99,7 +119,7 @@ if UI_DIR.exists():
             path="/ui",
             directories=[str(UI_DIR)],
             html_mode=True,
-            cache_control=CacheControlHeader(no_cache=True),
+            cache_control=CacheControlHeader(public=True, max_age=60),
         )
     )
 
@@ -120,9 +140,18 @@ class PrivateNetworkMiddleware(MiddlewareProtocol):
             await self.app(scope, receive, send)
 
 
+# CORS acotado: la UI es same-origin (no lo necesita); la extensión Chrome
+# entra por el regex. Una web cualquiera ya no puede hacer drive-by a
+# /nexus/* — y aunque el preflight pasara, el guard global exige token.
 app = Litestar(
     route_handlers=ROUTES,
-    cors_config=CORSConfig(allow_origins=[chr(42)], allow_methods=[chr(42)], allow_headers=[chr(42)]),
+    cors_config=CORSConfig(
+        allow_origins=["http://localhost:7779", "http://127.0.0.1:7779"],
+        allow_origin_regex=r"^chrome-extension://[a-p]{32}$",
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=["Authorization", "Content-Type"],
+    ),
+    guards=[auth_guard_global],
     on_startup=[on_startup],
     openapi_config=None,
     middleware=[PrivateNetworkMiddleware],

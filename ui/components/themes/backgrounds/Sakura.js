@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Sakura — pétalos de cerezo con tilt 3D, ramas, bruma y luz difusa.
 export class Sakura extends Component {
@@ -57,7 +57,7 @@ export class Sakura extends Component {
 
     const init = () => {
       resize();
-      petals   = Array.from({ length: 70 }, (_, i) => makePetal(i < 50));
+      petals   = Array.from({ length: esDispositivoLiviano() ? 22 : 70 }, (_, i) => makePetal(i < (esDispositivoLiviano() ? 15 : 50)));
       branches = null; // se dibuja en primer frame con color correcto
     };
 

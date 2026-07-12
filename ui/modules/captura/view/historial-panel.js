@@ -5,6 +5,7 @@ import { historialCaptura, cargarHistorialCaptura, eliminarDelHistorial, limpiar
 import { Toast } from '../../../components/shared/toast.js';
 import {
   Button,
+  Disclosure,
   Empty,
   List,
   ListItem,
@@ -64,16 +65,7 @@ export function Historial({ open, onToggle, onSelectItem }) {
 
   return html`
     <${Panel}>
-      <button
-        type="button"
-        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-aurora-text-muted transition-colors hover:bg-aurora-surface-hover"
-        onClick=${onToggle}
-      >
-        <span>🕘 Historial</span>
-        <span class="rounded-full bg-aurora-accent/15 px-2 py-0.5 text-[9px] font-bold text-aurora-accent">${items.length}</span>
-        <span class="ml-auto text-[9px] opacity-50">${open ? '▲' : '▼'}</span>
-      </button>
-      ${open && html`
+      <${Disclosure} open=${open} onToggle=${onToggle} icon="🕘" title="Historial" count=${items.length}>
         <${PanelBody} noPadding class="p-1">
           <div class="px-1 pb-1">
             <input
@@ -114,7 +106,7 @@ export function Historial({ open, onToggle, onSelectItem }) {
             </${PanelFooter}>
           `}
         </${PanelBody}>
-      `}
+      </${Disclosure}>
     </${Panel}>
   `;
 }

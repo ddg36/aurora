@@ -43,7 +43,7 @@ export async function cargarAjustesVoz() {
 export async function cargarVoces() {
   await cargarAjustesVoz();
   try {
-    const res = await fetch(`${BASE}/voz/voces`);
+    const res = await fetch(`${BASE}/voz/voces`, { headers: hdrs() });
     if (res.ok) {
       const data = await res.json();
       voces.value = data.voces || [];
@@ -91,7 +91,12 @@ export function detenerGrabacion() {
       try {
         const form = new FormData();
         form.append('data', blob, 'voz.webm');
-        const res = await fetch(`${BASE}/voz/stt`, { method: 'POST', body: form });
+        // Solo Authorization: el Content-Type del multipart lo pone el browser.
+        const res = await fetch(`${BASE}/voz/stt`, {
+          method: 'POST',
+          headers: { Authorization: hdrs().Authorization },
+          body: form,
+        });
         if (!res.ok) throw new Error(`STT ${res.status}`);
         const data = await res.json();
         resolve(data.text || '');
@@ -113,7 +118,7 @@ export async function hablar(texto) {
   try {
     const res = await fetch(`${BASE}/voz/tts`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: hdrs(),
       body: JSON.stringify({ text: limpio.slice(0, 2000), voice: vozSeleccionada.value }),
     });
     if (!res.ok) throw new Error(`TTS ${res.status}`);

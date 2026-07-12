@@ -109,6 +109,35 @@ async def main():
     stats_evt = [m for m in sock4.enviados if m["type"] == "session_stats"]
     assert stats_evt, sock4.enviados
     assert stats_evt[-1]["stats"]["tokens"]["input"] == 100, stats_evt
+    # Regresión: el bridge normaliza contextUsage al shape que el frontend
+    # espera (percent + contextWindow), sin importar las claves de pi real.
+    ctx = stats_evt[-1]["stats"]["contextUsage"]
+    assert ctx and ctx["percent"] == 7.4 and ctx["contextWindow"] == 200000, ctx
+
+    # Caso 2: get_session_stats sin contextUsage (proveedor no lo expone)
+    # → el bridge pone contextUsage: None sin crash.
+    pedir_original_stats = proceso.pedir
+    async def pedir_sin_ctx(cmd, *a, **kw):
+        if cmd.get("type") == "get_session_stats":
+            r = await pedir_original_stats(cmd, *a, **kw)
+            if r.get("success") and isinstance(r.get("data"), dict):
+                r = dict(r)
+                r["data"] = {k: v for k, v in r["data"].items() if k != "contextUsage"}
+            return r
+        return await pedir_original_stats(cmd, *a, **kw)
+    proceso.pedir = pedir_sin_ctx
+    prev_count = len([m for m in sock4.enviados if m["type"] == "session_stats"])
+    await br4.manejar_chat({"type": "chat", "message": "otro turno sin ctx", "chat_id": None, "system": ""})
+    for _ in range(40):
+        nuevo_stats = [m for m in sock4.enviados if m["type"] == "session_stats"]
+        if len(nuevo_stats) > prev_count:
+            break
+        await asyncio.sleep(0.05)
+    nuevo_evt = [m for m in sock4.enviados if m["type"] == "session_stats"][-1:]
+    assert nuevo_evt, "session_stats nuevo nunca llegó"
+    ctx_sin = nuevo_evt[-1]["stats"].get("contextUsage")
+    assert ctx_sin is None, ctx_sin
+    proceso.pedir = pedir_original_stats
 
     if B._proceso is not None and B._proceso.vivo:
         await B._proceso.parar()

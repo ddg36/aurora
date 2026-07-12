@@ -23,6 +23,7 @@ from .routes.ext_capturas import ExtCapturasController
 from .routes.jobs import JobsController
 from .routes.mdreader import MDReaderController
 from .routes.productividad import ProductividadController
+from .routes.search import SearchController
 
 ALL_CONTROLLERS = [
     UsuariosController,
@@ -50,4 +51,5 @@ ALL_CONTROLLERS = [
     JobsController,
     MDReaderController,
     ProductividadController,
+    SearchController,
 ]

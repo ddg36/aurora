@@ -1,7 +1,8 @@
 const html = (...args) => globalThis.html(...args);
 const { useState, useEffect } = globalThis.preactHooks;
 import { Button } from '../../../components/Button.js';
-import { Input } from '../../../components/Input.js';
+import { Chip, ChipGroup } from '../../../components/Chip.js';
+import { Input, Select } from '../../../components/Input.js';
 import { Panel, PanelHeader, PanelBody } from '../../../components/Panel.js';
 import { getCreativityIdeas, saveCreativityIdeas, deleteCreativityIdeas } from '../../../components/shared/builder-api.js';
 import { Toast } from '../../../components/shared/toast.js';
@@ -80,10 +81,9 @@ export function CreativityIdeasEditor({ onClose }) {
       <${PanelBody} class="flex flex-col gap-3 overflow-y-auto">
 
         <div class="flex gap-2 items-center flex-wrap">
-          <select class="flex-1 min-w-[140px] h-7 text-xs rounded-md border border-aurora-border bg-aurora-surface text-aurora-text px-2"
-            value=${tematica} onChange=${e => setTematica(e.target.value)}>
+          <${Select} class="flex-1 min-w-[140px]" value=${tematica} onChange=${e => setTematica(e.target.value)}>
             ${tematicas.map(t => html`<option key=${t} value=${t}>${t}</option>`)}
-          </select>
+          <//>
           <${Button} size="sm" onClick=${addTematica}>＋ Temática</${Button}>
           ${tematica && html`<${Button} size="sm" variant="danger" onClick=${removeTematica}>🗑</${Button}>`}
         </div>
@@ -94,14 +94,11 @@ export function CreativityIdeasEditor({ onClose }) {
               <span class="text-xs font-bold text-aurora-text-muted uppercase">${ICONOS[campo]} ${campo}</span>
               <span class="text-[9px] text-aurora-text-dim">(${(current[campo] || []).length})</span>
             </div>
-            <div class="flex flex-wrap gap-1">
+            <${ChipGroup}>
               ${(current[campo] || []).map((item, idx) => html`
-                <span key=${idx} class="inline-flex items-center gap-1 bg-aurora-surface border border-aurora-border rounded px-2 py-0.5 text-[10px] text-aurora-text-dim">
-                  ${item}
-                  <button class="text-aurora-text-dim hover:text-aurora-error ml-0.5" onClick=${() => removeItem(campo, idx)}>✕</button>
-                </span>
+                <${Chip} key=${idx} onClick=${() => removeItem(campo, idx)} title="Quitar">${item} ✕<//>
               `)}
-            </div>
+            <//>
             <div class="flex gap-1">
               <${Input} class="flex-1" placeholder=${'Agregar ' + campo.slice(0, -1) + '…'}
                 value=${newItem[campo] || ''}

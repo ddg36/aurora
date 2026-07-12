@@ -30,6 +30,20 @@ async def main():
     proceso = PiProceso(on_event=B._on_event, argv=[sys.executable, FAKE])
     B._proceso = proceso
 
+    # _guardar_respuesta_turno (agent_end) escribe directo en la DB de Aurora
+    # — sin este override, este test escribía filas de prueba en la DB REAL
+    # de producción (databases/aihub.db), mismo tipo de contaminación que ya
+    # pasó una vez con databases/pi-sessions/ (ver moraleja en memoria).
+    import db.connection as dbconn
+    dbconn.DB_PATH = pathlib.Path(tempfile.mkdtemp()) / "test-aihub.db"
+    dbconn._db = None
+    db = await dbconn.get_db()
+    await db.executescript((pathlib.Path(__file__).resolve().parents[2] / "src" / "db" / "schema.sql").read_text())
+    await db.execute("INSERT INTO usuarios (id, nombre, token) VALUES (1,'test','tok')")
+    await db.execute("INSERT INTO chats (id, usuario_id, nombre, creado_en, actualizado) VALUES (42,1,'c42',0,0)")
+    await db.execute("INSERT INTO chats (id, usuario_id, nombre, creado_en, actualizado) VALUES (888001,1,'c888001',0,0)")
+    await db.commit()
+
     sock = FakeSocket()
     br = B.PiBridge(sock)
 
@@ -44,6 +58,21 @@ async def main():
     tokens = "".join(m["content"] for m in sock.enviados if m["type"] == "token")
     assert tokens == "Hola mundo", tokens
 
+    # Regresión: la respuesta del asistente se persiste server-side en
+    # agent_end (bridge.py: _guardar_respuesta_turno) — antes esto sólo lo
+    # guardaba el FRONTEND después de que sendToLyra() resolviera, así que
+    # recargar la página a mitad de turno perdía la respuesta para siempre
+    # (el JS moría antes de poder guardar nada). El 'done' debe traer el id
+    # real insertado, y esa fila debe existir de verdad en la DB.
+    done_evt = next(m for m in sock.enviados if m["type"] == "done")
+    assert done_evt.get("assistant_message_id"), done_evt
+    async with db.execute(
+        "SELECT rol, contenido FROM mensajes WHERE id=?", (done_evt["assistant_message_id"],)
+    ) as cur:
+        fila = await cur.fetchone()
+    assert fila is not None and fila["rol"] == "assistant", fila
+    assert "[tool_call:bash]" in fila["contenido"] and "archivo.txt" in fila["contenido"], fila["contenido"]
+
     mapa = B._cargar_mapa()
     assert "42" in mapa, mapa
 
@@ -55,6 +84,36 @@ async def main():
     await br.manejar_models()
     modelos = [m for m in sock.enviados if m["type"] == "models"][-1]["models"]
     assert modelos and modelos[0]["id"] == "llamacpp", modelos
+    # Regresión: pi expone soporte de imagen en Model.input ("text"|"image")[],
+    # no en 'capabilities' (ese campo no existe en el schema real de pi) —
+    # bridge.py debe leer 'input' y mandar 'vision' ya resuelto al frontend.
+    por_id = {m["id"]: m for m in modelos}
+    assert por_id["llamacpp"]["vision"] is False, por_id["llamacpp"]
+    assert por_id["claude-haiku-4-5"]["vision"] is True, por_id["claude-haiku-4-5"]
+
+    # Turno de chat real completo seleccionando el proveedor LOCAL
+    # (llamacpp) — antes solo estaba cubierto el orden en /models y
+    # /scoped-models (favoritos), nunca un turno de principio a fin.
+    comandos_llamacpp = []
+    pedir_original_llamacpp = proceso.pedir
+
+    async def pedir_espia_llamacpp(cmd, *a, **kw):
+        comandos_llamacpp.append(cmd)
+        return await pedir_original_llamacpp(cmd, *a, **kw)
+
+    proceso.pedir = pedir_espia_llamacpp
+    sock.enviados.clear()
+    await br.manejar_chat({"type": "chat", "message": "hola local", "chat_id": 42, "model": "llamacpp"})
+    proceso.pedir = pedir_original_llamacpp
+
+    set_model_cmd = next((c for c in comandos_llamacpp if c.get("type") == "set_model"), None)
+    assert set_model_cmd is not None, comandos_llamacpp
+    assert set_model_cmd.get("modelId") == "llamacpp" and set_model_cmd.get("provider") == "llama-cpp", set_model_cmd
+
+    tipos = [m["type"] for m in sock.enviados]
+    assert "done" in tipos and "error" not in tipos, sock.enviados
+    tokens = "".join(m["content"] for m in sock.enviados if m["type"] == "token")
+    assert tokens == "Hola mundo", tokens
 
     imagen = "data:image/png;base64,QUJD"
     texto, imagenes = B._extraer_contenido([
@@ -77,10 +136,39 @@ async def main():
     assert len(resultados) == 1, resultados
     assert resultados[0]["output"] == "RESULTADO_REAL_DE_LA_TOOL", resultados[0]
 
+    # chat_id=None (toolkit/chain, sesión efímera) no debe persistir nada —
+    # igual que el frontend nunca guardaba en ese caso.
+    done_evt = next(m for m in sock.enviados if m["type"] == "done")
+    assert not done_evt.get("assistant_message_id"), done_evt
+
+    # Regresión: bridge.py descartaba toolCallId (evt.get('toolCallId') real
+    # de pi, único por invocación) al mandar tool_call/tool_result — con 2+
+    # llamadas a la MISMA tool en un turno, el frontend sólo podía
+    # correlacionar por 'name', rompiendo cualquier tracking indexado por
+    # nombre (ej. el tracker de actividad de Aurora: sólo la ÚLTIMA llamada
+    # de ese nombre quedaba "lista", el resto colgado en "en progreso" para
+    # siempre aunque el turno ya hubiera terminado).
+    sock.enviados.clear()
+    await br.manejar_chat({"type": "chat", "message": "TEST_TOOLS_PARALELOS", "chat_id": None, "system": ""})
+    llamadas = [m for m in sock.enviados if m["type"] == "tool_call"]
+    resultados = [m for m in sock.enviados if m["type"] == "tool_result"]
+    assert [l["tool_call_id"] for l in llamadas] == ["c1", "c2"], llamadas
+    assert {r["tool_call_id"]: r["output"] for r in resultados} == {
+        "c1": "RESULTADO_UNO", "c2": "RESULTADO_DOS",
+    }, resultados
+
     # ── Capa 1: comandos reales de pi como builtins ──
     B._RUTA_SCOPED = pathlib.Path(tempfile.mkdtemp()) / "scoped-models.json"
     B._RUTA_AUTH = pathlib.Path(tempfile.mkdtemp()) / "auth.json"  # nunca la real en tests
     B._RUTA_SETTINGS = pathlib.Path(tempfile.mkdtemp()) / "settings.json"  # nunca la real en tests
+    # BUG real encontrado en vivo: /import escribe en config.SESSION_DIR al
+    # momento de correr (bridge.py no lo cachea como los _RUTA_* de arriba) —
+    # sin este override, CADA corrida de este test dejaba un
+    # "imported-<timestamp>-hijo.jsonl" en el directorio de sesiones REAL de
+    # producción. Se acumularon 23 archivos basura ahí a lo largo de esta
+    # sesión de trabajo antes de notarlo — limpiados a mano, este override
+    # evita que vuelva a pasar.
+    B.config.SESSION_DIR = str(pathlib.Path(tempfile.mkdtemp()))
 
     async def comando(texto: str, chat_id=None) -> dict:
         """Manda un builtin y devuelve el ÚLTIMO command_result — nunca debe
@@ -404,14 +492,43 @@ async def main():
     assert resultados and "Motor detenido" in resultados[-1]["data"]["texto"], sock.enviados
     assert not proceso.vivo
 
-    # Regresión: cycle_model debe sincronizar _modelo_fijado — si no, el
-    # próximo chat con el mismo model_id de antes no vuelve a fijar el modelo
-    # real (bug encontrado al verificar Alt+M contra pi real).
-    B._modelo_fijado = 'llamacpp'
+    # cycle_model manda el modelo real ciclado — ya no depende de ningún
+    # cache global (_modelo_fijado se eliminó: era global-por-proceso, no
+    # por-chat, y quedaba desincronizado al alternar entre 2 chats con
+    # modelos distintos — ver regresión de orden más abajo).
+    sock.enviados.clear()
     await br.manejar_cycle_model()
-    assert B._modelo_fijado == 'otro-modelo', B._modelo_fijado
     cycled = [m for m in sock.enviados if m["type"] == "model_cycled"]
     assert cycled and cycled[-1]["model"]["id"] == "otro-modelo", cycled
+
+    # Regresión de ORDEN: _fijar_modelo debe correr DESPUÉS de cambiar de
+    # sesión, nunca antes — session-manager.js:buildSessionContext()
+    # reconstruye el modelo de CADA sesión desde su propia historia al
+    # hacer switch_session, así que fijarlo ANTES lo aplicaba sobre la
+    # sesión VIEJA y el switch lo pisaba en silencio (el chat quedaba con
+    # un modelo distinto al que la UI mostraba, sin ningún error visible).
+    archivo_b = pathlib.Path(tempfile.mkdtemp()) / "sesion-b.jsonl"
+    archivo_b.write_text('{"type":"session","version":3,"id":"b","timestamp":"now","cwd":"/tmp"}\n')
+    mapa = B._cargar_mapa()
+    mapa["888001"] = str(archivo_b)
+    B._guardar_mapa(mapa)
+    B._sesion_cargada = (0, None)  # fuerza que el próximo chat_id dispare switch_session real
+
+    comandos_orden = []
+    pedir_original_orden = proceso.pedir
+
+    async def pedir_espia_orden(cmd, *a, **kw):
+        comandos_orden.append(cmd.get("type"))
+        return await pedir_original_orden(cmd, *a, **kw)
+
+    proceso.pedir = pedir_espia_orden
+    await br.manejar_chat({"type": "chat", "message": "hola de nuevo", "chat_id": 888001,
+                           "system": "", "model": "claude-haiku-4-5"})
+    proceso.pedir = pedir_original_orden
+    idx_switch = comandos_orden.index("switch_session") if "switch_session" in comandos_orden else -1
+    idx_set_model = comandos_orden.index("set_model") if "set_model" in comandos_orden else -1
+    assert idx_switch != -1 and idx_set_model != -1, comandos_orden
+    assert idx_switch < idx_set_model, comandos_orden
 
     # Regresión: la indentación de /tree sólo debe avanzar en un branch real
     # (nodo con >1 hijo) — replica flattenTree() de tree-selector.js. Árbol:
@@ -444,6 +561,11 @@ async def main():
     # /quit reinició el proceso vía get_proceso() con auto-restart — pararlo.
     if B._proceso is not None and B._proceso.vivo:
         await B._proceso.parar()
+
+    # aiosqlite corre un thread de background NO-daemon por conexión — sin
+    # cerrarla, el intérprete se queda colgado después de imprimir "OK"
+    # (todos los asserts pasan pero el proceso nunca termina solo).
+    await db.close()
 
     print("OK — todos los asserts pasaron")
 

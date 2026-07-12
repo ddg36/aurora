@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 const TAU = Math.PI * 2;
 
@@ -56,9 +56,10 @@ export class Blood extends Component {
 
     const init = () => {
       resize();
-      waves = Array.from({ length: 12 }, makeWave);
-      cells = Array.from({ length: 180 }, makeCell);
-      drips = Array.from({ length: 18 }, makeDrip);
+      const liviano = esDispositivoLiviano();
+      waves = Array.from({ length: liviano ? 6 : 12 }, makeWave);
+      cells = Array.from({ length: liviano ? 45 : 180 }, makeCell);
+      drips = Array.from({ length: liviano ? 6 : 18 }, makeDrip);
     };
 
     const drawWave = (i, r, g, b) => {

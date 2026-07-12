@@ -2,6 +2,7 @@ const html = (...args) => globalThis.html(...args);
 const { useState, useEffect } = globalThis.preactHooks;
 
 import { getJSON, postJSON } from '../../components/shared/api.js';
+import { Button, Chip } from '../index.js';
 
 function tokenActual() {
   return localStorage.getItem('aurora_token') || '';
@@ -47,7 +48,7 @@ export function UserSwitcher({ onClose }) {
         <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10">
           <span class="text-sm font-semibold flex-1">👤 Usuario</span>
           ${yo && html`<span class="text-[11px] text-white/40">activo: ${yo.nombre} #${yo.id}</span>`}
-          <button class="text-white/40 hover:text-white text-lg leading-none" onClick=${onClose}>✕</button>
+          <${Button} iconOnly onClick=${onClose} title="Cerrar">✕<//>
         </div>
 
         <div class="max-h-[40vh] overflow-y-auto py-1">
@@ -67,7 +68,7 @@ export function UserSwitcher({ onClose }) {
             placeholder="Nuevo usuario…" value=${nuevo}
             onInput=${e => setNuevo(e.target.value)}
             onKeyDown=${e => e.key === 'Enter' && crear()} />
-          <button class="px-3 py-1 rounded border border-aurora-accent text-aurora-accent text-xs" onClick=${crear}>Crear</button>
+          <${Chip} variant="accent" onClick=${crear}>Crear<//>
         </div>
         ${error && html`<div class="px-3 pb-2 text-[11px] text-red-400">${error}</div>`}
       </div>

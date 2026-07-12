@@ -2,7 +2,8 @@ const html = (...args) => globalThis.html(...args);
 const { useState, useEffect, useRef } = globalThis.preactHooks;
 
 import { crearDuo } from './duo.js';
-import { fetchModels } from '../../../components/shared/gemita-ws.js';
+import { fetchModels } from '../../../components/shared/lyra-ws.js';
+import { Button, Chip, Select } from '../../../components/index.js';
 
 const MODOS = [
   { id: 'libre',          label: 'Libre — conversan sobre lo que quieran' },
@@ -76,52 +77,50 @@ export function DuoPanel({ onClose }) {
         <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10">
           <span class="text-sm font-semibold flex-1">⇆ Duo — dos IAs conversando</span>
           <span class="text-[11px] text-white/40">${estado}</span>
-          <button class="text-white/40 hover:text-white text-lg leading-none" onClick=${() => { detener(); onClose(); }}>✕</button>
+          <${Button} iconOnly onClick=${() => { detener(); onClose(); }} title="Cerrar">✕<//>
         </div>
 
         <div class="grid grid-cols-2 gap-3 p-3 border-b border-white/10 text-xs">
           <label class="flex flex-col gap-1">
             <span class="text-white/40">Modo</span>
-            <select class="bg-black/30 border border-white/10 rounded px-2 py-1" value=${config.modo} onChange=${e => cambiarModo(e.target.value)} disabled=${activo}>
+            <${Select} value=${config.modo} onChange=${e => cambiarModo(e.target.value)} disabled=${activo}>
               ${MODOS.map(m => html`<option key=${m.id} value=${m.id}>${m.label}</option>`)}
-            </select>
+            <//>
           </label>
           <label class="flex flex-col gap-1">
             <span class="text-white/40">Empieza</span>
             <div class="flex gap-1">
               ${[1, 2].map(n => html`
-                <button key=${n} disabled=${activo}
-                  class=${'flex-1 py-1 rounded border ' + (config.panelInicial === n ? 'border-aurora-accent text-aurora-accent' : 'border-white/10 text-white/40')}
-                  onClick=${() => merge({ panelInicial: n })}>Panel ${n}</button>
+                <${Chip} key=${n} class="flex-1 justify-center" disabled=${activo} active=${config.panelInicial === n} onClick=${() => merge({ panelInicial: n })}>Panel ${n}<//>
               `)}
             </div>
           </label>
           <label class="flex flex-col gap-1">
             <span class="text-white/40">Modelo Panel 1</span>
-            <select class="bg-black/30 border border-white/10 rounded px-2 py-1" value=${config.modelA} onChange=${e => merge({ modelA: e.target.value })} disabled=${activo}>
+            <${Select} value=${config.modelA} onChange=${e => merge({ modelA: e.target.value })} disabled=${activo}>
               ${modelos.map(m => html`<option key=${m} value=${m}>${m}</option>`)}
-            </select>
+            <//>
           </label>
           <label class="flex flex-col gap-1">
             <span class="text-white/40">Modelo Panel 2</span>
-            <select class="bg-black/30 border border-white/10 rounded px-2 py-1" value=${config.modelB} onChange=${e => merge({ modelB: e.target.value })} disabled=${activo}>
+            <${Select} value=${config.modelB} onChange=${e => merge({ modelB: e.target.value })} disabled=${activo}>
               ${modelos.map(m => html`<option key=${m} value=${m}>${m}</option>`)}
-            </select>
+            <//>
           </label>
           <label class="flex flex-col gap-1">
             <span class="text-white/40">Rondas</span>
-            <select class="bg-black/30 border border-white/10 rounded px-2 py-1" value=${config.maxRondas} onChange=${e => merge({ maxRondas: Number(e.target.value) })} disabled=${activo}>
+            <${Select} value=${config.maxRondas} onChange=${e => merge({ maxRondas: Number(e.target.value) })} disabled=${activo}>
               ${[3, 5, 10, 20, 50].map(n => html`<option key=${n} value=${n}>${n}</option>`)}
-            </select>
+            <//>
           </label>
           <label class="flex flex-col gap-1">
             <span class="text-white/40">Delay entre turnos</span>
-            <select class="bg-black/30 border border-white/10 rounded px-2 py-1" value=${config.delayMs} onChange=${e => merge({ delayMs: Number(e.target.value) })} disabled=${activo}>
+            <${Select} value=${config.delayMs} onChange=${e => merge({ delayMs: Number(e.target.value) })} disabled=${activo}>
               <option value=${0}>Instantáneo</option>
               <option value=${1000}>1s</option>
               <option value=${2000}>2s</option>
               <option value=${5000}>5s</option>
-            </select>
+            <//>
           </label>
           <label class="flex flex-col gap-1 col-span-2">
             <span class="text-white/40">Prompt inicial (seed)</span>
@@ -147,8 +146,8 @@ export function DuoPanel({ onClose }) {
 
         <div class="px-3 py-2 border-t border-white/10 flex justify-end gap-2">
           ${activo
-            ? html`<button class="px-3 py-1.5 rounded border border-red-400/50 text-red-300 text-xs" onClick=${detener}>⏹ Detener</button>`
-            : html`<button class="px-3 py-1.5 rounded border border-aurora-accent text-aurora-accent text-xs" onClick=${iniciar}>⇆ Iniciar Duo</button>`}
+            ? html`<${Chip} variant="yt" onClick=${detener}>⏹ Detener<//>`
+            : html`<${Chip} variant="accent" onClick=${iniciar}>⇆ Iniciar Duo<//>`}
         </div>
       </div>
     </div>

@@ -3,8 +3,10 @@ import re
 import shutil
 
 from litestar import get, post
+from litestar.connection import Request
 
-from .config import SKIP_DIRS, clip
+from .audit import registrar
+from .config import SKIP_DIRS, bloqueo_solo_lectura, clip
 from .workspace import make_backup, rel, safe
 
 
@@ -103,7 +105,9 @@ async def fs_grep(pattern: str, path: str = '.', max_results: int = 40, names_on
 
 
 @post('/nexus/fs/write')
-async def fs_write(data: dict) -> dict:
+async def fs_write(request: Request, data: dict) -> dict:
+    if bloqueo := bloqueo_solo_lectura():
+        return bloqueo
     target = safe(data.get('path', ''))
     content = str(data.get('content') or '')
     backup = make_backup(target, 'write') if target.exists() and target.is_file() else None
@@ -112,11 +116,14 @@ async def fs_write(data: dict) -> dict:
     out = {'ok': True, 'path': rel(target), 'bytes': len(content.encode())}
     if backup:
         out['backup'] = str(backup)
+    await registrar(request, 'fs/write', {'path': out['path'], 'bytes': out['bytes']})
     return out
 
 
 @post('/nexus/fs/patch')
-async def fs_patch(data: dict) -> dict:
+async def fs_patch(request: Request, data: dict) -> dict:
+    if bloqueo := bloqueo_solo_lectura():
+        return bloqueo
     target = safe(data.get('path', ''))
     old = str(data.get('old') or '')
     new = str(data.get('new') or '')
@@ -131,11 +138,14 @@ async def fs_patch(data: dict) -> dict:
     out = {'ok': True, 'path': rel(target)}
     if backup:
         out['backup'] = str(backup)
+    await registrar(request, 'fs/patch', {'path': out['path']})
     return out
 
 
 @post('/nexus/fs/delete')
-async def fs_delete(data: dict) -> dict:
+async def fs_delete(request: Request, data: dict) -> dict:
+    if bloqueo := bloqueo_solo_lectura():
+        return bloqueo
     target = safe(data.get('path', ''))
     if not target.exists():
         return {'ok': False, 'error': f'No encontrado: {data.get("path")}'}
@@ -147,11 +157,14 @@ async def fs_delete(data: dict) -> dict:
     out = {'ok': True, 'path': rel(target)}
     if backup:
         out['backup'] = str(backup)
+    await registrar(request, 'fs/delete', {'path': out['path']})
     return out
 
 
 @post('/nexus/fs/move')
-async def fs_move(data: dict) -> dict:
+async def fs_move(request: Request, data: dict) -> dict:
+    if bloqueo := bloqueo_solo_lectura():
+        return bloqueo
     src_s = data.get('from') or data.get('src')
     dst_s = data.get('to') or data.get('dst')
     if not src_s or not dst_s:
@@ -162,11 +175,14 @@ async def fs_move(data: dict) -> dict:
         return {'ok': False, 'error': f'No encontrado: {src_s}'}
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(src), str(dst))
+    await registrar(request, 'fs/move', {'from': rel(src), 'to': rel(dst)})
     return {'ok': True, 'from': rel(src), 'to': rel(dst)}
 
 
 @post('/nexus/fs/mkdir')
 async def fs_mkdir(data: dict) -> dict:
+    if bloqueo := bloqueo_solo_lectura():
+        return bloqueo
     target = safe(data.get('path', ''))
     target.mkdir(parents=True, exist_ok=True)
     return {'ok': True, 'path': rel(target)}

@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Blizzard — tormenta de nieve con cristales de hielo y viento ártico.
 export class Blizzard extends Component {
@@ -47,8 +47,9 @@ export class Blizzard extends Component {
 
     const init = () => {
       resize();
-      flakes   = Array.from({ length: 180 }, () => makeFlake(true));
-      crystals = Array.from({ length: 20 }, makeCrystal);
+      const liviano = esDispositivoLiviano();
+      flakes   = Array.from({ length: liviano ? 45 : 180 }, () => makeFlake(true));
+      crystals = Array.from({ length: liviano ? 6 : 20 }, makeCrystal);
     };
 
     const drawCrystal = (c) => {

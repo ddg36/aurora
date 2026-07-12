@@ -66,11 +66,13 @@ async def workspace_search(args: dict, caller: dict) -> dict:
 
 
 async def nexus_shell_run(args: dict, caller: dict) -> dict:
+    # approved jamás viene del request: solo el flujo real de approvals
+    # (nexus_approvals) ejecuta comandos destructivos ya aprobados.
     result = ejecutar_shell(
         str(args.get("cmd") or ""),
         str(args.get("cwd") or "."),
         int(args["timeout"]) if args.get("timeout") else None,
-        approved=bool(args.get("approved")),
+        approved=False,
     )
     text = "\n".join(filter(None, [result.get("stdout"), result.get("stderr")]))
     return {"ok": result.get("ok", False), "data": result, "text": text, "error": result.get("error")}

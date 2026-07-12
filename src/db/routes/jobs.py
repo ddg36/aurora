@@ -4,11 +4,19 @@ from litestar.connection import Request
 from ..auth import auth_guard
 from ..connection import get_db
 from jobs.cleanup_capturas import run_cleanup, cleanup_usuario, _config_usuario, DEFAULTS
+from jobs.db_maintenance import run_mantenimiento_profundo
 
 
 class JobsController(Controller):
     path = "/db/jobs"
     guards = [auth_guard]
+
+    @post("/db-vacuum")
+    async def db_vacuum(self, request: Request) -> dict:
+        """VACUUM + ANALYZE: compacta la DB y refresca estadísticas. Caro
+        (reescribe el archivo), por eso es a demanda, no automático."""
+        stats = await run_mantenimiento_profundo()
+        return {"ok": True, **stats}
 
     @post("/cleanup-capturas")
     async def cleanup_capturas(self, request: Request) -> dict:

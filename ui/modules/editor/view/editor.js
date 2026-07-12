@@ -4,6 +4,8 @@ import { EDITOR_ROOT, listar, leer, escribir, detectarLang, ejecutar } from '../
 import { setViewActions, clearViewActions } from '../../../components/footer/registry.js';
 import { crearAutosave } from '../../../components/shared/autosave.js';
 import { FileTree } from '../../../components/shared/FileTree.js';
+import { SplitPane } from '../../../components/shared/SplitPane.js';
+import { Button, Chip, Select } from '../../../components/index.js';
 
 export default function Editor() {
   const [raiz, setRaiz] = useState([]);
@@ -76,31 +78,27 @@ export default function Editor() {
   }, [corriendo, codigo, lang]);
 
   return html`
-    <div class="flex h-full">
-      <aside class="w-56 border-r border-white/5 p-2 overflow-y-auto shrink-0">
+    <${SplitPane} sidebarClassName="p-2" sidebar=${html`
         <div class="flex items-center gap-1 mb-2">
           <span class="text-xs font-semibold flex-1">⌨ Editor</span>
-          <button onClick=${nuevo} title="Nuevo archivo" class="text-xs px-1.5 rounded hover:bg-white/10">＋</button>
+          <${Button} iconOnly onClick=${nuevo} title="Nuevo archivo">＋<//>
         </div>
         <${FileTree} entries=${raiz} abierto=${abierto} onToggle=${toggle} onOpen=${abrir} seleccion=${archivo} loadChildren=${listar} />
         ${raiz.length === 0 && html`<div class="text-xs text-white/30 p-2">Sandbox vacío</div>`}
-      </aside>
-
-      <div class="flex-1 flex flex-col min-w-0">
-        <div class="flex items-center gap-2 px-3 py-1.5 border-b border-white/5 text-xs">
-          <span class="text-white/60 truncate flex-1">${archivo ? archivo.replace(EDITOR_ROOT + '/', '') : 'sin archivo (modo scratch)'}</span>
+      `}>
+        <div class="flex items-center gap-2 px-3 py-1.5 border-b border-white/5 text-xs flex-wrap">
+          <span class="text-white/60 truncate flex-1 min-w-0">${archivo ? archivo.replace(EDITOR_ROOT + '/', '') : 'sin archivo (modo scratch)'}</span>
           <span class="text-white/30">${sucio ? '● sin guardar' : msg}</span>
-          <select class="bg-white/5 rounded px-1.5 py-0.5 outline-none" value=${lang} onChange=${e => setLang(e.target.value)}>
+          <${Select} size="sm" value=${lang} onChange=${e => setLang(e.target.value)}>
             <option value="py">python</option>
             <option value="js">node</option>
             <option value="sh">bash</option>
-          </select>
-          <button
+          <//>
+          <${Chip}
+            variant="accent"
             onClick=${correr}
             disabled=${corriendo || !codigo.trim()}
-            class="px-3 py-0.5 rounded font-semibold disabled:opacity-40"
-            style="background:var(--au-accent,#8b5cf6)"
-          >${corriendo ? '…' : '▶ Ejecutar'}</button>
+          >${corriendo ? '…' : '▶ Ejecutar'}<//>
         </div>
 
         <textarea
@@ -122,7 +120,6 @@ export default function Editor() {
             ${!salida.stdout && !salida.stderr && html`<div class="text-white/30">(sin salida)</div>`}
           </div>
         `}
-      </div>
-    </div>
+      </${SplitPane}>
   `;
 }

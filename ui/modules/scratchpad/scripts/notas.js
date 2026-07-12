@@ -1,5 +1,6 @@
 import { BASE, getJSON, hdrs, putJSON } from '../../../components/shared/api.js';
 import { nexusOnline, signal } from '../../../store.js';
+import { copiarTexto, leerTexto } from '../../../components/shared/clipboard.js';
 
 const ARCHIVO = 'scratchpad.md';
 const STORAGE_PATH = '/db/ajustes/scratchpad_doc';
@@ -603,12 +604,12 @@ export function limpiar() {
 
 export async function copiar() {
   const markdown = exportScratchpadMarkdown(doc.value);
-  await navigator.clipboard.writeText(markdown);
+  await copiarTexto(markdown);
   return markdown;
 }
 
 export async function pegarDesdePortapapeles() {
-  const text = await navigator.clipboard.readText();
+  const text = await leerTexto();
   if (!text) return getScratchpadDoc();
   const imported = normalizeDoc(importMarkdown(text)) || defaultDoc();
   return commitDoc(imported);

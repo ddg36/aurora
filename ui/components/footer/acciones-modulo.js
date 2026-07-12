@@ -1,5 +1,6 @@
 import { setTab } from '../../store.js';
 import { Toast } from '../shared/toast.js';
+import { iconButtonClass, ICON_BTN_SQUARE } from '../shared/iconButton.js';
 
 // ── SVG icons ────────────────────────────────────────────────
 const SVG_CAMERA = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4.5C1 3.67 1.67 3 2.5 3h1.17L4.5 1.5h5l.83 1.5H11.5C12.33 3 13 3.67 13 4.5v6c0 .83-.67 1.5-1.5 1.5h-9C1.67 12 1 11.33 1 10.5v-6z"/><circle cx="7" cy="7.5" r="2"/></svg>`;
@@ -95,9 +96,9 @@ async function quickScreenshot() {
       Toast.show('Screenshot (dataUrl) copiado', 'warning');
     }
     // Enviar al servidor
-    fetch('http://localhost:7779/ext/capture', {
+    fetch((globalThis.AURORA_BASE || 'http://localhost:7779') + '/ext/capture', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: globalThis.AURORA_HDRS?.() || { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tipo: 'screenshot', content: dataUrl, tab: res.tab || {}, ts: Date.now() }),
     }).catch(() => {});
   } catch (e) {
@@ -132,7 +133,7 @@ function SvgBtn({ svg, title, onClick }) {
   const html = (...args) => globalThis.html(...args);
   return html`
     <button
-      class="h-7 min-w-7 flex-shrink-0 px-1.5 transition-transform bg-transparent border-0 cursor-pointer text-white/40 hover:text-white/80 flex items-center justify-center"
+      class=${iconButtonClass(false, ICON_BTN_SQUARE)}
       title=${title}
       onClick=${onClick}
       dangerouslySetInnerHTML=${{ __html: svg }}

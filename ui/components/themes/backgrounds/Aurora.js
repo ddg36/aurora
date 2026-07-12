@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 const TAU = Math.PI * 2;
 
@@ -40,7 +40,7 @@ export class Aurora extends Component {
     const resize = () => {
       W = canvas.width = window.innerWidth;
       H = canvas.height = window.innerHeight;
-      stars = Array.from({ length: Math.max(70, Math.round((W * H) / 22000)) }, () => ({
+      stars = Array.from({ length: Math.max(70, Math.round((W * H) / 22000 * (esDispositivoLiviano() ? 0.3 : 1))) }, () => ({
         x: Math.random() * W,
         y: Math.random() * H * .72,
         r: .4 + Math.random() * 1.5,
@@ -52,8 +52,9 @@ export class Aurora extends Component {
     const drawRays = (r, g, b, t) => {
       ctx.save();
       ctx.globalCompositeOperation = 'screen';
-      for (let i = 0; i < 18; i++) {
-        const x0 = (i / 17) * W + Math.sin(t * 1.6 + i) * 42;
+      const NRAYS = esDispositivoLiviano() ? 8 : 18;
+      for (let i = 0; i < NRAYS; i++) {
+        const x0 = (i / (NRAYS - 1)) * W + Math.sin(t * 1.6 + i) * 42;
         const top = H * (0.03 + (i % 4) * 0.018);
         const bottom = H * (0.72 + Math.sin(t + i) * 0.05);
         const width = W * (0.022 + (i % 3) * 0.012);

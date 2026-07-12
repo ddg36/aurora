@@ -1,0 +1,49 @@
+/* UI/GLOBALS/MOBILE — Estilos específicos para móviles */
+
+/* Riel de navegación (NavBar) — mismo diseño en mobile y escritorio, no
+   sólo mobile: ancho fijo angosto, ícono-solo, alto completo, botones
+   apilados. */
+.nav-rail {
+  width: var(--aurora-rail-w, 52px);
+  flex-shrink: 0;
+  padding: 6px 4px;
+  gap: 4px;
+}
+.nav-rail button, footer button {
+  min-height: 36px;
+}
+/* Sin esto, el foco de un botón recién clickeado usa el outline default
+   del navegador (blanco/azul de sistema) — no combina con ningún tema. */
+.nav-rail button:focus {
+  outline: none;
+}
+.nav-rail button:focus-visible {
+  outline: 2px solid var(--aurora-accent, #ef4444);
+  outline-offset: -2px;
+}
+
+@media (max-width: 760px) {
+  /* Ajustes generales */
+  body {
+    font-size: 14px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Evita zoom automático de iOS al enfocar un input — esto sí es
+     universal (no pisa tamaños propios, sólo el tamaño de fuente).
+     ¡Ojo! acá NO va min-height:44px genérico en button/select — cada
+     componente (Button, Chip, Select, .code-btn) ya define su propio
+     alto explícito; una regla genérica con !important les ganaba a todos
+     por igual (4 bugs distintos hoy: riel, footer, íconos, selects,
+     bloques de código) — más fácil no tener la regla que perseguir cada
+     componente nuevo con una excepción más.
+  */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Scroll suave */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+}

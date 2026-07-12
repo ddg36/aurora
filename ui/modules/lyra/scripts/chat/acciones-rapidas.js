@@ -1,12 +1,13 @@
 import { getJSON, postJSON } from '../../../../components/shared/api.js';
 import { hablar } from '../voz/voz.js';
+import { copiarTexto } from '../../../../components/shared/clipboard.js';
 
 const Toast = () => globalThis.Toast || { setStatus() {}, show() {} };
 
 const NOTAS_ROOT = 'nexus/workspaces/aihub/scratchpad';
 const NOTAS_CHAT = `${NOTAS_ROOT}/chat-notas.md`;
 
-export function copiarMensaje(texto) {
+export async function copiarMensaje(texto) {
   if (!texto) return;
 
   const textoPlano = texto
@@ -18,11 +19,8 @@ export function copiarMensaje(texto) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  navigator.clipboard.writeText(textoPlano).then(() => {
-    Toast().setStatus('◉ Copiado al portapapeles');
-  }).catch(() => {
-    Toast().setStatus('⚠ Error al copiar');
-  });
+  const ok = await copiarTexto(textoPlano);
+  Toast().setStatus(ok ? '◉ Copiado al portapapeles' : '⚠ Error al copiar');
 }
 
 export async function añadirANotas(texto) {

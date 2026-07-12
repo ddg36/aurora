@@ -1,21 +1,85 @@
 /* md-reader.css — Tailwind-equivalent vanilla CSS */
 /* Responsive breakpoints at bottom */
 
+/* Mismo esquema que .sp-page de Scratchpad: la columna del sidebar es
+   "auto" — se ajusta sola al ancho real de .mdr-sidebar (fijo, ver abajo),
+   así el grid padre nunca necesita su propia clase de colapso. */
 .mdr-shell {
   height: 100%; min-height: 0;
-  display: grid; grid-template-columns: minmax(260px, 310px) minmax(0, 1fr);
+  display: grid; grid-template-columns: auto minmax(0, 1fr);
   background: color-mix(in srgb, var(--aurora-bg) 78%, transparent);
   backdrop-filter: blur(14px);
 }
-.mdr-shell.is-sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
 
 .mdr-sidebar {
-  min-width: 0; min-height: 0;
+  position: sticky; top: 0;
+  width: 280px; height: 100%; min-height: 0;
   display: flex; flex-direction: column; gap: 12px; padding: 14px;
   border-right: 1px solid var(--aurora-border);
   background: color-mix(in srgb, var(--aurora-surface) 68%, rgba(0,0,0,.28));
+  transition: width .16s ease, padding .16s ease;
+  overflow-x: hidden; overflow-y: auto;
+  z-index: 20;
 }
-.mdr-sidebar.is-hidden { display: none; }
+.mdr-sidebar.is-collapsed { width: 44px; padding: 14px 6px; }
+.mdr-sidebar.is-collapsed .mdr-brand,
+.mdr-sidebar.is-collapsed .mdr-sidebar-tools,
+.mdr-sidebar.is-collapsed .mdr-file-list { display: none; }
+
+/* Botón toggle standalone (☰ para abrir, ✕ para cerrar) — mismo tratamiento
+   que .sp-nav-toggle de Scratchpad, reusado tal cual para que el panel
+   flotante se vea idéntico entre las dos vistas. */
+.mdr-sidebar .sp-nav-toggle {
+  width: 28px;
+  height: 28px;
+  margin: 0 0 10px auto;
+  border: 1px solid var(--aurora-border);
+  border-radius: 6px;
+  background: var(--aurora-bg);
+  color: var(--aurora-text-muted);
+  cursor: pointer;
+}
+.mdr-sidebar.is-collapsed .sp-nav-toggle { margin: 0 auto; }
+
+/* Accesos rápidos (Nueva nota / Archivo / Carpeta) — mismo tratamiento que
+   .sp-nav-links de Scratchpad: en colapsado sólo queda el ícono <span>,
+   el texto <em> se esconde, así el rail angosto no pierde estas acciones. */
+.sp-nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.sp-nav-links button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--aurora-text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+.sp-nav-links button:hover { background: var(--aurora-surface-2); color: var(--aurora-text); }
+.sp-nav-links em { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: normal; }
+.mdr-sidebar.is-collapsed .sp-nav-links em { display: none; }
+.mdr-sidebar.is-collapsed .sp-nav-links button { justify-content: center; padding: 4px; }
+
+/* Expandido: overlay flotante (useFloatingMenu, position:fixed inline) —
+   nunca empuja .mdr-main, sólo aparece encima. Mismo criterio y mismos
+   valores que .sp-workspace-nav-floating en Scratchpad. */
+.mdr-sidebar-floating {
+  width: 280px;
+  height: auto;
+  overflow-y: auto;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
+  border-radius: 0 10px 10px 0;
+  border: 1px solid var(--aurora-border);
+  background: var(--aurora-surface);
+}
 
 .mdr-sidebar-head, .mdr-topbar, .mdr-commandbar, .mdr-drawer-head,
 .mdr-summary-head, .mdr-outline-head, .mdr-list-head {
@@ -103,21 +167,6 @@
   line-height: 1.25; text-overflow: ellipsis; white-space: nowrap;
 }
 
-.mdr-icon-btn, .mdr-mode-btn {
-  border: 1px solid var(--aurora-border); border-radius: 8px;
-  background: color-mix(in srgb, var(--aurora-surface-2) 78%, transparent);
-  color: var(--aurora-text-muted); cursor: pointer;
-  transition: color 150ms, background-color 150ms, border-color 150ms;
-}
-.mdr-icon-btn { width: 32px; height: 32px; display: grid; place-items: center; flex: 0 0 auto; font-size: 16px; }
-.mdr-mode-btn { min-height: 32px; padding: 0 11px; font-size: 12px; font-weight: 650; white-space: nowrap; }
-
-.mdr-icon-btn:hover, .mdr-mode-btn:hover, .mdr-mode-btn.is-active {
-  color: var(--aurora-text);
-  border-color: color-mix(in srgb, var(--aurora-accent) 40%, var(--aurora-border));
-  background: color-mix(in srgb, var(--aurora-accent) 12%, var(--aurora-surface));
-}
-
 .mdr-overlay { position: absolute; inset: 0; z-index: 40; background: rgba(0,0,0,.12); }
 
 .mdr-drawer {
@@ -152,7 +201,8 @@
   white-space: nowrap; letter-spacing: 0;
 }
 
-.mdr-reader-layout { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 280px); }
+.mdr-reader-layout { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 280px); position: relative; }
+.mdr-reader-layout.is-panel-collapsed { grid-template-columns: minmax(0, 1fr); }
 .mdr-reader-scroll, .mdr-graph-canvas, .mdr-list-view { min-height: 0; overflow: auto; }
 .mdr-reader-scroll { padding: 28px; }
 
@@ -199,8 +249,10 @@
   border-left: 1px solid var(--aurora-border);
   background: color-mix(in srgb, var(--aurora-surface) 48%, rgba(0,0,0,.18));
 }
+.mdr-outline.is-hidden { display: none; }
 .mdr-outline-head {
   position: sticky; top: 0; z-index: 1; margin-bottom: 8px; padding-bottom: 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
   border-bottom: 1px solid var(--aurora-border);
   background: color-mix(in srgb, var(--aurora-surface) 84%, rgba(0,0,0,.18));
 }
@@ -218,11 +270,19 @@
   background: color-mix(in srgb, var(--aurora-accent) 9%, transparent);
 }
 
-.mdr-graph-layout { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 330px); }
+.mdr-graph-layout { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 330px); position: relative; }
+.mdr-graph-layout.is-panel-collapsed { grid-template-columns: minmax(0, 1fr); }
 .mdr-graph-canvas { padding: 18px; }
 .mdr-graph-detail {
   min-width: 0; overflow: auto; border-left: 1px solid var(--aurora-border);
   background: color-mix(in srgb, var(--aurora-surface) 44%, rgba(0,0,0,.16));
+}
+.mdr-graph-detail.is-hidden { display: none; }
+.mdr-graph-detail-head {
+  position: sticky; top: 0; z-index: 1; padding: 8px 8px 8px 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border-bottom: 1px solid var(--aurora-border);
+  background: color-mix(in srgb, var(--aurora-surface) 84%, rgba(0,0,0,.18));
 }
 
 .mdr-list-view { flex: 1; display: flex; flex-direction: column; gap: 9px; padding: 18px; }
@@ -262,9 +322,12 @@
   align-content: center; gap: 12px; padding: 24px;
 }
 
+/* Tamaño y posición (left/right/top/bottom fijos) los da el style inline
+   de useFloatingMenu (anchor:'center') — ocupa el espacio disponible de
+   .mdr-main con margen, no un ancho fijo propio. Acá sólo el look visual. */
 .mdr-summary {
-  position: fixed; right: 16px; bottom: 56px; z-index: 50;
-  width: min(560px, calc(100vw - 36px)); max-height: 60vh; overflow: auto;
+  display: flex; flex-direction: column;
+  min-width: 0; overflow: hidden;
   border: 1px solid var(--aurora-border); border-radius: 8px;
   background: color-mix(in srgb, var(--aurora-bg) 94%, rgba(10,12,20,.94));
   box-shadow: 0 18px 56px rgba(0,0,0,.38); backdrop-filter: blur(18px);
@@ -274,17 +337,19 @@
   border-bottom: 1px solid var(--aurora-border);
   background: color-mix(in srgb, var(--aurora-bg) 96%, rgba(10,12,20,.96));
 }
-.mdr-summary-body { padding: 14px; font-size: 13px; }
+.mdr-summary-body { flex: 1; min-width: 0; min-height: 0; overflow: auto; overflow-wrap: break-word; padding: 14px; font-size: 13px; }
 
 /* Responsive */
-@media (max-width: 1120px) {
-  .mdr-reader-layout, .mdr-graph-layout { grid-template-columns: minmax(0, 1fr); }
-  .mdr-outline, .mdr-graph-detail { display: none; }
-}
+/* El colapso de outline/graph-detail ya es manual (sidePanelOpen, botón
+   ‹/›, ver .is-panel-collapsed/.is-hidden más arriba) — ya no hay @media
+   acá que los oculte por ancho de pantalla, mismo criterio que el sidebar. */
 
 @media (max-width: 840px) {
-  .mdr-shell { grid-template-columns: minmax(0, 1fr); }
-  .mdr-sidebar { display: none; }
+  /* .mdr-shell/.mdr-sidebar NO se tocan acá — el colapso de sidebar ya es
+     manual (treeOpen, botón ‹/›, ver .mdr-shell.is-sidebar-collapsed más
+     arriba). Forzarlo aparte por ancho de pantalla pisaba esa elección del
+     usuario y era el mismo antipatrón "modo móvil separado" ya prohibido
+     en el resto de la app (ver memoria feedback-diseno-unico-responsive). */
   .mdr-topbar, .mdr-commandbar { align-items: stretch; flex-direction: column; }
   .mdr-primary-actions, .mdr-command-actions, .mdr-mode-tabs { width: 100%; }
   .mdr-searchbox { width: 100%; flex-basis: auto; }
@@ -302,11 +367,9 @@
   .mdr-doc-title small { font-size: 10px; }
   .mdr-primary-actions { display: grid; grid-template-columns: 1fr 1fr 1fr 34px; gap: 6px; }
   .mdr-primary-actions .inline-flex { min-width: 0; padding-left: 7px; padding-right: 7px; font-size: 12px; }
-  .mdr-primary-actions .mdr-icon-btn { width: 34px; height: 30px; }
   .mdr-commandbar { gap: 8px; padding: 8px 12px 10px; }
   .mdr-mode-tabs { width: 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
   .mdr-mode-tabs::-webkit-scrollbar { display: none; }
-  .mdr-mode-btn { min-height: 31px; padding: 0 11px; font-size: 12px; }
   .mdr-command-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .mdr-command-actions .inline-flex { width: 100%; }
   .mdr-reader-scroll { padding: 0; }
@@ -321,7 +384,8 @@
   .mdr-reader-page .markdown-body .markdown-inline-code { font-size: 0.86em; }
   .mdr-list-view { padding: 12px; }
   .mdr-result-row { min-height: 50px; padding: 9px 10px; }
-  .mdr-summary { right: 10px; bottom: 50px; width: calc(100vw - 20px); }
+  /* .mdr-summary ya no se toca acá — su tamaño/posición ahora los da
+     useFloatingMenu (anchor:'center') en cualquier ancho de pantalla. */
 }
 
 @media (max-width: 430px) {

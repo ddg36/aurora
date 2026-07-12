@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Moonlit — noche de luna japonesa con pétalos iluminados, linterna flotante y niebla.
 export class Moonlit extends Component {
@@ -44,8 +44,9 @@ export class Moonlit extends Component {
 
     const init = () => {
       resize();
-      motes    = Array.from({ length: 60 }, (_, i) => makeMote(i < 40));
-      lanterns = Array.from({ length: 6 }, makeLantern);
+      const liviano = esDispositivoLiviano();
+      motes    = Array.from({ length: liviano ? 18 : 60 }, (_, i) => makeMote(i < (liviano ? 12 : 40)));
+      lanterns = Array.from({ length: liviano ? 3 : 6 }, makeLantern);
     };
 
     const drawLantern = (l, r, g, b) => {

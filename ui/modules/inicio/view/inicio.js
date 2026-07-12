@@ -58,7 +58,7 @@ export function Inicio() {
           <h1>Aurora</h1>
           ${version && html`<span class="lobby-header-sub">v${version}</span>`}
         </div>
-        <span class=${'lobby-online-dot ' + (online ? 'db-status-chip online' : 'db-status-chip')}>
+        <span class=${'lobby-online-dot' + (online ? ' online' : '')}>
           ${online ? '● online' : '○ offline'}
         </span>
       </div>
@@ -68,7 +68,8 @@ export function Inicio() {
           <h2 class="section-title">Sistema</h2>
           <div class="db-status-row">
             <${HealthChip} ok=${health.ok} label="Aurora" detail=${`up ${formatUptime(health.uptime_s)}`} />
-            <${HealthChip} ok=${health.llama?.ok} label="llama-server" detail=${health.llama?.ok ? `${health.llama.modelos} modelo(s)` : 'offline :8088'} />
+            <${HealthChip} ok=${health.pi?.ok} label="pi (Lyra)" detail=${health.pi?.ok ? 'conectado' : 'sin conectar'} />
+            <${HealthChip} ok=${health.llama?.ok} label="llama-server (OCR/browser)" detail=${health.llama?.ok ? `${health.llama.modelos} modelo(s)` : 'offline :8088'} />
             <${HealthChip} ok=${health.db?.ok} label="Base de datos" detail=${formatBytes(health.db?.bytes)} />
           </div>
         </section>

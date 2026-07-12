@@ -4,6 +4,7 @@ import { copiarTexto } from '../../../components/shared/clipboard.js';
 import { addGuardado } from '../scripts/guardar.js';
 import { getBuilderTemplate } from '../../../components/shared/builder-api.js';
 import { BuilderChipsEditor } from './editor-chips.js';
+import { Button, Chip, ChipGroup, AutoFitChips } from '../../../components/index.js';
 
 const WAN_ORDEN = ['apertura','sujeto','camara','reveal','iluminacion','estilo','movimiento_sujeto'];
 
@@ -62,12 +63,14 @@ export default function TabWan() {
   return html`
     <div class="comfy-view wan-view">
       <div class="wan-modo-row">
-        ${(wanData.modos || []).map(m => html`
-          <button key=${m.id} class=${'wan-modo-btn' + (modoId === m.id ? ' active' : '')}
-            onClick=${() => { setModoId(m.id); setSecciones({}); }}
-            title=${m.desc || m.label}>${m.icon} ${m.label}</button>
-        `)}
-        <button class=${'nsfw-toggle' + (nsfw ? ' active' : '')} onClick=${() => setNsfw(!nsfw)}>🔞 NSFW</button>
+        <${AutoFitChips}>
+          ${(wanData.modos || []).map(m => html`
+            <${Chip} key=${m.id} active=${modoId === m.id}
+              onClick=${() => { setModoId(m.id); setSecciones({}); }}
+              title=${m.desc || m.label}>${m.icon} ${m.label}<//>
+          `)}
+          <${Chip} accentColor="#f87171" active=${nsfw} onClick=${() => setNsfw(!nsfw)}>🔞 NSFW<//>
+        <//>
         ${settings.cfg && html`
           <div class="wan-settings-badge">CFG ${settings.cfg} · Steps ${settings.steps} · ${settings.fps}fps · ${settings.duracion}</div>
         `}
@@ -81,14 +84,14 @@ export default function TabWan() {
         </div>
       `}
 
-      <div class="comfy-presets-row">
+      <${ChipGroup} class="comfy-presets-row">
         <span class="comfy-presets-label">Presets</span>
         ${presetsFilt.map(p => html`
-          <button key=${p.id} class="comfy-preset-btn" onClick=${() => aplicarPreset(p)}>${p.label}</button>
+          <${Chip} key=${p.id} onClick=${() => aplicarPreset(p)}>${p.label}<//>
         `)}
-        <button class="comfy-btn-limpiar" onClick=${limpiar}>✕ Limpiar</button>
-        <button class="comfy-btn-limpiar" onClick=${() => setEditorOpen(true)} title="Editar chips y presets">✏</button>
-      </div>
+        <${Chip} onClick=${limpiar}>✕ Limpiar<//>
+        <${Button} iconOnly onClick=${() => setEditorOpen(true)} title="Editar chips y presets">✏<//>
+      <//>
 
       <div class="comfy-layout wan-layout">
         <div class="comfy-constructor">
@@ -103,14 +106,14 @@ export default function TabWan() {
                   <span class="comfy-seccion-icon">${sec.icon || '◈'}</span>
                   <span class="comfy-seccion-label">${sec.label}</span>
                   ${sec.desc && html`<span class="wan-sec-desc">${sec.desc}</span>`}
-                  ${cur && html`<button class="comfy-seccion-clear" onClick=${() => setSecciones(p => ({ ...p, [id]: '' }))}>✕</button>`}
+                  ${cur && html`<${Button} iconOnly onClick=${() => setSecciones(p => ({ ...p, [id]: '' }))} title="Limpiar">✕<//>`}
                 </div>
-                <div class="comfy-chips">
+                <${ChipGroup} class="comfy-chips">
                   ${chips.map(chip => html`
-                    <button key=${chip} class=${'comfy-chip' + (chipActivo(id, chip) ? ' active' : '')}
-                      onClick=${() => toggleChip(id, chip)}>${chip}</button>
+                    <${Chip} key=${chip} active=${chipActivo(id, chip)}
+                      onClick=${() => toggleChip(id, chip)}>${chip}<//>
                   `)}
-                </div>
+                <//>
                 <input type="text" class="comfy-free-input" placeholder=${sec.placeholder || 'Texto libre…'}
                   value=${cur} onInput=${e => setSecciones(p => ({ ...p, [id]: e.target.value, _prompt_completo: '' }))} />
               </div>
@@ -122,15 +125,15 @@ export default function TabWan() {
               <span class="comfy-seccion-icon">⛔</span>
               <span class="comfy-seccion-label">Negative prompt</span>
               ${(negativos.length > 0 || negFree) && html`
-                <button class="comfy-seccion-clear" onClick=${() => { setNegativos([]); setNegFree(''); }}>✕</button>
+                <${Button} iconOnly onClick=${() => { setNegativos([]); setNegFree(''); }} title="Limpiar">✕<//>
               `}
             </div>
-            <div class="comfy-chips comfy-chips-negative">
+            <${ChipGroup} class="comfy-chips-negative">
               ${(wanData.negativos_comunes || []).map(chip => html`
-                <button key=${chip} class=${'comfy-chip comfy-chip-neg' + (negativos.includes(chip) ? ' active' : '')}
-                  onClick=${() => toggleNeg(chip)}>${chip}</button>
+                <${Chip} key=${chip} accentColor="#f87171" active=${negativos.includes(chip)}
+                  onClick=${() => toggleNeg(chip)}>${chip}<//>
               `)}
-            </div>
+            <//>
             <input type="text" class="comfy-free-input" placeholder="Negativos adicionales…"
               value=${negFree} onInput=${e => setNegFree(e.target.value)} />
           </div>
@@ -156,10 +159,10 @@ export default function TabWan() {
         <div class="comfy-preview-panel">
           <div class="comfy-preview-head">
             <span class="comfy-preview-title">Positive prompt</span>
-            <button class="comfy-copy-btn" onClick=${() => copiar(positivePreview, 'pos')}>
+            <${Chip} onClick=${() => copiar(positivePreview, 'pos')}>
               ${copiado === 'pos' ? '✓' : '⎘ Copiar'}
-            </button>
-            ${positivePreview && html`<button class="comfy-copy-btn-sm" onClick=${guardar} title="Guardar">💾</button>`}
+            <//>
+            ${positivePreview && html`<${Button} iconOnly onClick=${guardar} title="Guardar">💾<//>`}
           </div>
           <pre class="comfy-preview-box comfy-preview-positive wan-preview">
             ${positivePreview || 'El prompt aparecerá aquí…\n\nEstructura recomendada:\n[Apertura] → [Sujeto] → [Cámara] → [Reveal] → [Luz] → [Estilo]'}
@@ -168,16 +171,16 @@ export default function TabWan() {
           ${negPreview && html`
             <div class="comfy-preview-head" style="margin-top:10px">
               <span class="comfy-preview-title">Negative</span>
-              <button class="comfy-copy-btn-sm" onClick=${() => copiar(negPreview, 'neg')}>
+              <${Button} iconOnly onClick=${() => copiar(negPreview, 'neg')} title="Copiar">
                 ${copiado === 'neg' ? '✓' : '⎘'}
-              </button>
+              <//>
             </div>
             <pre class="comfy-preview-box comfy-preview-negative">${negPreview}</pre>
           `}
 
-          <button class="comfy-copy-btn wan-copy-all" onClick=${() => copiar([positivePreview, negPreview ? `\n\nNEGATIVE:\n${negPreview}` : ''].join(''), 'all')}>
+          <${Chip} class="w-full justify-center mt-2 wan-copy-all" onClick=${() => copiar([positivePreview, negPreview ? `\n\nNEGATIVE:\n${negPreview}` : ''].join(''), 'all')}>
             ${copiado === 'all' ? '✓ Copiado' : '⎘ Copiar todo (positive + negative)'}
-          </button>
+          <//>
 
           <div class="wan-settings-panel">
             <div class="wan-settings-title">Settings recomendados — ${modoActual?.label}</div>

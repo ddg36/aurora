@@ -2433,3 +2433,244 @@ ui/components/local.views/* para piezas de Local
 ui/components/themes/* para temas visuales
 ui/components/ui.css como entry point de estilos
 ```
+
+---
+
+## 19. Estandarización Button/Chip/floating — reglas aprendidas (sesión de barrido)
+
+Esta sección documenta lo aprendido durante el barrido de estandarización
+view-por-view de todo Aurora (Lyra, Scratchpad, md-reader, ajustes, chain,
+toolkit, llmcloud, editor). No repite lo ya cubierto en las secciones 1-18
+— sólo agrega los patrones y bugs reales encontrados en la práctica.
+
+### 19.1 Qué migrar a `Button`/`Chip` y qué NO
+
+Regla corta: **texto/emoji corto de una sola línea → `Chip`. Ícono solo →
+`Button iconOnly`. Card o list-row con 2+ líneas de info (título+detalle,
+título+URL, etc.) → se queda como está, NO se fuerza a Chip.**
+
+Confirmado en la práctica auditando ~15 vistas: casi todo lo que en un
+primer vistazo "parece" un botón hand-rolled resultó ser en realidad uno
+de estos patrones legítimamente distintos, y forzarlos a `Chip` sería
+peor que dejarlos:
+- **List-row multilínea** (wiki: resultados de búsqueda con path + líneas
+  de contexto; productividad: card de historial con título+URL+chips
+  adentro; captura: `ListItem` con nombre+sub). Esto ya tiene su propio
+  patrón (`List`/`ListItem`/`ListActions`, sección 8) — no es Button/Chip.
+- **Link de navegación real** (`<a href target="_parent">`, ej. el botón
+  "🛠 Tasks" en `aurora.js`). `Button` SIEMPRE renderiza `<button>`, nunca
+  `<a>` — si el control necesita `href` real (navegación de browser, no
+  `onClick` de JS), se queda como `<a>` con clases propias. No vale la
+  pena tocar un componente compartido por un solo caso así.
+- **Link inline dentro de una oración** (`llmcloud.js`, antes de que se
+  sacara: "Usá 🔗 Abrir para..."). Estilo `underline`, no `border`/`bg` —
+  semánticamente un link de texto, no una acción con `Chip`.
+- **Acordeón/disclosure header** (`captura/historial-panel.js`,
+  `captura/captura.js` `ChapterPanel`, `captura/tool-result-panel.js`):
+  patrón repetido 3 veces idéntico — `<button>` full-width con
+  icono+texto, badge de conteo, flecha `▲/▼`, togglea un `PanelBody`.
+  Candidato real a un componente `Disclosure` compartido nuevo (no creado
+  aún, quedó identificado pero no implementado) — NO es Button ni Chip,
+  es un patrón de tercera categoría.
+- **Card-grid de selección con descripción** (`toolkit.js`: grid de 8
+  herramientas, cada una con nombre+descripción en 2 líneas). Mismo
+  motivo que list-row: `Chip` es para una línea, esto no encaja.
+
+### 19.2 Bug transversal: falta de `min-width:0` rompe TODO layout angosto
+
+El bug más repetido de toda la sesión, encontrado en `ajustes.js`,
+`chain.js`, `toolkit.js`, `editor.js` — mismo síntoma cada vez: un
+`<input>`/`<select>`/texto largo dentro de un `flex-1` (o una celda de
+`grid`) que en viewport angosto NO se encoge, empujando sus hermanos
+(botones ↑/↓/✕, chips, el borde del contenedor) fuera de la vista.
+
+**Causa raíz:** flexbox y grid, por spec CSS, calculan el tamaño mínimo
+de un item como el tamaño de su CONTENIDO (`min-width: auto` implícito)
+salvo que se declare `min-width: 0` explícito. Un `<input>` con
+`placeholder` largo, un `<select>` mostrando un nombre de modelo largo
+("claude-3-5-sonnet-20240620"), o un `<div>` con texto sin `truncate` —
+ninguno se encoge por debajo de su ancho natural sin ese `min-width:0`,
+sin importar cuánto `flex-1`/`flex-shrink` tenga puesto.
+
+**Regla a partir de ahora:** cualquier hijo de un `flex`/`grid` que
+pueda contener texto largo o variable (inputs, selects, spans de
+nombre/ruta/URL) lleva `min-w-0` SIEMPRE, no sólo cuando "se ve raro" en
+desarrollo — el bug sólo aparece en viewports angostos (sidepanel de
+extensión, ~300-360px), así que probar en pantalla ancha nunca lo
+revela. Sumado a `truncate` cuando el texto no necesita verse completo.
+
+Ejemplos concretos de fix aplicado:
+```html
+<!-- Antes: el input empuja los 3 botones fuera de vista en angosto -->
+<input class="flex-1" ... />
+<${Button} iconOnly>↑<//>
+<${Button} iconOnly>↓<//>
+<${Button} iconOnly>✕<//>
+
+<!-- Después -->
+<input class="flex-1 min-w-0" ... />
+```
+
+```html
+<!-- Select.js con size="sm" usa flex-shrink-0 A PROPÓSITO (comentario
+     en el propio archivo: "el caller define el ancho, el alto no
+     cambia") — si el caller no lo envuelve con min-w-0/flex-shrink,
+     un modelo con nombre largo desborda igual. Fix en el CALLER: -->
+<div class="flex items-center gap-2 flex-wrap">
+  <${Select} size="sm" class="min-w-0 flex-shrink" .../>
+</div>
+```
+
+`grid` tiene el mismo problema que `flex` — un row dentro de
+`grid.gap-2` con texto largo sin truncar puede desbordar el contenedor
+padre entero (bug real en `ajustes.js` "Extensiones importadas": la
+ruta del manifest, sin `min-w-0` en el `grid` Y en cada row, desbordaba
+por la derecha con scroll horizontal visible). Fix: `min-w-0` en AMBOS
+niveles (el contenedor `grid` y cada row hijo), no sólo uno.
+
+### 19.3 Bug: `<button>` sin `type="button"` dispara submit implícito
+
+Encontrado en `Button.js` (el componente compartido en sí, afectando
+TODA la app): ninguno de sus dos `<button>` (rama `iconOnly` y rama
+normal) tenía el atributo `type="button"` explícito. El default HTML
+para un `<button>` sin `type` es `type="submit"` — si ese botón vive
+dentro de (o cerca de, según el motor) un `<form>`, el click dispara un
+submit implícito, causando un reload/refresh de página que no tiene
+relación aparente con el propio botón.
+
+Sólo se manifestó de forma visible en un caso puntual (dropdown de LLM
+en `llmcloud.js`, reportado como "hace clic y actualiza toda la
+página"), pero el bug vivía en el componente COMPARTIDO — afectaba a
+cualquier `Button` en cualquier contexto con un `<form>` cerca, no sólo
+ese caso. Fix aplicado una sola vez en `Button.js`, heredado por toda la
+app:
+```html
+<button type="button" ref=${btnRef} class=${clsx} onClick=${onClick} ...>
+```
+**Regla:** cualquier `<button>` nuevo, compartido o hand-rolled, lleva
+`type="button"` explícito salvo que deliberadamente deba hacer submit de
+un form real (caso raro, no visto en esta app hasta ahora).
+
+### 19.4 Bug: función-componente redefinida dentro del padre → remount del hijo
+
+Encontrado en `llmcloud.js`: `Panel` estaba definido como función interna
+dentro de `LLMCloud()` (`const Panel = ({sel, lado}) => html\`...\`;`),
+usando `split`/`foco`/`setFoco` del closure en vez de props. Cada vez que
+`LLMCloud` renderizaba (incluido por cambios de estado AJENOS a `Panel`,
+como abrir/cerrar el dropdown de selección de LLM), `Panel` se recreaba
+con una IDENTIDAD DE FUNCIÓN NUEVA — y Preact/React tratan un componente
+con identidad de función distinta como un TIPO DE COMPONENTE diferente,
+forzando un desmontaje completo del árbol viejo y montaje del nuevo. El
+`<iframe>` dentro de `Panel` se destruía y recreaba en cada uno de esos
+renders — causando que **con sólo abrir el dropdown** (sin elegir nada)
+el iframe embebido se recargara por completo, perdiendo cualquier estado
+de navegación interno (ej. un login en curso).
+
+**Regla:** ninguna función-componente (nada que empiece con mayúscula y
+devuelva `html\`...\`` para usarse como `<${X} .../>`) se define DENTRO
+de otro componente. Siempre a nivel de módulo (top-level), recibiendo
+todo lo que necesite como props explícitas — nunca por closure sobre
+variables del padre. Esto es válido incluso si la función es chica y
+"sólo se usa acá": la definición interna es la que causa el bug, no el
+tamaño de la función.
+
+```js
+// MAL — Panel se recrea en cada render de LLMCloud, remonta el <iframe>
+export default function LLMCloud() {
+  const [foco, setFoco] = useState('izq');
+  const Panel = ({ sel, lado }) => html`...${sel.url}...`;
+  return html`<${Panel} sel=${izq} lado="izq" />`;
+}
+
+// BIEN — top-level, props explícitas, identidad estable entre renders
+function Panel({ sel, lado, foco, setFoco }) { return html`...`; }
+export default function LLMCloud() {
+  const [foco, setFoco] = useState('izq');
+  return html`<${Panel} sel=${izq} lado="izq" foco=${foco} setFoco=${setFoco} />`;
+}
+```
+
+### 19.5 `useFloatingMenu` — modos nuevos agregados (ver también sección 5)
+
+`ui/components/shared/iconButton.js` ganó 2 modos de `anchor` nuevos
+sobre el original (`below`/`above`):
+
+- **`'fill'`**: cubre `top:0` a `bottom:0`, alineado al borde del
+  `<aside>` ancestro (no al botón interno, que tiene su propio padding)
+  — para sidebars colapsados que expanden (Scratchpad, md-reader).
+  `'below'` dejaba expuesto lo que hay arriba del ancla (ej. el título
+  de la nota activa), dando sensación de dos paneles rotos superpuestos.
+- **`'center'`**: ocupa el espacio disponible de un contenedor marcado
+  con `data-float-bounds` (fallback: viewport completo), centrado con
+  16px de margen — para paneles de contenido largo (ej. "Resumen" en
+  md-reader) que no tiene sentido atar a la posición del botón trigger,
+  porque ese botón puede estar lejos del espacio libre real.
+
+Gotchas nuevos (no listados en la sección 5 original):
+- Con `anchor:'center'`, el hook fija `left`+`right` (o `top`+`bottom`)
+  SIN `width`/`height` explícito — cualquier regla CSS de hoja de
+  estilos que sí defina `width` para esa clase (ej. un `@media` viejo no
+  limpiado tras migrar un panel antiguo) GANA, porque no hay conflicto
+  "inline vs stylesheet" en una propiedad que el inline no toca. Al
+  migrar un panel viejo a este hook, hay que buscar y borrar TODAS las
+  reglas `@media` que tocaban ese selector, no sólo el bloque base.
+- Un panel con `overflow:auto` y contenido Markdown (código inline,
+  texto largo) puede forzarse a un ancho mayor al calculado si falta
+  `min-width:0` en la cadena — mismo bug que 19.2, aplicado a paneles
+  flotantes: `.panel{display:flex;flex-direction:column;min-width:0;
+  overflow:hidden}` + `.panel-body{flex:1;min-width:0;min-height:0;
+  overflow:auto}`.
+- `anchor:'below'`/`'above'` con el ancla cerca de un borde del viewport
+  se desbordaba si el panel no usa `matchWidth` — fix: si
+  `rect.left > innerWidth/2`, anclar por `right` en vez de `left`, MÁS
+  un `max-width` calculado en el propio hook (`rect.right - 8` o
+  `innerWidth - rect.left - 8`) — un `width` en CSS basado en `100vw` no
+  sirve acá porque no sabe cuánto se restó ya por el offset elegido en
+  runtime.
+
+### 19.6 Persistencia de preferencias de UI: DB del server, nunca localStorage
+
+Aurora tiene un endpoint genérico ya existente para esto:
+`/db/ajustes/{clave}` (GET/PUT, `{valor: string}`, upsert por
+`usuario_id+clave`, ver `src/db/routes/ajustes.py`). Ya lo usan
+`theme`, `themeMode`, `background`, `hud`, `ui_last_tab`, `tema_auto`,
+`local_modelo`, `local_canvas`, `local_instruccion`.
+
+Nuevo hook compartido: `ui/components/shared/persisted-state.js` —
+`usePersistedState(clave, initial)`, mismo shape que `useState` pero
+persiste en ese endpoint (`getJSON` al montar, `putJSON` en cada
+cambio). Usado para "sidebar colapsado o no" en Scratchpad y md-reader
+(antes se perdía al recargar la vista).
+
+**Regla:** cualquier estado de UI que deba sobrevivir a recargar/reabrir
+una vista (paneles colapsados, filtros recordados, tabs activos) usa
+este hook — nunca `localStorage`, que es por-navegador/por-dispositivo
+en vez de sincronizado como el resto de los ajustes de usuario.
+
+Excepción conocida: Lyra depende funcionalmente de `pi harness` para
+sus chats (no de esta DB) — eso se mantiene así; sincronizar ADEMÁS con
+la DB de Aurora para consistencia/backup es una mejora pendiente, no
+hecha todavía, y no debe reemplazar la dependencia real de pi harness.
+
+### 19.7 Checklist adicional (complementa la sección 16)
+
+Antes de dejar un botón/chip/input "hand-rolled" tal cual está, verificar:
+
+1. ¿Es texto/emoji corto de una línea con estado activo/inactivo? →
+   `Chip`. ¿Es sólo un ícono? → `Button iconOnly`. Si no calza en
+   ninguno (card, list-row, link real, disclosure) → dejarlo, no forzar.
+2. ¿Vive dentro de un `flex`/`grid` y puede tener texto largo o
+   variable (nombre de modelo, URL, ruta)? → agregar `min-w-0` (y
+   `truncate` si no hace falta ver el texto completo).
+3. ¿Es un panel/dropdown que se abre sobre contenido? → `useFloatingMenu`
+   desde el inicio, nunca `position:absolute`/`fixed` a mano. Elegir
+   `anchor` según la forma: `below`/`above` para dropdowns puntuales,
+   `fill` para sidebars colapsables, `center` para paneles largos tipo
+   modal de contenido.
+4. ¿Es una función-componente nueva usada como `<${X} .../>`? → SIEMPRE
+   a nivel de módulo (top-level), nunca definida dentro de otro
+   componente, ni siquiera "por comodidad" en un caso chico.
+5. ¿Necesita recordar su estado entre recargas de la vista? →
+   `usePersistedState`, nunca `localStorage`.
+6. ¿Es un `<button>` nuevo (compartido o hand-rolled)? → `type="button"`
+   explícito siempre, salvo submit real de un form.

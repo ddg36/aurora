@@ -22,12 +22,24 @@ import { Type } from "typebox";
 
 const BASE = process.env.AURORA_URL || "http://localhost:7779";
 
+// Aurora inyecta AURORA_TOKEN al spawnear pi (modo RPC). Para pi CLI a mano:
+// exportar AURORA_TOKEN con el token de usuario (localStorage aurora_token).
+// Sin token el guard global de Aurora devuelve 401 en /ext/* y /tools/*.
+const TOKEN = process.env.AURORA_TOKEN || "";
+
+function headers(): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
+  };
+}
+
 async function extCmd(cmd: string, params: Record<string, unknown> = {}, timeout = 25): Promise<any> {
   let res: Response;
   try {
     res = await fetch(`${BASE}/ext/cmd`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers(),
       body: JSON.stringify({ cmd, params, timeout }),
     });
   } catch (err: any) {
@@ -113,6 +125,56 @@ export default function (pi: ExtensionAPI) {
         content: [{ type: "image", data: b64, mimeType: "image/png" }],
         details: { tab: data?.tab || {} },
       };
+    },
+  });
+
+  pi.registerTool({
+    name: "aurora_browser_task",
+    label: "Agente de browser",
+    description:
+      "Ejecuta una tarea de navegación web autónoma (navegar, clic, escribir, extraer) " +
+      "hasta cumplir el objetivo. Usar para tareas que requieren interactuar con páginas web, " +
+      "no para preguntas de conocimiento. Puede tardar minutos.",
+    parameters: Type.Object({
+      objective: Type.String({ description: "Objetivo en lenguaje natural, específico y verificable" }),
+      max_steps: Type.Optional(Type.Integer({ description: "Tope de pasos del agente (default 30, máx 100)" })),
+    }),
+    async execute(_id, params) {
+      const res = await fetch(`${BASE}/tools/browser_task/run`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ arguments: { objective: params.objective, max_steps: params.max_steps ?? 30 } }),
+        signal: AbortSignal.timeout(10 * 60 * 1000),
+      });
+      if (!res.ok) throw new Error(`Aurora HTTP ${res.status}`);
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "browser_task falló");
+      return { content: [{ type: "text", text: json.resultado || "completado" }], details: {} };
+    },
+  });
+
+  pi.registerTool({
+    name: "aurora_ask_cloud",
+    label: "Preguntar a la nube",
+    description:
+      "Le pregunta al LLM de la nube (Gemini/ChatGPT/Claude, el que el usuario tenga abierto " +
+      "en el panel ☁ Cloud de Aurora) y devuelve su respuesta. Usar para una segunda opinión " +
+      "de otro modelo o comparar respuestas. Requiere el panel Cloud abierto.",
+    parameters: Type.Object({
+      prompt: Type.String({ description: "Qué preguntarle al LLM de la nube" }),
+      ai: Type.Optional(Type.String({ description: "Pista del modelo (gemini/chatgpt/claude); usa el panel abierto" })),
+    }),
+    async execute(_id, params) {
+      const res = await fetch(`${BASE}/tools/ask_cloud/run`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ arguments: { prompt: params.prompt, ai: params.ai } }),
+        signal: AbortSignal.timeout(110 * 1000),
+      });
+      if (!res.ok) throw new Error(`Aurora HTTP ${res.status}`);
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "ask_cloud falló");
+      return { content: [{ type: "text", text: json.respuesta || "(sin respuesta)" }], details: {} };
     },
   });
 

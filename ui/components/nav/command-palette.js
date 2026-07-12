@@ -3,6 +3,22 @@ const { useState, useEffect, useRef } = globalThis.preactHooks;
 
 import { TABS } from './nav-tabs.js';
 import { setTab } from '../../store.js';
+import { getJSON } from '../shared/api.js';
+
+// Resultados FTS del backend (/db/search) → comandos ejecutables. Cada tipo
+// navega a donde corresponde: mensaje/prompt → su tab; wiki → wiki.
+const ICONO_TIPO = { mensaje: '💬', prompt: '✨', wiki: '📖' };
+function resultadoAComando(r) {
+  const limpio = (r.fragmento || '').replace(/<\/?mark>/g, '');
+  const dest = r.tipo === 'mensaje' ? 'lyra' : r.tipo === 'prompt' ? 'prompts' : 'wiki';
+  return {
+    id: `fts:${r.tipo}:${r.ref_id}`,
+    icon: ICONO_TIPO[r.tipo] || '·',
+    label: r.titulo ? `${r.titulo} — ${limpio}` : limpio,
+    grupo: r.tipo === 'mensaje' ? 'Chat' : r.tipo === 'prompt' ? 'Prompt' : 'Wiki',
+    run: () => setTab(dest),
+  };
+}
 
 function construirComandos() {
   const irA = TABS.map(t => ({
@@ -40,10 +56,28 @@ export function CommandPalette() {
   const [abierto, setAbierto] = useState(false);
   const [query, setQuery] = useState('');
   const [sel, setSel] = useState(0);
+  const [ftsResults, setFtsResults] = useState([]);
   const inputRef = useRef(null);
 
+  // Búsqueda FTS con debounce: al tipear, además de filtrar comandos de
+  // navegación, consulta /db/search (chats/prompts/wiki) y suma esos
+  // resultados. Sin query, no consulta (sólo comandos).
+  useEffect(() => {
+    const s = query.trim();
+    if (s.length < 2) { setFtsResults([]); return; }
+    const t = setTimeout(() => {
+      getJSON(`/db/search?q=${encodeURIComponent(s)}&limit=8`)
+        .then(r => setFtsResults(r?.ok ? (r.resultados || []) : []))
+        .catch(() => setFtsResults([]));
+    }, 180);
+    return () => clearTimeout(t);
+  }, [query]);
+
   const comandos = construirComandos();
-  const visibles = filtrar(comandos, query);
+  const visibles = [
+    ...filtrar(comandos, query),
+    ...ftsResults.map(resultadoAComando),
+  ];
 
   useEffect(() => {
     const onKey = (e) => {
@@ -98,7 +132,7 @@ export function CommandPalette() {
       <div class="w-[min(560px,95vw)] bg-[#14141c] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
         <input ref=${inputRef}
           class="w-full bg-transparent px-4 py-3 text-sm outline-none border-b border-white/10 text-white placeholder-white/30"
-          placeholder="Escribí un comando o vista…  (Esc para cerrar)"
+          placeholder="Buscar en chats, prompts, wiki… o ir a una vista  (Esc)"
           value=${query}
           onInput=${e => setQuery(e.target.value)}
           onKeyDown=${onInputKey} />

@@ -23,8 +23,11 @@ _bridge_activo = None
 _sesion_cargada: tuple = (0, None)
 _modelo_fijado: str | None = None
 
-_RUTA_MAPA = pathlib.Path(config.SESSION_DIR) / 'aurora-map.json'
-_RUTA_SCOPED = pathlib.Path(config.SESSION_DIR) / 'scoped-models.json'
+# Bookkeeping de Aurora (mapa chat↔sesión, favoritos) vive en AURORA_DATA_DIR
+# (databases/), NUNCA en SESSION_DIR: ese es de pi y puede no estar seteado
+# (None cuando llm.toml no lo define — Path(None) reventaba el import).
+_RUTA_MAPA = pathlib.Path(config.AURORA_DATA_DIR) / 'aurora-map.json'
+_RUTA_SCOPED = pathlib.Path(config.AURORA_DATA_DIR) / 'scoped-models.json'
 _RUTA_AUTH = pathlib.Path.home() / '.pi' / 'agent' / 'auth.json'
 _RUTA_SETTINGS = pathlib.Path.home() / '.pi' / 'agent' / 'settings.json'
 

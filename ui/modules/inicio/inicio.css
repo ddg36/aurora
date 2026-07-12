@@ -25,15 +25,15 @@
 }
 
 .db-status-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
 }
 
 .db-status-chip {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 5px;
   padding: 5px 10px;
   border-radius: 20px;
@@ -45,13 +45,13 @@
 }
 
 .db-status-chip.online {
-  border-color: color-mix(in srgb, #22c55e 40%, transparent);
-  background: color-mix(in srgb, #22c55e 8%, transparent);
+  border-color: color-mix(in srgb, var(--aurora-success) 40%, transparent);
+  background: color-mix(in srgb, var(--aurora-success) 8%, transparent);
   color: var(--aurora-text);
 }
 
-.db-status-dot { font-size: 8px; color: #ef4444; }
-.db-status-chip.online .db-status-dot { color: #22c55e; }
+.db-status-dot { font-size: 8px; color: var(--aurora-error); }
+.db-status-chip.online .db-status-dot { color: var(--aurora-success); }
 .db-status-name { font-weight: 600; }
 .db-status-sub { font-size: 10px; opacity: 0.6; }
 
@@ -140,4 +140,7 @@
 .lobby-online-dot {
   font-size: 12px;
   font-family: var(--aurora-font-mono);
+  color: var(--aurora-error);
 }
+
+.lobby-online-dot.online { color: var(--aurora-success); }

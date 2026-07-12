@@ -6,6 +6,9 @@ export const streamingActual  = signal('');
 export const thinkingActual   = signal('');
 export const toolEvents       = signal([]);
 export const cargando         = signal(false);
+// true mientras un LLM de la nube genera (directo o Duo): oculta "Pensando…"
+// y muestra "☁ generando…" mientras la burbuja crece con el stream.
+export const cloudGenerando   = signal(false);
 
 export function registrarToolEvent(evento) {
   toolEvents.value = [...toolEvents.value, { ...evento, ts: Date.now() }];
@@ -111,26 +114,33 @@ export function parsearMensajeRico(content) {
       partes.push({ tipo: 'thinking', contenido: contenido.join('\n').trim() });
       i++;
     } else if (linea.startsWith('[tool_call:')) {
-      const nombre = linea.slice('[tool_call:'.length, linea.lastIndexOf(']'));
+      const cierre = linea.lastIndexOf(']');
+      const interior = linea.slice('[tool_call:'.length, cierre);
+      const nombre_tid = interior.split(':');
+      const nombre = nombre_tid[0];
+      const tid = nombre_tid[1] || '';
       const contenido = [];
       i++;
-      while (i < lineas.length && lineas[i] !== `[/tool_call:${nombre}]`) {
+      while (i < lineas.length && lineas[i] !== `[/tool_call:${nombre}${tid ? ':' + tid : ''}]` && lineas[i] !== `[/tool_call:${nombre}]`) {
         contenido.push(lineas[i]);
         i++;
       }
-      partes.push({ tipo: 'tool_call', nombre, id: null, args: contenido.join('\n').trim() });
+      partes.push({ tipo: 'tool_call', nombre, id: tid || null, args: contenido.join('\n').trim() });
       i++;
     } else if (linea.startsWith('[tool_result:')) {
-      const rest = linea.slice('[tool_result:'.length, linea.lastIndexOf(']'));
-      const isError = rest.endsWith(':error');
-      const nombre = isError ? rest.slice(0, -':error'.length) : rest;
+      const cierre = linea.lastIndexOf(']');
+      const interior = linea.slice('[tool_result:'.length, cierre);
+      const partes_int = interior.split(':');
+      const es_error = partes_int.includes('error');
+      const nombre = partes_int[0];
+      const tid = partes_int[1] || '';
       const contenido = [];
       i++;
-      while (i < lineas.length && lineas[i] !== `[/tool_result:${nombre}]`) {
+      while (i < lineas.length && lineas[i] !== `[/tool_result:${nombre}${tid ? ':' + tid : ''}]` && lineas[i] !== `[/tool_result:${nombre}]`) {
         contenido.push(lineas[i]);
         i++;
       }
-      partes.push({ tipo: 'tool_result', nombre, id: null, output: contenido.join('\n').trim(), isError });
+      partes.push({ tipo: 'tool_result', nombre, id: tid || null, output: contenido.join('\n').trim(), isError: es_error });
       i++;
     } else if (linea.trim()) {
       const contenido = [];

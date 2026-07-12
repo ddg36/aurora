@@ -1,3 +1,5 @@
+import { copiarTexto } from '../../../../components/shared/clipboard.js';
+
 const KW_POR_LENGUAJE = {
   py:     'def|class|return|if|elif|else|for|while|import|from|as|with|try|except|finally|raise|pass|break|continue|lambda|yield|None|True|False|self|async|await|and|or|not|in|is|print|len|range',
   python: 'def|class|return|if|elif|else|for|while|import|from|as|with|try|except|finally|raise|pass|break|continue|lambda|yield|None|True|False|self|async|await|and|or|not|in|is|print|len|range',
@@ -141,11 +143,11 @@ function renderBloqueTexto(texto) {
         i++;
       }
       html.push(
-        '<table class="md-table"><thead><tr>' +
+        '<div class="md-table-wrap"><table class="md-table"><thead><tr>' +
         cabecera.map(c => `<th>${inline(c)}</th>`).join('') +
         '</tr></thead><tbody>' +
         filas.map(fila => '<tr>' + fila.map(c => `<td>${inline(c)}</td>`).join('') + '</tr>').join('') +
-        '</tbody></table>'
+        '</tbody></table></div>'
       );
       continue;
     }
@@ -223,10 +225,10 @@ export function inicializarEventosCodigo(containerEl, { onNotas, onRun } = {}) {
   containerEl.querySelectorAll('.js-copy-code').forEach(btn => {
     if (btn._wired) return;
     btn._wired = true;
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const raw = btn.closest('.code-block')?.dataset.code || '';
-      navigator.clipboard.writeText(raw).catch(() => {});
-      btn.textContent = '✓ Copiado';
+      const ok = await copiarTexto(raw);
+      btn.textContent = ok ? '✓ Copiado' : '✗ No se pudo copiar';
       setTimeout(() => { btn.textContent = '⎘ Copiar'; }, 1500);
     });
   });

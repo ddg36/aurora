@@ -1,8 +1,9 @@
 const html = (...args) => globalThis.html(...args);
 const { useState, useEffect } = globalThis.preactHooks;
 import { ejecutarCadena, PLANTILLAS } from '../scripts/ejecutar.js';
-import { fetchModels, cancelarMensaje } from '../../../components/shared/gemita-ws.js';
+import { fetchModels, cancelarMensaje } from '../../../components/shared/lyra-ws.js';
 import { renderMarkdown } from '../../../components/shared/markdown.js';
+import { Button, Chip, ChipGroup, Select } from '../../../components/index.js';
 
 let nextId = 1;
 const nuevoPaso = () => ({ id: nextId++, nombre: `Paso`, instruccion: '' });
@@ -66,18 +67,15 @@ export default function Chain() {
   };
 
   return html`
-    <div class="max-w-4xl mx-auto p-4">
+    <div class="w-full max-w-4xl mx-auto p-4">
       <h1 class="text-lg font-semibold mb-1">⛓ Chain</h1>
       <p class="text-xs text-white/40 mb-3">Cadena de prompts: la salida de cada paso alimenta al siguiente</p>
 
-      <div class="flex gap-2 mb-4 flex-wrap">
+      <${ChipGroup} class="mb-4">
         ${PLANTILLAS.map(p => html`
-          <button key=${p.nombre} onClick=${() => cargarPlantilla(p)}
-            class="text-xs px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-white/60">
-            ${p.nombre}
-          </button>
+          <${Chip} key=${p.nombre} onClick=${() => cargarPlantilla(p)}>${p.nombre}<//>
         `)}
-      </div>
+      <//>
 
       ${pasos.map((p, i) => html`
         <div key=${p.id} class="bg-white/5 rounded-lg p-2 mb-2">
@@ -87,13 +85,13 @@ export default function Chain() {
                 estado[i] === 'corriendo' ? 'bg-amber-500/30 text-amber-300 animate-pulse' :
                 'bg-white/10 text-white/50'}`}>${i + 1}</span>
             <input
-              class="bg-transparent text-xs font-semibold outline-none flex-1"
+              class="bg-transparent text-xs font-semibold outline-none flex-1 min-w-0"
               value=${p.nombre}
               onInput=${e => setPaso(p.id, 'nombre', e.target.value)}
             />
-            <button onClick=${() => moverPaso(i, -1)} class="text-xs px-1 rounded hover:bg-white/10 text-white/40">↑</button>
-            <button onClick=${() => moverPaso(i, 1)} class="text-xs px-1 rounded hover:bg-white/10 text-white/40">↓</button>
-            <button onClick=${() => quitarPaso(p.id)} class="text-xs px-1 rounded hover:bg-white/10 text-red-400/60">✕</button>
+            <${Button} iconOnly onClick=${() => moverPaso(i, -1)} title="Subir">↑<//>
+            <${Button} iconOnly onClick=${() => moverPaso(i, 1)} title="Bajar">↓<//>
+            <${Button} iconOnly variant="danger" onClick=${() => quitarPaso(p.id)} title="Quitar paso">✕<//>
           </div>
           <textarea
             class="w-full bg-black/20 rounded p-2 text-xs outline-none resize-y text-white/70 h-14"
@@ -104,10 +102,9 @@ export default function Chain() {
           />
           ${salidas[i] != null && html`
             <div class="mt-1">
-              <button onClick=${() => setAbierto(a => ({ ...a, [i]: !a[i] }))}
-                class="text-[10px] text-white/40 hover:text-white/70">
+              <${Chip} active=${abierto[i] !== false} onClick=${() => setAbierto(a => ({ ...a, [i]: !a[i] }))}>
                 ${abierto[i] !== false ? '▾' : '▸'} salida (${(salidas[i] || '').length} chars)
-              </button>
+              <//>
               ${abierto[i] !== false && html`
                 <div class="text-xs mt-1 p-2 bg-black/30 rounded max-h-48 overflow-y-auto"
                   dangerouslySetInnerHTML=${{ __html: renderMarkdown(salidas[i]) }} />
@@ -117,7 +114,7 @@ export default function Chain() {
         </div>
       `)}
 
-      <button onClick=${agregarPaso} class="text-xs px-3 py-1 rounded bg-white/5 hover:bg-white/10 text-white/60 mb-4">＋ Agregar paso</button>
+      <${Chip} onClick=${agregarPaso} class="mb-4">＋ Agregar paso<//>
 
       <textarea
         class="w-full h-24 bg-white/5 rounded-lg p-3 text-xs font-mono outline-none resize-y text-white/80"
@@ -127,23 +124,22 @@ export default function Chain() {
         spellcheck="false"
       />
 
-      <div class="flex items-center gap-2 mt-2">
-        <select class="bg-white/5 rounded px-2 py-1 text-xs outline-none" value=${modelo} onChange=${e => setModelo(e.target.value)}>
+      <div class="flex items-center gap-2 mt-2 flex-wrap">
+        <${Select} size="sm" class="min-w-0 flex-shrink" value=${modelo} onChange=${e => setModelo(e.target.value)}>
           ${modelos.map(m => {
             const id = m.id || m;
             return html`<option key=${id} value=${id}>${id}</option>`;
           })}
-        </select>
+        <//>
         <span class="flex-1" />
         ${corriendo && html`
-          <button onClick=${cancelarMensaje} class="px-3 py-1 rounded text-xs bg-red-500/20 text-red-300 hover:bg-red-500/30">■ Cancelar</button>
+          <${Chip} variant="yt" onClick=${cancelarMensaje}>■ Cancelar<//>
         `}
-        <button
+        <${Chip}
+          variant="accent"
           onClick=${ejecutar}
           disabled=${corriendo || !entrada.trim() || pasos.length === 0}
-          class="px-4 py-1 rounded text-xs font-semibold disabled:opacity-40"
-          style="background:var(--au-accent,#8b5cf6)"
-        >${corriendo ? 'Ejecutando…' : '▶ Ejecutar cadena'}</button>
+        >${corriendo ? 'Ejecutando…' : '▶ Ejecutar cadena'}<//>
       </div>
 
       ${err && html`<div class="text-xs text-red-400/70 mt-2">${err}</div>`}

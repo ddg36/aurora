@@ -58,6 +58,12 @@ class Job:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=not _IS_WIN,
+            # default de StreamReader es 64KB por línea — un comando que
+            # devuelva una sola línea más larga (curl de un JSON, base64 -w0,
+            # etc) tira LimitOverrunError sin capturar en _read(), matando el
+            # gather() y dejando el Job colgado en 'running' para siempre
+            # (mismo bug real que encontramos en pi/proceso.py).
+            limit=1024 * 1024 * 16,
         )
         self.pid = self._proc.pid
         await asyncio.gather(

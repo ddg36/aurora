@@ -32,7 +32,7 @@ export default function DetectiveTokens() {
   };
 
   return html`
-    <div class="max-w-3xl mx-auto p-4">
+    <div class="w-full max-w-3xl mx-auto p-4">
       <h1 class="text-lg font-semibold mb-1">🔍 Detective de Tokens</h1>
       <p class="text-xs text-white/40 mb-3">Estimación rápida (~4 chars/token + ajustes por CJK y símbolos de código)</p>
 

@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Lava — ríos de lava fluyendo con burbujas, grietas luminosas y calor radiante.
 export class Lava extends Component {
@@ -57,8 +57,9 @@ export class Lava extends Component {
 
     const init = () => {
       resize();
-      bubbles   = Array.from({ length: 30 }, makeBubble);
-      cracks    = Array.from({ length: 10 }, makeCrack);
+      const liviano = esDispositivoLiviano();
+      bubbles   = Array.from({ length: liviano ? 10 : 30 }, makeBubble);
+      cracks    = Array.from({ length: liviano ? 5 : 10 }, makeCrack);
       glowSpots = Array.from({ length: 6 },  makeGlowSpot);
     };
 

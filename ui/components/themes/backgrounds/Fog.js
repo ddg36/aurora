@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Fog — niebla densa que se mueve lentamente. Ambiente gótico.
 export class Fog extends Component {
@@ -16,7 +16,7 @@ export class Fog extends Component {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     let W, H, t = 0;
-    const layers = Array.from({ length: 6 }, (_, i) => ({
+    const layers = Array.from({ length: esDispositivoLiviano() ? 3 : 6 }, (_, i) => ({
       x:     Math.random() * 1000,
       y:     Math.random() * 600,
       r:     180 + Math.random() * 220,

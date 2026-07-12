@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from litestar import Controller, get, post, put, delete
 from litestar.connection import Request
 
+from eventos_ws import emitir
+
 from ..connection import get_db
 from ..auth import auth_guard
 
@@ -66,6 +68,7 @@ class LlmController(Controller):
             (uid, data.slot, data.ai_id, data.url, now),
         )
         await db.commit()
+        await emitir(uid, "llm_history", {"slot": data.slot, "ai_id": data.ai_id, "url": data.url})
         return {"ok": True}
 
     @get("/adapters/{dominio:str}")

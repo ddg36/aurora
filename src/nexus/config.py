@@ -1,5 +1,7 @@
+import os
 import pathlib
 import platform
+import tomllib
 
 BASE = pathlib.Path(__file__).resolve().parents[3]
 WORKSPACE = BASE
@@ -20,6 +22,27 @@ BLOCK_PATTERNS = (
 )
 
 SKIP_DIRS = {'node_modules', '.git', '__pycache__', '.venv', 'venv', 'cloud'}
+
+
+def _leer_solo_lectura() -> bool:
+    if (env := os.environ.get('AURORA_NEXUS_READONLY')) is not None:
+        return env.strip().lower() in ('1', 'true', 'si', 'sí', 'yes')
+    toml_path = pathlib.Path(__file__).resolve().parents[2] / 'config' / 'server.toml'
+    try:
+        return bool(tomllib.loads(toml_path.read_text(encoding='utf-8')).get('nexus', {}).get('solo_lectura', False))
+    except Exception:
+        return False
+
+
+SOLO_LECTURA = _leer_solo_lectura()
+
+
+def bloqueo_solo_lectura() -> dict | None:
+    """Respuesta de bloqueo si nexus está en modo solo lectura, o None."""
+    if SOLO_LECTURA:
+        return {'ok': False, 'blocked': True,
+                'error': 'Nexus en modo solo lectura (config/server.toml [nexus].solo_lectura o AURORA_NEXUS_READONLY)'}
+    return None
 
 
 def clip(text: str) -> tuple[str, bool]:

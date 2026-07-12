@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 const TAU = Math.PI * 2;
 
@@ -131,7 +131,8 @@ export class Clouds extends Component {
       ctx.fillStyle = moon;
       ctx.fillRect(0, 0, W, H);
 
-      for (let i = 0; i < 13; i++) {
+      const NCLOUDS = esDispositivoLiviano() ? 6 : 13;
+      for (let i = 0; i < NCLOUDS; i++) {
         const layer = i % 4;
         const speed = 7 + layer * 3.2;
         const x = ((i * 285 + t * speed) % (W + 640)) - 320;
@@ -143,7 +144,8 @@ export class Clouds extends Component {
       }
 
       ctx.fillStyle = 'rgba(255,255,255,.18)';
-      for (let i = 0; i < 80; i++) {
+      const NSTARS = esDispositivoLiviano() ? 30 : 80;
+      for (let i = 0; i < NSTARS; i++) {
         const x = (i * 137 + Math.sin(t + i) * 20) % W;
         const y = (i * 83) % (H * .72);
         const a = .18 + .32 * Math.abs(Math.sin(t * .5 + i));

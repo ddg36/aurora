@@ -6,12 +6,12 @@ from litestar import Controller, delete, get, patch, post
 from litestar.connection import Request
 
 from ..auth import auth_guard
-from ..connection import get_db
+from ..connection import get_db, json_loose
 
 
 # ponytail: these 5 helpers are called ~40 times in this file only — keep them local
 _j = lambda d: json.dumps(d if d is not None else {}, ensure_ascii=False)
-_pj = lambda t, fb: json.loads(t) if t else fb
+_pj = lambda t, fb: json_loose(t, fb)  # tolerante ante JSON malformado
 _d = lambda r: dict(r) if r else {}
 
 

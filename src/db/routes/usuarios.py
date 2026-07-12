@@ -1,11 +1,12 @@
 import uuid
 import platform
 from dataclasses import dataclass
-from litestar import Controller, get, post
+from litestar import Controller, delete, get, post
 from litestar.connection import Request
 
-from ..connection import get_db
+from ..connection import get_db, tablas_con_usuario
 from ..auth import auth_guard
+from .backup import TABLAS_HIJAS
 
 
 @dataclass
@@ -29,7 +30,7 @@ class CrearBody:
 class UsuariosController(Controller):
     path = "/db/usuarios"
 
-    @get("/list")
+    @get("/list", guards=[auth_guard])
     async def list_usuarios(self) -> list:
         db = await get_db()
         async with db.execute(
@@ -105,3 +106,33 @@ class UsuariosController(Controller):
         ) as cur:
             row = await cur.fetchone()
         return dict(row)
+
+    @delete("/{usuario_id:int}", guards=[auth_guard], status_code=200)
+    async def borrar(self, request: Request, usuario_id: int) -> dict:
+        """Borra un usuario y TODOS sus datos, en una transacción.
+        Habilita consolidar los usuarios duplicados del roadmap."""
+        if usuario_id == request.state.usuario_id:
+            return {"ok": False, "error": "No podés borrar el usuario activo — cambiá de usuario primero"}
+        db = await get_db()
+        async with db.execute("SELECT id FROM usuarios WHERE id = ?", (usuario_id,)) as cur:
+            if not await cur.fetchone():
+                return {"ok": False, "error": "usuario no encontrado"}
+
+        borrados: dict[str, int] = {}
+        try:
+            # FKs se chequean al commit — el orden de borrado deja de importar.
+            await db.execute("PRAGMA defer_foreign_keys=ON")
+            for t, (_, delete_sql) in TABLAS_HIJAS.items():
+                cur = await db.execute(delete_sql, (usuario_id,))
+                if cur.rowcount:
+                    borrados[t] = cur.rowcount
+            for t in await tablas_con_usuario(db):
+                cur = await db.execute(f"DELETE FROM {t} WHERE usuario_id=?", (usuario_id,))
+                if cur.rowcount:
+                    borrados[t] = cur.rowcount
+            await db.execute("DELETE FROM usuarios WHERE id=?", (usuario_id,))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            return {"ok": False, "error": str(e), "borrados": borrados}
+        return {"ok": True, "usuario_id": usuario_id, "borrados": borrados}

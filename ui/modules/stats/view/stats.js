@@ -42,7 +42,7 @@ export default function Stats() {
   const maxModelo = Math.max(1, ...(stats.modelos_usados || []).map(m => m.n || 0));
 
   return html`
-    <div class="max-w-3xl mx-auto p-4">
+    <div class="w-full max-w-3xl mx-auto p-4">
       <h1 class="text-lg font-semibold mb-4">📊 Stats</h1>
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">

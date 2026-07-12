@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Ravens — siluetas de cuervos volando en la oscuridad.
 export class Ravens extends Component {
@@ -122,7 +122,7 @@ export class Ravens extends Component {
     this._resize = resize;
     window.addEventListener('resize', resize);
     resize();
-    ravens = Array.from({ length: 12 }, makeRaven);
+    ravens = Array.from({ length: esDispositivoLiviano() ? 6 : 12 }, makeRaven);
     draw();
   }
 

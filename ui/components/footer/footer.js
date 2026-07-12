@@ -1,7 +1,8 @@
 const html = (...args) => globalThis.html(...args);
-const { useState, useEffect } = globalThis.preactHooks;
+const { useState, useEffect, useRef } = globalThis.preactHooks;
 
 import { footActions } from './registry.js';
+import { iconButtonClass, useWheelHorizontalScroll, ICON_BTN_SQUARE } from '../shared/iconButton.js';
 
 function Boton({ a }) {
   const active = typeof a.active === 'function' ? a.active() : a.active;
@@ -9,12 +10,15 @@ function Boton({ a }) {
   return html`
     <button
       key=${a.id}
-      class=${'h-7 min-w-7 flex-shrink-0 px-1.5 text-sm transition-transform bg-transparent border-0 cursor-pointer text-white/40 hover:text-white/80 disabled:opacity-40 disabled:cursor-not-allowed ' + (active ? 'text-aurora-accent' : '')}
+      class=${iconButtonClass(active, `${ICON_BTN_SQUARE} text-sm disabled:opacity-40 disabled:cursor-not-allowed`)}
       disabled=${disabled}
       title=${a.title || a.id}
       onClick=${a.onClick}
     >
-      <span class="inline-block leading-none">${a.icon || a.id}</span>
+      ${a.svg
+        ? html`<span class="flex-shrink-0 flex items-center justify-center" style="width:16px;height:16px" dangerouslySetInnerHTML=${{ __html: a.svg }} />`
+        : html`<span class="inline-block leading-none">${a.icon || a.id}</span>`
+      }
     </button>
   `;
 }
@@ -30,13 +34,15 @@ function renderItem(a) {
 export function Footer() {
   const [acts, setActs] = useState(footActions.value);
   useEffect(() => footActions.subscribe(setActs), []);
+  const scrollRef = useRef(null);
+  useWheelHorizontalScroll(scrollRef);
 
   const groups = [acts.global, acts.module, acts.view].filter(g => g && g.length > 0);
   if (groups.length === 0) return null;
 
   return html`
     <footer class="px-2 py-1.5 border-t border-white/5 bg-black/20 backdrop-blur-sm flex-shrink-0">
-      <div class="flex gap-1 overflow-x-auto scrollbar-none">
+      <div ref=${scrollRef} class="flex gap-1 overflow-x-auto scrollbar-none">
         ${groups.map((group, i) => html`
           ${i > 0 && html`<span class="w-px h-5 my-1 mx-1.5 flex-shrink-0 bg-white/10"></span>`}
           ${group.map(renderItem)}

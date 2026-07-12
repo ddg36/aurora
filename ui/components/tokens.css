@@ -1,6 +1,13 @@
 /* AURORA/SKIN/THEMES/VARIABLES — Variables CSS del sistema. Tema por defecto: Dark Elegant */
 
 :root {
+  /* ── Layout — fijo, mismo núcleo en mobile y escritorio ── */
+  /* Ancho real reservado por el riel de navegación (NavBar). Cualquier
+     elemento position:fixed anclado a un borde de pantalla en cualquier
+     vista debe restar var(--aurora-rail-w) en vez de asumir 0 — así nunca
+     queda tapado por el riel, sin tener que arreglar caso por caso. */
+  --aurora-rail-w: 52px;
+
   /* ── Superficies — fijas ──────────────────────────────── */
   --aurora-bg:       #000000;
   --aurora-surface:  #0a0a0a;

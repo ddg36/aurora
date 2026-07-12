@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Puntos de luz que orbitan suavemente.
 export class Fireflies extends Component {
@@ -15,7 +15,7 @@ export class Fireflies extends Component {
     const canvas = this.canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    const COUNT = 45;
+    const COUNT = esDispositivoLiviano() ? 15 : 45;
     let W, H, flies;
 
     const resize = () => {

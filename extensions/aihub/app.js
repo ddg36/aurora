@@ -8,6 +8,23 @@ const frame = document.getElementById("auroraFrame");
 const status = document.getElementById("status");
 const retry = document.getElementById("retry");
 
+// Puente compartido con Aurora (handshake, LLM cloud embebido, clipboard) —
+// mismo módulo que usa sidepanel.js. Sin esto, Aurora en pestaña nueva nunca
+// avisaba `caps:['llmPanes']` y caía al iframe inline de LLM cloud (sujeto al
+// bug de cookie-partitioning que este puente existe para evitar) — bug real:
+// login/sesión de LLM se perdía SOLO acá, andaba bien en el side panel.
+//
+// Se inicializa recién con la URL de servidor REAL resuelta por connect()
+// (localhost o 127.0.0.1, según cuál responda) — el puente compara
+// `e.origin` contra esa URL exacta para aceptar mensajes; inicializarlo con
+// una URL fija que no sea la que el iframe termina cargando lo deja sordo.
+let _bridge = null;
+function ensureBridge(serverUrl) {
+  if (_bridge) return _bridge;
+  _bridge = initAuroraBridge(frame, { serverUrl, surface: 'newtab' });
+  return _bridge;
+}
+
 function setStatus(text, state) {
   status.textContent = text;
   status.dataset.state = state;
@@ -49,7 +66,7 @@ async function canReach(serverUrl) {
   }
 }
 
-async function connect() {
+async function connect(forceFresh = false) {
   setStatus("Conectando...", "pending");
   retry.disabled = true;
 
@@ -63,7 +80,8 @@ async function connect() {
       saveServer(server.url);
       setStatus("Conectado", "ok");
       retry.disabled = false;
-      loadFrame(`${server.url}/`);
+      ensureBridge(server.url);
+      loadFrame(`${server.url}/`, forceFresh);
       return;
     }
   }
@@ -72,22 +90,35 @@ async function connect() {
   retry.disabled = false;
 }
 
-// Cargar iframe solo después de que la página haya pintado
-function loadFrame(url) {
+// _r=timestamp bustea la cache del documento top-level — solo se aplica en
+// retry manual (forceFresh=true). En connect() automático NO se aplica: el
+// server ya cachea /ui con max-age=60 + query strings versionadas por archivo,
+// forzar bypass en cada conexión automática volvía a pagar red completa
+// (40-60s) en cada apertura de tab en vez de servir desde cache local.
+function loadFrame(url, forceFresh = false) {
   if (!url) return;
+  const fresh = forceFresh
+    ? url + (url.includes('?') ? '&' : '?') + '_r=' + Date.now()
+    : url;
   const t = window.requestIdleCallback
-    ? requestIdleCallback(() => { frame.src = url; }, { timeout: 2000 })
-    : setTimeout(() => { frame.src = url; }, 100);
+    ? requestIdleCallback(() => { frame.src = fresh; }, { timeout: 2000 })
+    : setTimeout(() => { frame.src = fresh; }, 100);
 }
 
 retry.addEventListener("click", () => {
   frame.src = "about:blank";
-  connect();
+  connect(true);
 });
 
-// Cargar después del paint inicial
-requestAnimationFrame(() => {
-  requestAnimationFrame(() => {
+// connect() es async y no bloquea paint — no depende de rAF (que Chrome
+// pausa en tabs en background, dejando "Conectando..." colgado para siempre
+// si esta tab de New Tab no queda enfocada al abrirse).
+connect();
+
+// Red de seguridad: si la tab estaba en background durante el intento inicial
+// y algo quedó a medias, reintentar al volverse visible.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && status.dataset.state === "pending" && !retry.disabled) {
     connect();
-  });
+  }
 });

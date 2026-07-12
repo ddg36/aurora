@@ -2,7 +2,7 @@ const { html } = globalThis;
 const { useEffect, useMemo, useState } = globalThis.preactHooks;
 
 import {
-  Button, Chip, ChipGroup, Empty, Input, Panel, PanelBody, PanelHeader,
+  Button, Chip, AutoFitChips, Empty, Input, Panel, PanelBody, PanelHeader,
   Select, Status, Textarea,
 } from '../../../components/index.js';
 import { JsonBlock } from '../../../components/shared/JsonBlock.js';
@@ -38,9 +38,9 @@ const SECTIONS = ['Capture', 'Research', 'Tasks', 'Clipboard', 'Forms', 'Meeting
 
 function SectionNav({ active, setActive }) {
   return html`
-    <div class="flex flex-wrap gap-2">
-      ${SECTIONS.map(s => html`<${Button} size="sm" active=${active === s} onClick=${() => setActive(s)}>${s}</${Button}>`)}
-    </div>
+    <${AutoFitChips}>
+      ${SECTIONS.map(s => html`<${Chip} key=${s} active=${active === s} onClick=${() => setActive(s)}>${s}<//>`)}
+    <//>
   `;
 }
 

@@ -1,4 +1,4 @@
-import { sendToGemita } from '../../../components/shared/gemita-ws.js';
+import { sendToLyra } from '../../../components/shared/lyra-ws.js';
 
 export async function ejecutarCadena({ pasos, entrada, model, onPasoInicio, onToken, onPasoFin }) {
   let actual = entrada;
@@ -7,7 +7,7 @@ export async function ejecutarCadena({ pasos, entrada, model, onPasoInicio, onTo
     const paso = pasos[i];
     onPasoInicio?.(i);
     let salida = '';
-    await sendToGemita({
+    await sendToLyra({
       message: actual,
       model,
       system: paso.instruccion,

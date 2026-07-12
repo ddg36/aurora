@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Ash — cenizas cayendo lentamente. Ambiente gótico oscuro.
 export class Ash extends Component {
@@ -74,7 +74,7 @@ export class Ash extends Component {
     this._resize = resize;
     window.addEventListener('resize', resize);
     resize();
-    particles = Array.from({ length: 200 }, makeParticle);
+    particles = Array.from({ length: esDispositivoLiviano() ? 50 : 200 }, makeParticle);
     // Distribuir partículas en toda la pantalla al inicio
     particles.forEach(p => { p.y = Math.random() * H; });
     draw();

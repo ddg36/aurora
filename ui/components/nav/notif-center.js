@@ -2,6 +2,7 @@ const html = (...args) => globalThis.html(...args);
 const { useState, useEffect } = globalThis.preactHooks;
 
 import { getJSON, deleteJSON, BASE, hdrs } from '../../components/shared/api.js';
+import { Button, Chip, AutoFitChips } from '../index.js';
 
 function tiempoRel(ts) {
   const s = Math.floor(Date.now() / 1000) - ts;
@@ -46,32 +47,25 @@ export function NotifCenter({ onClose }) {
     URL.revokeObjectURL(url);
   };
 
-  const Tab = ({ id, label }) => html`
-    <button onClick=${() => setTab(id)}
-      class=${'px-3 py-1.5 text-xs ' + (tab === id ? 'text-white border-b-2 border-aurora-accent' : 'text-white/40')}>
-      ${label}
-    </button>
-  `;
-
   return html`
     <div class="fixed inset-0 z-[9400] bg-black/50 flex justify-end" onClick=${e => e.target === e.currentTarget && onClose()}>
       <div class="w-[min(400px,95vw)] h-full bg-[#14141c] border-l border-white/10 flex flex-col">
         <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10">
           <span class="text-sm font-semibold flex-1">🔔 Centro</span>
-          <button class="text-white/40 hover:text-white text-lg leading-none" onClick=${onClose}>✕</button>
+          <${Button} iconOnly onClick=${onClose} title="Cerrar">✕<//>
         </div>
 
-        <div class="flex border-b border-white/10">
-          <${Tab} id="eventos" label="Eventos" />
-          <${Tab} id="cloud" label="Cloud history" />
-          <${Tab} id="backup" label="Backup" />
-        </div>
+        <${AutoFitChips} class="px-2 py-1.5 border-b border-white/10">
+          <${Chip} active=${tab === 'eventos'} onClick=${() => setTab('eventos')}>Eventos<//>
+          <${Chip} active=${tab === 'cloud'} onClick=${() => setTab('cloud')}>Cloud history<//>
+          <${Chip} active=${tab === 'backup'} onClick=${() => setTab('backup')}>Backup<//>
+        <//>
 
         <div class="flex-1 overflow-y-auto">
           ${tab === 'eventos' && html`
             <div class="p-2">
               ${eventos.length > 0 && html`
-                <button onClick=${limpiarEventos} class="text-[11px] text-white/40 hover:text-red-400 mb-2">Limpiar todo</button>
+                <${Chip} class="mb-2" onClick=${limpiarEventos}>Limpiar todo<//>
               `}
               ${eventos.length === 0 && html`<div class="text-white/30 text-sm text-center py-8">Sin eventos</div>`}
               ${eventos.map(e => html`
@@ -97,7 +91,7 @@ export function NotifCenter({ onClose }) {
                     <div class="text-[10px] text-white/30">${c.llm} · ${tiempoRel(c.capturado_en)}</div>
                   </div>
                   ${c.url && html`<a href=${c.url} target="_blank" class="text-white/40 hover:text-white">↗</a>`}
-                  <button onClick=${() => borrarConv(c.id)} class="text-white/30 hover:text-red-400">🗑</button>
+                  <${Button} iconOnly variant="danger" onClick=${() => borrarConv(c.id)} title="Borrar">🗑<//>
                 </div>
               `)}
             </div>
@@ -115,8 +109,7 @@ export function NotifCenter({ onClose }) {
                   `)}
                 </div>
               `}
-              <button onClick=${descargarBackup}
-                class="px-3 py-2 rounded border border-aurora-accent text-aurora-accent text-sm">💾 Descargar backup completo</button>
+              <${Chip} variant="accent" onClick=${descargarBackup}>💾 Descargar backup completo<//>
             </div>
           `}
         </div>

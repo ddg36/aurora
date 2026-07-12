@@ -1,70 +1,282 @@
-import aiosqlite
+import asyncio
+import json
+import logging
 import os
 import pathlib
+import platform
 import time
+import tomllib
 
-DB_PATH = pathlib.Path(
-    os.environ.get(
-        "AURORA_DB_PATH",
-        pathlib.Path(__file__).resolve().parent.parent.parent / "databases" / "aihub.db",
-    )
-)
+import aiosqlite
+
+log = logging.getLogger("aurora.db")
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+
+
+def json_loose(texto, fallback=None):
+    """json.loads tolerante: si la columna TEXT tiene JSON malformado (bug de
+    escritura, edición manual), devuelve `fallback` en vez de reventar la
+    lectura sin contexto. SQLite guarda JSON como TEXT sin garantía de forma."""
+    if not texto:
+        return fallback
+    try:
+        return json.loads(texto)
+    except (ValueError, TypeError):
+        log.warning("JSON malformado en columna, usando fallback")
+        return fallback
+
+
+def _resolve_db_path() -> pathlib.Path:
+    """Única verdad de dónde vive la DB: env > config/server.toml [db] > default."""
+    if env := os.environ.get("AURORA_DB_PATH"):
+        return pathlib.Path(env)
+    toml_path = ROOT / "config" / "server.toml"
+    if toml_path.exists():
+        try:
+            cfg = tomllib.loads(toml_path.read_text(encoding="utf-8")).get("db", {})
+            key = "path_windows" if platform.system() == "Windows" else "path_linux"
+            if p := cfg.get(key):
+                return pathlib.Path(p)
+        except Exception as e:
+            log.warning("server.toml [db] ilegible (%s), usando default", e)
+    return ROOT / "databases" / "aihub.db"
+
+
+DB_PATH = _resolve_db_path()
 
 _db: aiosqlite.Connection | None = None
+_init_lock = asyncio.Lock()
 
 
 async def get_db() -> aiosqlite.Connection:
     global _db
     if _db is None:
-        _db = await aiosqlite.connect(DB_PATH)
-        _db.row_factory = aiosqlite.Row
-        await _db.execute("PRAGMA journal_mode=WAL")
-        await _db.execute("PRAGMA foreign_keys=ON")
+        async with _init_lock:
+            if _db is None:
+                conn = await aiosqlite.connect(DB_PATH)
+                conn.row_factory = aiosqlite.Row
+                await conn.execute("PRAGMA journal_mode=WAL")
+                await conn.execute("PRAGMA foreign_keys=ON")
+                await conn.execute("PRAGMA busy_timeout=5000")
+                await conn.execute("PRAGMA synchronous=NORMAL")
+                _db = conn
     return _db
+
+
+# ══════════════════════════════════════════════════════
+#  MIGRACIONES NUMERADAS
+#  schema.sql es la verdad para DB nueva (versión 1).
+#  Todo cambio incremental entra acá como (versión, descripción, fn).
+#  Cada fn es idempotente: DBs viejas con schema_migrations vacía
+#  pueden correr todo sin romper.
+# ══════════════════════════════════════════════════════
+
+
+async def _tiene_columna(db, tabla: str, columna: str) -> bool:
+    async with db.execute(f"PRAGMA table_info({tabla})") as cur:
+        return any(r["name"] == columna for r in await cur.fetchall())
+
+
+async def _tiene_tabla(db, tabla: str) -> bool:
+    async with db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (tabla,)
+    ) as cur:
+        return bool(await cur.fetchone())
+
+
+async def _mig_fijado(db):
+    if not await _tiene_columna(db, "mensajes", "fijado"):
+        await db.execute("ALTER TABLE mensajes ADD COLUMN fijado INTEGER NOT NULL DEFAULT 0")
+
+
+async def _mig_parent_chat(db):
+    if not await _tiene_columna(db, "chats", "parent_chat_id"):
+        await db.execute("ALTER TABLE chats ADD COLUMN parent_chat_id INTEGER REFERENCES chats(id)")
+
+
+async def _mig_tablas_modulos(db):
+    await _ensure_productividad(db)
+
+
+async def _mig_prompts_guardados(db):
+    if not await _tiene_tabla(db, "prompts_guardados"):
+        await db.execute("""
+            CREATE TABLE prompts_guardados (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL,
+                tipo TEXT NOT NULL DEFAULT 'general',
+                nombre TEXT,
+                contenido TEXT NOT NULL,
+                meta TEXT,
+                creado_en INTEGER NOT NULL DEFAULT (unixepoch())
+            )
+        """)
+
+
+async def _mig_idx_mensajes(db):
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_mensajes_chat_ts ON mensajes(chat_id, creado_en)")
+
+
+async def _mig_fts(db):
+    """Búsqueda full-text: search_fts indexa mensajes, prompts y wiki_indice.
+    Triggers mantienen el índice; el trigger de insert borra antes de insertar
+    (self-healing ante REPLACE, que no dispara delete triggers)."""
+    await db.executescript("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
+            texto, tipo UNINDEXED, ref_id UNINDEXED, usuario_id UNINDEXED,
+            tokenize='unicode61 remove_diacritics 2'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS fts_mensajes_ins AFTER INSERT ON mensajes BEGIN
+            DELETE FROM search_fts WHERE tipo='mensaje' AND ref_id=NEW.id;
+            INSERT INTO search_fts(texto, tipo, ref_id, usuario_id)
+                SELECT NEW.contenido, 'mensaje', NEW.id, c.usuario_id
+                FROM chats c WHERE c.id = NEW.chat_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS fts_mensajes_upd AFTER UPDATE OF contenido ON mensajes BEGIN
+            DELETE FROM search_fts WHERE tipo='mensaje' AND ref_id=OLD.id;
+            INSERT INTO search_fts(texto, tipo, ref_id, usuario_id)
+                SELECT NEW.contenido, 'mensaje', NEW.id, c.usuario_id
+                FROM chats c WHERE c.id = NEW.chat_id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS fts_mensajes_del AFTER DELETE ON mensajes BEGIN
+            DELETE FROM search_fts WHERE tipo='mensaje' AND ref_id=OLD.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS fts_prompts_ins AFTER INSERT ON prompts BEGIN
+            DELETE FROM search_fts WHERE tipo='prompt' AND ref_id=NEW.id;
+            INSERT INTO search_fts(texto, tipo, ref_id, usuario_id)
+                VALUES (NEW.nombre || ' ' || NEW.contenido, 'prompt', NEW.id, NEW.usuario_id);
+        END;
+        CREATE TRIGGER IF NOT EXISTS fts_prompts_upd AFTER UPDATE OF nombre, contenido ON prompts BEGIN
+            DELETE FROM search_fts WHERE tipo='prompt' AND ref_id=OLD.id;
+            INSERT INTO search_fts(texto, tipo, ref_id, usuario_id)
+                VALUES (NEW.nombre || ' ' || NEW.contenido, 'prompt', NEW.id, NEW.usuario_id);
+        END;
+        CREATE TRIGGER IF NOT EXISTS fts_prompts_del AFTER DELETE ON prompts BEGIN
+            DELETE FROM search_fts WHERE tipo='prompt' AND ref_id=OLD.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS fts_wiki_ins AFTER INSERT ON wiki_indice BEGIN
+            DELETE FROM search_fts WHERE tipo='wiki' AND ref_id=NEW.id;
+            INSERT INTO search_fts(texto, tipo, ref_id, usuario_id)
+                VALUES (COALESCE(NEW.titulo,'') || ' ' || COALESCE(NEW.resumen,'') || ' ' || COALESCE(NEW.tags,'') || ' ' || NEW.path,
+                        'wiki', NEW.id, NEW.usuario_id);
+        END;
+        CREATE TRIGGER IF NOT EXISTS fts_wiki_upd AFTER UPDATE ON wiki_indice BEGIN
+            DELETE FROM search_fts WHERE tipo='wiki' AND ref_id=OLD.id;
+            INSERT INTO search_fts(texto, tipo, ref_id, usuario_id)
+                VALUES (COALESCE(NEW.titulo,'') || ' ' || COALESCE(NEW.resumen,'') || ' ' || COALESCE(NEW.tags,'') || ' ' || NEW.path,
+                        'wiki', NEW.id, NEW.usuario_id);
+        END;
+        CREATE TRIGGER IF NOT EXISTS fts_wiki_del AFTER DELETE ON wiki_indice BEGIN
+            DELETE FROM search_fts WHERE tipo='wiki' AND ref_id=OLD.id;
+        END;
+    """)
+    await _fts_backfill(db)
+
+
+async def _fts_backfill(db):
+    """Puebla search_fts si está VACÍA (no sólo "si no existía"): un arranque
+    previo pudo crear la tabla pero dejar el backfill a medias o vacío, y con
+    el chequeo por-existencia nunca se re-poblaba — quedaba la búsqueda sin
+    datos históricos para siempre. Por vacía es idempotente y auto-repara."""
+    if not await _tiene_tabla(db, "search_fts"):
+        return
+    async with db.execute("SELECT 1 FROM search_fts LIMIT 1") as cur:
+        if await cur.fetchone() is not None:
+            return
+    await db.execute("""
+        INSERT INTO search_fts(texto, tipo, ref_id, usuario_id)
+            SELECT m.contenido, 'mensaje', m.id, c.usuario_id
+            FROM mensajes m JOIN chats c ON c.id = m.chat_id
+    """)
+    await db.execute("""
+        INSERT INTO search_fts(texto, tipo, ref_id, usuario_id)
+            SELECT nombre || ' ' || contenido, 'prompt', id, usuario_id FROM prompts
+    """)
+    await db.execute("""
+        INSERT INTO search_fts(texto, tipo, ref_id, usuario_id)
+            SELECT COALESCE(titulo,'') || ' ' || COALESCE(resumen,'') || ' ' || COALESCE(tags,'') || ' ' || path,
+                   'wiki', id, usuario_id
+            FROM wiki_indice
+    """)
+
+
+MIGRACIONES: list[tuple[int, str, object]] = [
+    (2, "mensajes.fijado", _mig_fijado),
+    (3, "chats.parent_chat_id", _mig_parent_chat),
+    (4, "tablas productividad/ext_capturas/md_reader/builder", _mig_tablas_modulos),
+    (5, "prompts_guardados", _mig_prompts_guardados),
+    (6, "indice mensajes(chat_id, creado_en)", _mig_idx_mensajes),
+    (7, "busqueda full-text FTS5 (search_fts)", _mig_fts),
+    (8, "repoblar FTS si quedó vacío", _fts_backfill),
+]
 
 
 async def init_db():
     db = await get_db()
-    schema = pathlib.Path(__file__).parent / "schema.sql"
-    if schema.exists():
-        async with db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
-        ) as cur:
-            exists = await cur.fetchone()
-        if not exists:
-            await db.executescript(schema.read_text())
+
+    # Versión 1: schema base. DB nueva → schema.sql completo.
+    if not await _tiene_tabla(db, "usuarios"):
+        schema = pathlib.Path(__file__).parent / "schema.sql"
+        await db.executescript(schema.read_text(encoding="utf-8"))
+        await db.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, descripcion) VALUES (1, 'schema base (schema.sql)')"
+        )
+        await db.commit()
+    elif await _tiene_tabla(db, "schema_migrations"):
+        await db.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, descripcion) VALUES (1, 'schema base preexistente')"
+        )
+        await db.commit()
+
+    async with db.execute("SELECT COALESCE(MAX(version), 0) AS v FROM schema_migrations") as cur:
+        actual = (await cur.fetchone())["v"]
+
+    for version, descripcion, fn in MIGRACIONES:
+        if version <= actual:
+            continue
+        try:
+            await fn(db)
+            await db.execute(
+                "INSERT INTO schema_migrations (version, descripcion) VALUES (?, ?)",
+                (version, descripcion),
+            )
             await db.commit()
+            log.info("migración %d aplicada: %s", version, descripcion)
+        except Exception:
+            await db.rollback()
+            log.exception("migración %d falló: %s", version, descripcion)
+            raise
 
-    async with db.execute(f"PRAGMA table_info(mensajes)") as cur:
-        has_fijado = any(r["name"] == "fijado" for r in await cur.fetchall())
-    if not has_fijado:
-        await db.execute("ALTER TABLE mensajes ADD COLUMN fijado INTEGER NOT NULL DEFAULT 0")
-        await db.commit()
+    # El seed corre en cada arranque: en DB nueva los usuarios aparecen
+    # después de la primera migración, no durante.
+    await seed_builder_data(db)
 
-    async with db.execute(f"PRAGMA table_info(chats)") as cur:
-        has_parent = any(r["name"] == "parent_chat_id" for r in await cur.fetchall())
-    if not has_parent:
-        await db.execute("ALTER TABLE chats ADD COLUMN parent_chat_id INTEGER REFERENCES chats(id)")
-        await db.commit()
 
-    await _ensure_productividad(db)
+async def schema_version(db) -> int:
+    if not await _tiene_tabla(db, "schema_migrations"):
+        return 0
+    async with db.execute("SELECT COALESCE(MAX(version), 0) AS v FROM schema_migrations") as cur:
+        return (await cur.fetchone())["v"]
 
+
+async def tablas_con_usuario(db) -> list[str]:
+    """Tablas de datos del usuario, por introspección — base compartida de
+    backup, restore y borrado de usuario. Nunca se desincroniza del schema."""
     async with db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='prompts_guardados'"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'search_fts%'"
     ) as cur:
-        if not await cur.fetchone():
-            await db.execute("""
-                CREATE TABLE prompts_guardados (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    usuario_id INTEGER NOT NULL,
-                    tipo TEXT NOT NULL DEFAULT 'general',
-                    nombre TEXT,
-                    contenido TEXT NOT NULL,
-                    meta TEXT,
-                    creado_en INTEGER NOT NULL DEFAULT (unixepoch())
-                )
-            """)
-            await db.commit()
+        tablas = [r["name"] for r in await cur.fetchall()]
+    out = []
+    for t in tablas:
+        if t in ("usuarios", "schema_migrations"):
+            continue
+        if await _tiene_columna(db, t, "usuario_id"):
+            out.append(t)
+    return sorted(out)
 
 
 async def _ensure_productividad(db):
@@ -228,171 +440,149 @@ async def _ensure_productividad(db):
         CREATE INDEX IF NOT EXISTS idx_prod_prices_usuario ON productividad_price_items(usuario_id, activo);
         CREATE INDEX IF NOT EXISTS idx_prod_price_checks_item ON productividad_price_checks(usuario_id, item_id, revisado_en);
     """)
-    await db.commit()
 
-    async with db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='ext_capturas'"
-    ) as cur:
-        if not await cur.fetchone():
-            await db.execute("""
-                CREATE TABLE ext_capturas (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    usuario_id   INTEGER NOT NULL REFERENCES usuarios(id),
-                    tipo         TEXT    NOT NULL,
-                    titulo       TEXT,
-                    url          TEXT,
-                    contenido    TEXT,
-                    chars        INTEGER,
-                    tab_title    TEXT,
-                    tab_url      TEXT,
-                    capturado_en INTEGER NOT NULL DEFAULT (unixepoch())
-                )
-            """)
-            await db.execute("CREATE INDEX idx_ext_capturas_usuario ON ext_capturas(usuario_id, capturado_en)")
-            await db.execute("CREATE INDEX idx_ext_capturas_tipo    ON ext_capturas(usuario_id, tipo)")
-            await db.commit()
+    if not await _tiene_tabla(db, "ext_capturas"):
+        await db.execute("""
+            CREATE TABLE ext_capturas (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id   INTEGER NOT NULL REFERENCES usuarios(id),
+                tipo         TEXT    NOT NULL,
+                titulo       TEXT,
+                url          TEXT,
+                contenido    TEXT,
+                chars        INTEGER,
+                tab_title    TEXT,
+                tab_url      TEXT,
+                capturado_en INTEGER NOT NULL DEFAULT (unixepoch())
+            )
+        """)
+        await db.execute("CREATE INDEX idx_ext_capturas_usuario ON ext_capturas(usuario_id, capturado_en)")
+        await db.execute("CREATE INDEX idx_ext_capturas_tipo    ON ext_capturas(usuario_id, tipo)")
 
     await _ensure_builder_templates(db)
     await _ensure_team_roles(db)
     await _ensure_creativity_ideas(db)
 
-    async with db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='md_reader_prefs'"
-    ) as cur:
-        if not await cur.fetchone():
-            await db.executescript("""
-                CREATE TABLE md_reader_prefs (
-                  usuario_id  INTEGER PRIMARY KEY REFERENCES usuarios(id),
-                  root_path   TEXT,
-                  active_path TEXT,
-                  mode        TEXT,
-                  filters_json TEXT,
-                  actualizado INTEGER NOT NULL DEFAULT (unixepoch())
-                );
+    if not await _tiene_tabla(db, "md_reader_prefs"):
+        await db.executescript("""
+            CREATE TABLE md_reader_prefs (
+              usuario_id  INTEGER PRIMARY KEY REFERENCES usuarios(id),
+              root_path   TEXT,
+              active_path TEXT,
+              mode        TEXT,
+              filters_json TEXT,
+              actualizado INTEGER NOT NULL DEFAULT (unixepoch())
+            );
 
-                CREATE TABLE md_reader_index_meta (
-                  usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
-                  root        TEXT    NOT NULL,
-                  file_count  INTEGER NOT NULL DEFAULT 0,
-                  node_count  INTEGER NOT NULL DEFAULT 0,
-                  edge_count  INTEGER NOT NULL DEFAULT 0,
-                  actualizado INTEGER NOT NULL DEFAULT (unixepoch()),
-                  PRIMARY KEY (usuario_id, root)
-                );
+            CREATE TABLE md_reader_index_meta (
+              usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
+              root        TEXT    NOT NULL,
+              file_count  INTEGER NOT NULL DEFAULT 0,
+              node_count  INTEGER NOT NULL DEFAULT 0,
+              edge_count  INTEGER NOT NULL DEFAULT 0,
+              actualizado INTEGER NOT NULL DEFAULT (unixepoch()),
+              PRIMARY KEY (usuario_id, root)
+            );
 
-                CREATE TABLE md_reader_files (
-                  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                  usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
-                  root        TEXT    NOT NULL,
-                  path        TEXT    NOT NULL,
-                  title       TEXT,
-                  size        INTEGER,
-                  mtime       INTEGER,
-                  checksum    TEXT,
-                  actualizado INTEGER NOT NULL DEFAULT (unixepoch()),
-                  UNIQUE (usuario_id, root, path)
-                );
+            CREATE TABLE md_reader_files (
+              id          INTEGER PRIMARY KEY AUTOINCREMENT,
+              usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
+              root        TEXT    NOT NULL,
+              path        TEXT    NOT NULL,
+              title       TEXT,
+              size        INTEGER,
+              mtime       INTEGER,
+              checksum    TEXT,
+              actualizado INTEGER NOT NULL DEFAULT (unixepoch()),
+              UNIQUE (usuario_id, root, path)
+            );
 
-                CREATE TABLE md_reader_nodes (
-                  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                  usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
-                  root        TEXT    NOT NULL,
-                  file_path   TEXT    NOT NULL,
-                  node_id     TEXT    NOT NULL,
-                  type        TEXT    NOT NULL,
-                  label       TEXT,
-                  uri         TEXT,
-                  line        INTEGER,
-                  detail      TEXT,
-                  meta_json   TEXT,
-                  actualizado INTEGER NOT NULL DEFAULT (unixepoch()),
-                  UNIQUE (usuario_id, root, file_path, node_id)
-                );
+            CREATE TABLE md_reader_nodes (
+              id          INTEGER PRIMARY KEY AUTOINCREMENT,
+              usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
+              root        TEXT    NOT NULL,
+              file_path   TEXT    NOT NULL,
+              node_id     TEXT    NOT NULL,
+              type        TEXT    NOT NULL,
+              label       TEXT,
+              uri         TEXT,
+              line        INTEGER,
+              detail      TEXT,
+              meta_json   TEXT,
+              actualizado INTEGER NOT NULL DEFAULT (unixepoch()),
+              UNIQUE (usuario_id, root, file_path, node_id)
+            );
 
-                CREATE TABLE md_reader_edges (
-                  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                  usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
-                  root        TEXT    NOT NULL,
-                  source_path TEXT    NOT NULL,
-                  source_node_id TEXT NOT NULL,
-                  target_node_id TEXT NOT NULL,
-                  edge_type   TEXT    NOT NULL,
-                  label       TEXT,
-                  source_line INTEGER,
-                  detail      TEXT,
-                  meta_json   TEXT,
-                  actualizado INTEGER NOT NULL DEFAULT (unixepoch()),
-                  UNIQUE (usuario_id, root, source_path, source_node_id, target_node_id, edge_type)
-                );
+            CREATE TABLE md_reader_edges (
+              id          INTEGER PRIMARY KEY AUTOINCREMENT,
+              usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
+              root        TEXT    NOT NULL,
+              source_path TEXT    NOT NULL,
+              source_node_id TEXT NOT NULL,
+              target_node_id TEXT NOT NULL,
+              edge_type   TEXT    NOT NULL,
+              label       TEXT,
+              source_line INTEGER,
+              detail      TEXT,
+              meta_json   TEXT,
+              actualizado INTEGER NOT NULL DEFAULT (unixepoch()),
+              UNIQUE (usuario_id, root, source_path, source_node_id, target_node_id, edge_type)
+            );
 
-                CREATE INDEX idx_md_reader_files_usuario_root ON md_reader_files(usuario_id, root);
-                CREATE INDEX idx_md_reader_nodes_usuario_root ON md_reader_nodes(usuario_id, root);
-                CREATE INDEX idx_md_reader_edges_usuario_root ON md_reader_edges(usuario_id, root);
-            """)
-            await db.commit()
+            CREATE INDEX idx_md_reader_files_usuario_root ON md_reader_files(usuario_id, root);
+            CREATE INDEX idx_md_reader_nodes_usuario_root ON md_reader_nodes(usuario_id, root);
+            CREATE INDEX idx_md_reader_edges_usuario_root ON md_reader_edges(usuario_id, root);
+        """)
 
 
 async def _ensure_builder_templates(db):
-    async with db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='builder_templates'"
-    ) as cur:
-        if not await cur.fetchone():
-            await db.executescript("""
-                CREATE TABLE builder_templates (
-                    id          TEXT PRIMARY KEY,
-                    usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
-                    tipo        TEXT NOT NULL,
-                    datos       TEXT NOT NULL,
-                    version     INTEGER NOT NULL DEFAULT 1,
-                    creado_en   INTEGER NOT NULL DEFAULT (unixepoch()),
-                    actualizado INTEGER NOT NULL DEFAULT (unixepoch())
-                );
-                CREATE INDEX IF NOT EXISTS idx_builder_templates_usuario ON builder_templates(usuario_id, tipo);
-            """)
-            await db.commit()
+    if not await _tiene_tabla(db, "builder_templates"):
+        await db.executescript("""
+            CREATE TABLE builder_templates (
+                id          TEXT PRIMARY KEY,
+                usuario_id  INTEGER NOT NULL REFERENCES usuarios(id),
+                tipo        TEXT NOT NULL,
+                datos       TEXT NOT NULL,
+                version     INTEGER NOT NULL DEFAULT 1,
+                creado_en   INTEGER NOT NULL DEFAULT (unixepoch()),
+                actualizado INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+            CREATE INDEX IF NOT EXISTS idx_builder_templates_usuario ON builder_templates(usuario_id, tipo);
+        """)
 
 
 async def _ensure_team_roles(db):
-    async with db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_team_roles'"
-    ) as cur:
-        if not await cur.fetchone():
-            await db.executescript("""
-                CREATE TABLE ai_team_roles (
-                    id              TEXT PRIMARY KEY,
-                    usuario_id      INTEGER NOT NULL REFERENCES usuarios(id),
-                    nombre          TEXT NOT NULL,
-                    icono           TEXT,
-                    color           TEXT,
-                    prompt_template TEXT,
-                    default_members TEXT,
-                    orden           INTEGER NOT NULL DEFAULT 0,
-                    creado_en       INTEGER NOT NULL DEFAULT (unixepoch()),
-                    actualizado     INTEGER NOT NULL DEFAULT (unixepoch())
-                );
-                CREATE INDEX IF NOT EXISTS idx_team_roles_usuario ON ai_team_roles(usuario_id, orden);
-            """)
-            await db.commit()
+    if not await _tiene_tabla(db, "ai_team_roles"):
+        await db.executescript("""
+            CREATE TABLE ai_team_roles (
+                id              TEXT PRIMARY KEY,
+                usuario_id      INTEGER NOT NULL REFERENCES usuarios(id),
+                nombre          TEXT NOT NULL,
+                icono           TEXT,
+                color           TEXT,
+                prompt_template TEXT,
+                default_members TEXT,
+                orden           INTEGER NOT NULL DEFAULT 0,
+                creado_en       INTEGER NOT NULL DEFAULT (unixepoch()),
+                actualizado     INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+            CREATE INDEX IF NOT EXISTS idx_team_roles_usuario ON ai_team_roles(usuario_id, orden);
+        """)
 
 
 async def _ensure_creativity_ideas(db):
-    async with db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='creativity_ideas'"
-    ) as cur:
-        if not await cur.fetchone():
-            await db.executescript("""
-                CREATE TABLE creativity_ideas (
-                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
-                    tematica   TEXT NOT NULL,
-                    datos      TEXT NOT NULL,
-                    creado_en  INTEGER NOT NULL DEFAULT (unixepoch()),
-                    actualizado INTEGER NOT NULL DEFAULT (unixepoch()),
-                    UNIQUE(usuario_id, tematica)
-                );
-            """)
-            await db.commit()
-    await seed_builder_data(db)
+    if not await _tiene_tabla(db, "creativity_ideas"):
+        await db.executescript("""
+            CREATE TABLE creativity_ideas (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+                tematica   TEXT NOT NULL,
+                datos      TEXT NOT NULL,
+                creado_en  INTEGER NOT NULL DEFAULT (unixepoch()),
+                actualizado INTEGER NOT NULL DEFAULT (unixepoch()),
+                UNIQUE(usuario_id, tematica)
+            );
+        """)
 
 
 async def seed_builder_data(db):

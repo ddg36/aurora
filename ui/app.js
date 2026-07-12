@@ -1,7 +1,7 @@
 
 const { h } = globalThis.preact;
 
-const { useState, useEffect, useRef, useCallback } = globalThis.preactHooks;
+const { useState, useEffect } = globalThis.preactHooks;
 
 import { activeTab, setTab, theme, themeMode, background, hud } from './store.js';
 
@@ -9,11 +9,11 @@ import { cargarTema } from './modules/ajustes/scripts/tema.js';
 
 import { aplicarTema } from './components/themes/manager.js';
 
-import { THEMES } from './components/themes/index.js?v=v2-visual-variants-1';
+import { THEMES } from './components/themes/index.js?v=v2-visual-variants-2';
 
-import { BACKGROUND_LOADERS } from './components/themes/backgrounds/loaders.js?v=v2-visual-variants-1';
+import { BACKGROUND_LOADERS } from './components/themes/backgrounds/loaders.js?v=v2-visual-variants-2';
 
-import { HUD_LOADERS } from './components/themes/hud/loaders.js?v=v2-visual-variants-1';
+import { HUD_LOADERS } from './components/themes/hud/loaders.js?v=v2-visual-variants-2';
 
 import { Footer } from './components/footer/footer.js';
 
@@ -23,6 +23,8 @@ import { UserSwitcher } from './components/nav/user-switcher.js';
 
 import { NotifCenter } from './components/nav/notif-center.js';
 
+import { AgentEye } from './components/agent-eye/index.js';
+
 import { iniciarTemaAuto } from './components/themes/tema-hora.js';
 
 import { TABS } from './components/nav/nav-tabs.js';
@@ -31,43 +33,45 @@ import { CommandPalette } from './components/nav/command-palette.js';
 
 import { restaurarTab, iniciarPersistenciaUI } from './components/nav/sesion-ui.js';
 
+import { iconButtonClass } from './components/shared/iconButton.js';
+
 const MODULE_LOADERS = {
 
-inicio:       () => import('./modules/inicio/view/inicio.js?v=v2-clean-ui-4'),
+inicio:       () => import('./modules/inicio/view/inicio.js?v=v2-clean-ui-14'),
 
-aurora:       () => import('./modules/aurora/view/aurora.js?v=v2-control-center-1'),
+aurora:       () => import('./modules/aurora/view/aurora.js?v=v2-control-center-2'),
 
 productividad: () => import('./modules/productividad/view/productividad.js?v=v2-productividad-1'),
 
-lyra:         () => import('./modules/lyra/view/lyra.js?v=v2-clean-ui-4'),
+lyra:         () => import('./modules/lyra/view/lyra.js?v=v2-clean-ui-14'),
 
-llmcloud:     () => import('./modules/llmcloud/view/llmcloud.js?v=v2-clean-ui-4'),
+llmcloud:     () => import('./modules/llmcloud/view/llmcloud.js?v=v2-clean-ui-14'),
 
-prompts:      () => import('./modules/prompts/view/prompts.js?v=v2-clean-ui-4'),
+prompts:      () => import('./modules/prompts/view/prompts.js?v=v2-clean-ui-14'),
 
-wiki:         () => import('./modules/wiki/view/wiki.js?v=v2-clean-ui-4'),
+wiki:         () => import('./modules/wiki/view/wiki.js?v=v2-clean-ui-14'),
 
-scratchpad:   () => import('./modules/scratchpad/view/scratchpad.js?v=v2-clean-ui-4'),
+scratchpad:   () => import('./modules/scratchpad/view/scratchpad.js?v=v2-clean-ui-14'),
 
 'md-reader':  () => import('./modules/md-reader/view/md-reader.js?v=v2-md-reader-2'),
 
-editor:       () => import('./modules/editor/view/editor.js?v=v2-clean-ui-4'),
+editor:       () => import('./modules/editor/view/editor.js?v=v2-clean-ui-14'),
 
-stats:        () => import('./modules/stats/view/stats.js?v=v2-clean-ui-4'),
+stats:        () => import('./modules/stats/view/stats.js?v=v2-clean-ui-14'),
 
 captura:      () => import('./modules/captura/view/captura.js?v=v2-bd-real-1'),
 
-toolkit:      () => import('./modules/toolkit/view/toolkit.js?v=v2-clean-ui-4'),
+toolkit:      () => import('./modules/toolkit/view/toolkit.js?v=v2-clean-ui-14'),
 
-chain:        () => import('./modules/chain/view/chain.js?v=v2-clean-ui-4'),
+chain:        () => import('./modules/chain/view/chain.js?v=v2-clean-ui-14'),
 
-detective:    () => import('./modules/detective-tokens/view/detective.js?v=v2-clean-ui-4'),
+detective:    () => import('./modules/detective-tokens/view/detective.js?v=v2-clean-ui-14'),
 
-webnavigator: () => import('./modules/webnavigator/view/web-navigator.js?v=v2-clean-ui-4'),
+webnavigator: () => import('./modules/webnavigator/view/web-navigator.js?v=v2-clean-ui-14'),
 
-stylecatalog: () => import('./modules/stylecatalog/view/stylecatalog.js?v=v2-clean-ui-4'),
+stylecatalog: () => import('./modules/stylecatalog/view/stylecatalog.js?v=v2-clean-ui-14'),
 
-ajustes:      () => import('./modules/ajustes/view/ajustes.js?v=v2-visual-variants-1'),
+ajustes:      () => import('./modules/ajustes/view/ajustes.js?v=v2-visual-variants-2'),
 
 };
 
@@ -222,96 +226,27 @@ return h(NotifCenter, { onClose: () => { notifAbierto.value = false; } });
 
 }
 
+// Riel vertical único — misma forma en mobile y escritorio, sin ramas por
+// tamaño de pantalla. Reserva su propio espacio real vía flexbox en App()
+// (nunca `fixed`), así cualquier elemento fixed-al-viewport en cualquier
+// vista puede seguir siendo predecible usando var(--aurora-rail-w) en vez
+// de chocar contra él. Ícono-solo, scroll vertical nativo (la lista de 18
+// tabs es corta y el scroll táctil/rueda ya funciona solo, sin flechas).
 function NavBar({ tab }) {
-  const scrollRef = useRef(null);
-  const [compact, setCompact] = useState(() => globalThis.matchMedia?.('(max-width: 760px)').matches || false);
-  const [canLeft, setCanLeft]   = useState(false);
-  const [canRight, setCanRight] = useState(false);
-
-  const updateArrows = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanLeft(el.scrollLeft > 4);
-    setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-  }, []);
-
-  // Compacto estable por viewport; no depende del scroll horizontal.
-  useEffect(() => {
-    const mq = globalThis.matchMedia?.('(max-width: 760px)');
-    if (!mq) return;
-    const sync = () => setCompact(mq.matches);
-    sync();
-    mq.addEventListener?.('change', sync);
-    return () => mq.removeEventListener?.('change', sync);
-  }, []);
-
-  // ResizeObserver — solo recalcula flechas de overflow
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      updateArrows();
-    });
-    ro.observe(el);
-    updateArrows();
-    return () => ro.disconnect();
-  }, []);
-
-  // Rueda del ratón → scroll horizontal
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onWheel = (e) => {
-      if (e.deltaY === 0) return;
-      e.preventDefault();
-      el.scrollLeft += e.deltaY;
-      updateArrows();
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
-
-  const scroll = (dir) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir * 120, behavior: 'smooth' });
-    setTimeout(updateArrows, 150);
-  };
-
-  const btnCls = (active) => [
-    'flex items-center justify-center py-1 rounded text-xs whitespace-nowrap transition-colors flex-shrink-0',
-    compact ? 'w-8 px-0' : 'gap-1 px-2',
-    active ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70 hover:bg-white/5',
-  ].join(' ');
-
-  const arrowCls = 'flex-shrink-0 flex items-center justify-center w-5 h-full text-white/30 hover:text-white/70 bg-black/30 cursor-pointer border-0 transition-colors text-xs select-none px-0.5';
-
-  return h('nav', { class: 'relative z-10 flex items-stretch border-b border-white/5 bg-black/20 backdrop-blur-sm' },
-
-    canLeft && h('button', { class: arrowCls, onClick: () => scroll(-1), title: 'Anterior' }, '‹'),
-
-    h('div', {
-      ref: scrollRef,
-      class: 'flex gap-0.5 px-1 pt-1.5 pb-1 overflow-x-auto scrollbar-none flex-1',
-      onScroll: updateArrows,
+  return h('nav', { class: 'nav-rail relative z-10 h-full flex flex-col items-stretch border-l border-white/5 bg-black/20 backdrop-blur-sm overflow-y-auto scrollbar-none' },
+    TABS.map(t => h('button', {
+      key: t.id,
+      onClick: () => setTab(t.id),
+      class: iconButtonClass(tab === t.id, 'rounded-md w-full h-9 flex-shrink-0 text-xs'),
+      title: t.label,
+      'aria-label': t.label,
     },
-      TABS.map(t => h('button', {
-        key: t.id,
-        onClick: () => setTab(t.id),
-        class: btnCls(tab === t.id),
-        title: t.label,
-        'aria-label': t.label,
-      },
-        h('span', {
-          class: 'flex-shrink-0 flex items-center justify-center',
-          style: 'width:14px;height:14px',
-          dangerouslySetInnerHTML: { __html: t.svg || t.icon || '' },
-        }),
-        !compact && t.label,
-      ))
-    ),
-
-    canRight && h('button', { class: arrowCls, onClick: () => scroll(1), title: 'Siguiente' }, '›'),
+      h('span', {
+        class: 'flex-shrink-0 flex items-center justify-center',
+        style: 'width:16px;height:16px',
+        dangerouslySetInnerHTML: { __html: t.svg || t.icon || '' },
+      }),
+    ))
   );
 }
 
@@ -371,13 +306,43 @@ h(
 
 'div',
 
-{ class: 'relative z-10 flex flex-col h-screen min-h-0' },
+// Núcleo único, mobile y escritorio por igual: riel de NavBar al costado
+// (flex-row), contenido+Footer en su propia columna al lado. Nada de
+// `order` ni de ramas por tamaño de pantalla — el riel reserva su espacio
+// real vía flexbox siempre, y var(--aurora-rail-w) (declarada una sola vez
+// en CSS) es la única referencia que cualquier vista necesita para no
+// chocar contra él.
+{ class: 'relative z-10 flex flex-row h-screen min-h-0' },
 
-h(NavBar, { tab }),
+h(
+  'div',
+  { class: 'flex-1 min-w-0 min-h-0 flex flex-col' },
 
-h('main', { class: 'flex-1 min-h-0 overflow-hidden flex flex-col' }, h(ModuleView, { tabId: tab })),
+  // overflow-y-auto (no "hidden"): views como Ajustes no manejan su propio
+  // scroll interno — en desktop entraban igual por sobra de alto, en un
+  // celu (menos alto disponible) el contenido se recortaba sin poder
+  // scrollear (bug real reportado en vivo, "casi todas las views"). Lyra sí
+  // maneja su propio scroll interno (chat-with-avatars:
+  // flex:1;min-height:0;overflow:hidden) así que llena exactamente el alto
+  // disponible y esto no le agrega scroll de más — sólo actúa cuando el
+  // contenido realmente desborda.
+  // min-w-0 + overflow-x-hidden: como flex-item, sin min-w-0 esto NO se
+  // achica más allá del ancho mínimo de su contenido (default CSS de
+  // flexbox) — con filas flex-wrap adentro (grids de temas/fondos en
+  // Ajustes, tabs, etc) eso empuja TODA la página más ancha que la pantalla
+  // en vez de dejar que esas filas envuelvan de verdad (bug real reportado
+  // en vivo: "casi todas las views" se ven cortadas del lado derecho en un
+  // celular, no porque falte flex-wrap sino porque el contenedor padre
+  // nunca se restringe al ancho real disponible).
+  h('main', { class: 'flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col' }, h(ModuleView, { tabId: tab })),
 
-h(Footer, {}),
+  h('div', { class: 'flex-shrink-0' }, h(Footer, {})),
+),
+
+// flex-shrink-0 (no "shrink-0" — esa clase no genera CSS acá, ni por Twind
+// ni por el fallback estático, sólo existe .flex-shrink-0): el riel nunca
+// cede espacio al apretarse, sólo <main> lo hace.
+h('div', { class: 'flex-shrink-0' }, h(NavBar, { tab })),
 
 ),
 
@@ -386,6 +351,8 @@ h(CommandPalette, {}),
 h(UserSwitcherMount, {}),
 
 h(NotifMount, {}),
+
+h(AgentEye, {}),
 
 );
 

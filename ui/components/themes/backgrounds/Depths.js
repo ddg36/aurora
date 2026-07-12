@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Depths — corrientes submarinas con algas ondulantes y partículas de sedimento.
 export class Depths extends Component {
@@ -44,8 +44,9 @@ export class Depths extends Component {
 
     const init = () => {
       resize();
-      seaweed  = Array.from({ length: 18 }, makeWeed);
-      sediment = Array.from({ length: 80 }, makeSediment);
+      const liviano = esDispositivoLiviano();
+      seaweed  = Array.from({ length: liviano ? 6 : 18 }, makeWeed);
+      sediment = Array.from({ length: liviano ? 20 : 80 }, makeSediment);
     };
 
     const drawWeed = (w, r, g, b) => {

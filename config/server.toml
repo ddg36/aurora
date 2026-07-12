@@ -1,11 +1,13 @@
+# [server] es informativo: el host/port real vive en scripts/start.sh / start.bat
 [server]
 host = "0.0.0.0"
 port = 7779
 reload = true
 
+# [db] es la fuente de verdad de la ruta de la DB (la lee src/db/connection.py).
+# Override puntual: variable de entorno AURORA_DB_PATH.
 [db]
-path_linux  = "/media/almacen/deml/Downloads/core_instruction/databases/aihub/aihub.db"
-path_windows = "D:\\Downloads\\core_instruction\\databases\\aihub\\aihub.db"
+path_linux  = "/media/almacen/deml/Downloads/core_instruction/aurora/databases/aihub.db"
+path_windows = "D:\\Downloads\\core_instruction\\aurora\\databases\\aihub.db"
 
-[cors]
-origins = ["*"]
+# CORS se configura en src/main.py (allowlist de orígenes locales + extensión).

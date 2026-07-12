@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from litestar import Controller, get, put, delete
 from litestar.connection import Request
 
+from eventos_ws import emitir
+
 from ..connection import get_db
 from ..auth import auth_guard
 
@@ -44,6 +46,7 @@ class AjustesController(Controller):
             (uid, clave, data.valor),
         )
         await db.commit()
+        await emitir(uid, "ajuste", {"clave": clave, "valor": data.valor})
         return {"ok": True}
 
     @delete("/{clave:str}", status_code=200)
@@ -54,4 +57,5 @@ class AjustesController(Controller):
             "DELETE FROM ajustes WHERE usuario_id=? AND clave=?", (uid, clave)
         )
         await db.commit()
+        await emitir(uid, "ajuste", {"clave": clave, "valor": None})
         return {"ok": True}

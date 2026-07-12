@@ -53,7 +53,7 @@ globalThis.useSignalEffect = signals.useSignalEffect;
 
 }
 
-const BASE = "http://localhost:7779";
+const BASE = /^https?:/.test(location.origin) ? location.origin : "http://localhost:7779";
 
 globalThis.AURORA_BASE = BASE;
 
@@ -223,15 +223,27 @@ console.warn("[Aurora v2] auth init failed", err);
 
 });
 
-const [{ App }, store, extBridge] = await Promise.all([
+const [{ App }, store, extBridge, eventos, agentEye, cloudBridge] = await Promise.all([
 
-import("./app.js?v=v2-visual-variants-1"),
+import("./app.js?v=v2-visual-variants-6"),
 
 import("./store.js"),
 
 import("./components/shared/ext-bridge.js"),
 
+import("./components/shared/eventos-ws.js"),
+
+import("./components/shared/agent-eye.js"),
+
+import("./components/shared/cloud-bridge-listener.js"),
+
 ]);
+
+eventos.conectarEventos();
+
+agentEye.initAgentEye();
+
+cloudBridge.initCloudBridge();
 
 globalThis.__aurora_setExtContext = store.setExtContext;
 globalThis.__aurora_extContext    = store.extContext;

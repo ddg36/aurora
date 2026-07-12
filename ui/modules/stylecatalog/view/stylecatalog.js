@@ -78,7 +78,7 @@ function Preview({ id }) {
     case 'chatmessage':
       return html`
         <${ChatList}>
-          <${ChatMessage} role="user" time="10:30">Hola Gemita<//>
+          <${ChatMessage} role="user" time="10:30">Hola Lyra<//>
           <${ChatMessage} role="assistant" time="10:31">¿En qué te ayudo?<//>
         <//>
       `;
@@ -105,15 +105,12 @@ export default function StyleCatalog() {
   const snippetBox = (snippet) => html`
     <div class="relative mt-1">
       <pre class="bg-black/30 border border-aurora-border rounded p-2 text-[11px] font-mono whitespace-pre-wrap text-aurora-text-muted overflow-x-auto">${snippet}</pre>
-      <button
-        class="absolute top-1.5 right-1.5 text-[10px] px-2 py-0.5 rounded bg-aurora-surface border border-aurora-border text-aurora-text-dim hover:text-aurora-text cursor-pointer"
-        onClick=${() => copiar(snippet)}
-      >${copiado === snippet ? '✓ copiado' : '⧉ copiar'}</button>
+      <${Chip} class="absolute top-1.5 right-1.5" onClick=${() => copiar(snippet)}>${copiado === snippet ? '✓ copiado' : '⧉ copiar'}<//>
     </div>
   `;
 
   return html`
-    <div class="max-w-4xl mx-auto p-4">
+    <div class="w-full max-w-4xl mx-auto p-4">
       <h1 class="text-lg font-semibold mb-3">🎨 Style Catalog</h1>
 
       <div class="flex gap-1.5 mb-4">

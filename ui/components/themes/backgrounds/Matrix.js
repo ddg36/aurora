@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Matrix rain — caracteres cayendo estilo Matrix.
 export class Matrix extends Component {
@@ -16,12 +16,13 @@ export class Matrix extends Component {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホ0123456789ABCDEFX<>[]{}|';
+    const PASO = esDispositivoLiviano() ? 26 : 14;
     let W, H, cols, drops;
 
     const resize = () => {
       W = canvas.width = window.innerWidth;
       H = canvas.height = window.innerHeight;
-      cols = Math.floor(W / 14);
+      cols = Math.floor(W / PASO);
       drops = Array.from({ length: cols }, () => Math.random() * -50);
     };
 
@@ -33,16 +34,16 @@ export class Matrix extends Component {
 
       for (let i = 0; i < cols; i++) {
         const char = CHARS[Math.floor(Math.random() * CHARS.length)];
-        const x = i * 14;
-        const y = drops[i] * 14;
+        const x = i * PASO;
+        const y = drops[i] * PASO;
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
         ctx.fillText(char, x, y);
         if (drops[i] > 1) {
           ctx.fillStyle = this.accent.state.hex;
-          ctx.fillText(CHARS[Math.floor(Math.random() * CHARS.length)], x, y - 14);
+          ctx.fillText(CHARS[Math.floor(Math.random() * CHARS.length)], x, y - PASO);
         }
         drops[i]++;
-        if (drops[i] * 14 > H && Math.random() > 0.975) drops[i] = 0;
+        if (drops[i] * PASO > H && Math.random() > 0.975) drops[i] = 0;
       }
       this._raf = requestAnimationFrame(draw);
     };

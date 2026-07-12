@@ -1,6 +1,10 @@
 // Canvas — editor de código + preview, panel lateral de Local
 // Props: code, lang, tab, onTabChange, onCodeChange, onClose
 
+import { copiarTexto } from '../shared/clipboard.js';
+import { Chip, Button } from '../index.js';
+import { TOOLBAR_ROW, TOOLBAR_GROUP, AutoFitChips } from '../shared/iconButton.js';
+
 const { Component } = preact;
 
 function detectLang(code) {
@@ -105,11 +109,10 @@ class CanvasPreview extends Component {
         <div class="flex items-center justify-between px-2 py-1 border-b border-aurora-border flex-shrink-0"
              style="background:color-mix(in srgb,var(--aurora-surface-2) 60%,transparent);">
           <span class="text-[10px] text-aurora-text-dim">Vista previa</span>
-          <button
-            class="text-[10px] text-aurora-text-dim hover:text-aurora-accent cursor-pointer border border-aurora-border bg-aurora-field rounded px-1.5 py-px transition-colors"
+          <${Chip}
             onClick=${() => _preview.openWindow(this.props.code || '')}
             title="Abrir en ventana"
-          >↗ Ventana</button>
+          >↗ Ventana<//>
         </div>
         <div class="flex-1 overflow-hidden" ref=${el => { this.containerRef = el; }}></div>
       </div>
@@ -122,29 +125,22 @@ export function CanvasPanel({ code, lang, tab, onTabChange, onCodeChange, onClos
   const langLabel = detectLang(code);
   const isHtml = langLabel === 'HTML';
 
-  const tabBtn = (id, label) => {
-    const active = tab === id;
-    const cls = [
-      'px-3 py-1 text-xs font-semibold rounded cursor-pointer border transition-all',
-      active
-        ? 'bg-aurora-accent/15 border-aurora-accent text-aurora-accent'
-        : 'bg-aurora-field border-aurora-border text-aurora-text-dim hover:text-aurora-text hover:border-aurora-accent/25',
-    ].join(' ');
-    return html`<button class=${cls} onClick=${() => onTabChange(id)}>${label}</button>`;
-  };
-
-  const toolBtn = (title, icon, onClick) => html`
-    <button
-      class="bg-aurora-field border border-aurora-border text-aurora-text-dim rounded px-2 py-0.5 text-xs cursor-pointer transition-colors hover:text-aurora-text hover:border-aurora-accent"
-      title=${title}
-      onClick=${onClick}
-    >${icon}</button>
+  const tabBtn = (id, label) => html`
+    <${Chip} active=${tab === id} onClick=${() => onTabChange(id)}>${label}<//>
   `;
 
-  const copy = () => {
+  const toolChip = (title, label, onClick) => html`
+    <${Chip} title=${title} onClick=${onClick}>${label}<//>
+  `;
+
+  const toolIconBtn = (title, icon, onClick) => html`
+    <${Button} iconOnly title=${title} onClick=${onClick}>${icon}<//>
+  `;
+
+  const copy = async () => {
     if (!code.trim()) return;
-    navigator.clipboard.writeText(code);
-    Toast.show('Copiado', 'info', 1200);
+    const ok = await copiarTexto(code);
+    Toast.show(ok ? 'Copiado' : 'No se pudo copiar', ok ? 'info' : 'error', 1200);
   };
 
   return html`
@@ -152,19 +148,17 @@ export function CanvasPanel({ code, lang, tab, onTabChange, onCodeChange, onClos
          style="background:color-mix(in srgb,var(--aurora-bg) 40%,transparent);backdrop-filter:blur(8px);">
 
       <!-- header -->
-      <div class="flex items-center justify-between px-2.5 py-1.5 border-b border-aurora-border flex-shrink-0 gap-2"
+      <div class=${TOOLBAR_ROW + ' px-2.5 py-1.5 border-b border-aurora-border flex-shrink-0'}
            style="background:color-mix(in srgb,var(--aurora-surface-2) 60%,transparent); min-height:36px;">
-        <div class="flex gap-1">
+        <${AutoFitChips} class=${TOOLBAR_GROUP}>
           ${tabBtn('codigo', 'Código')}
           ${tabBtn('vista', 'Vista previa')}
-        </div>
-        <div class="flex items-center gap-1.5">
-          <span class="text-[9px] font-bold text-aurora-text-muted bg-aurora-field border border-aurora-border px-1.5 py-px rounded-full uppercase tracking-wide">
-            ${langLabel}
-          </span>
-          ${onSendToAI && toolBtn('Enviar al AI', '↑ AI', () => onSendToAI(code))}
-          ${toolBtn('Copiar código', '⎘', copy)}
-          ${toolBtn('Cerrar canvas', '✕', onClose)}
+        <//>
+        <div class=${TOOLBAR_GROUP}>
+          ${langLabel && html`<${Chip} variant="dim">${langLabel}<//>`}
+          ${onSendToAI && toolChip('Enviar al AI', '↑ AI', () => onSendToAI(code))}
+          ${toolIconBtn('Copiar código', '⎘', copy)}
+          ${toolIconBtn('Cerrar canvas', '✕', onClose)}
         </div>
       </div>
 

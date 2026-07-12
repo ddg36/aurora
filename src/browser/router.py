@@ -6,8 +6,10 @@ GET  /nav/stream/{id} — SSE con log en tiempo real
 """
 
 import asyncio
+import importlib.util
 import json
 import logging
+import pathlib
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator
 
@@ -38,6 +40,15 @@ class RunBody:
 
 
 _run_agent_fn = None
+
+
+def browser_use_disponible() -> bool:
+    """browser_use instalado en el venv, o vendoreado en ../browser-use
+    (mismo path que agrega _do_import). Lo usa /health para que la UI
+    pueda avisar antes de que el usuario dispare una navegación muerta."""
+    if importlib.util.find_spec("browser_use") is not None:
+        return True
+    return (pathlib.Path(__file__).resolve().parents[4] / "browser-use" / "browser_use").exists()
 
 
 async def _run_agent_task(uid: int, sesion_id: int, objetivo: str, max_steps: int) -> None:
@@ -87,6 +98,8 @@ async def _run_agent_task(uid: int, sesion_id: int, objetivo: str, max_steps: in
 
 @post("/nav/run", guards=[auth_guard])
 async def nav_run(request: Request, data: RunBody) -> dict:
+    if not browser_use_disponible():
+        return {"ok": False, "error": "WebNavigator no instalado: pip install browser-use (trae Playwright/Chromium)"}
     uid = request.state.usuario_id
     db = await get_db()
 

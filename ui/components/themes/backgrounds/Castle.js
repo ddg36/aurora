@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 export class Castle extends Component {
   constructor(props) {
@@ -20,7 +20,7 @@ export class Castle extends Component {
 
     // ── Estrellas ─────────────────────────────────────────────────────────────
     const makeStars = () => {
-      stars = Array.from({ length: 180 }, () => ({
+      stars = Array.from({ length: esDispositivoLiviano() ? 45 : 180 }, () => ({
         x:     Math.random() * W,
         y:     Math.random() * H * 0.65,
         r:     0.3 + Math.random() * 1.2,
@@ -57,7 +57,7 @@ export class Castle extends Component {
     const resize = () => {
       W = canvas.width  = canvas.offsetWidth  || window.innerWidth;
       H = canvas.height = canvas.offsetHeight || window.innerHeight;
-      bats = Array.from({ length: 10 }, makeBat);
+      bats = Array.from({ length: esDispositivoLiviano() ? 4 : 10 }, makeBat);
       makeStars();
       makeFog();
     };

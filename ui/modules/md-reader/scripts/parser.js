@@ -526,7 +526,7 @@ function renderMarkdownBody(body, offset, path, fileIndex, headingIndex) {
         rows.push(`<tr data-md-line="${offset + i + 1}">${(cells.length ? cells : headers.map(() => '')).map(c => `<td>${inlineMarkdown(c, path, fileIndex, headingIndex)}</td>`).join('')}</tr>`);
         i++;
       }
-      parts.push(`<table class="markdown-table" data-md-line="${lineNo}"><thead><tr>${headers.map(h => `<th>${inlineMarkdown(h, path, fileIndex, headingIndex)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`);
+      parts.push(`<div class="markdown-table-wrap"><table class="markdown-table" data-md-line="${lineNo}"><thead><tr>${headers.map(h => `<th>${inlineMarkdown(h, path, fileIndex, headingIndex)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`);
       continue;
     }
 

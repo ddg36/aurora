@@ -110,8 +110,8 @@ export function TeamRolesEditor({ onClose }) {
               <div class="text-sm font-semibold text-aurora-text">${r.nombre}</div>
               ${r.prompt_template && html`<div class="text-[9px] text-aurora-text-dim truncate">${r.prompt_template.slice(0, 60)}…</div>`}
             </div>
-            <button class="text-[10px] text-aurora-text-dim hover:text-aurora-text px-1" onClick=${() => moveUp(idx)} disabled=${idx === 0}>▲</button>
-            <button class="text-[10px] text-aurora-text-dim hover:text-aurora-text px-1" onClick=${() => moveDown(idx)} disabled=${idx === roles.length - 1}>▼</button>
+            <${Button} iconOnly onClick=${() => moveUp(idx)} disabled=${idx === 0} title="Subir">▲<//>
+            <${Button} iconOnly onClick=${() => moveDown(idx)} disabled=${idx === roles.length - 1} title="Bajar">▼<//>
             <${Button} size="sm" onClick=${() => startEdit(r)}>✏</${Button}>
             <${Button} size="sm" variant="danger" onClick=${() => remove(r.id)}>🗑</${Button}>
           </div>

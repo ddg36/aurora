@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 // Glitch — pantalla rota con artefactos digitales y scanlines.
 export class Glitch extends Component {
@@ -24,7 +24,8 @@ export class Glitch extends Component {
 
     const drawScanlines = () => {
       ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      for (let y = 0; y < H; y += 4) {
+      const paso = esDispositivoLiviano() ? 10 : 4;
+      for (let y = 0; y < H; y += paso) {
         ctx.fillRect(0, y, W, 2);
       }
     };
@@ -53,7 +54,7 @@ export class Glitch extends Component {
 
     const drawNoise = () => {
       const [ar, ag, ab] = this.accent.state?.rgb ?? this.accent.rgb ?? [6, 182, 212];
-      const pixels = Math.floor(W * H * 0.002);
+      const pixels = Math.floor(W * H * (esDispositivoLiviano() ? 0.0005 : 0.002));
       for (let i = 0; i < pixels; i++) {
         const x = Math.random() * W;
         const y = Math.random() * H;

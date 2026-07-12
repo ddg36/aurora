@@ -63,16 +63,23 @@ async def stt(
     src.write(raw)
     src.close()
     dst = src.name + ".wav"
-    proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", "-y", "-i", src.name, "-ar", "16000", "-ac", "1", dst,
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-    )
-    await proc.wait()
-    os.unlink(src.name)
-    if proc.returncode != 0 or not os.path.exists(dst):
-        raise HTTPException(status_code=422, detail="ffmpeg no pudo convertir el audio")
+
+    def _limpiar():
+        for p in (src.name, dst):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
 
     try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-i", src.name, "-ar", "16000", "-ac", "1", dst,
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+        if proc.returncode != 0 or not os.path.exists(dst):
+            raise HTTPException(status_code=422, detail="ffmpeg no pudo convertir el audio")
+
         modelo = await _get_modelo()
         loop = asyncio.get_event_loop()
 
@@ -83,7 +90,10 @@ async def stt(
 
         texto, idioma = await loop.run_in_executor(None, _transcribir)
     finally:
-        os.unlink(dst)
+        # cubre TODOS los caminos (ffmpeg falla, modelo falla, éxito) — antes
+        # el src temp sólo se borraba en el happy path y dst quedaba huérfano
+        # si ffmpeg fallaba.
+        _limpiar()
 
     return {"text": texto, "language": idioma}
 

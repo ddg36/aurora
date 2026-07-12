@@ -1,3 +1,6 @@
+import { copiarTexto } from '../../../components/shared/clipboard.js';
+import { Button, Chip, AutoFitChips } from '../../../components/index.js';
+
 const html = (...args) => globalThis.html(...args);
 const { useEffect, useState } = globalThis.preactHooks;
 
@@ -29,8 +32,8 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
   // backend no puede tocar el clipboard del usuario, así que lo hace acá
   // apenas se abre el overlay, replicando esa misma UX inmediata.
   useEffect(() => {
-    if (comando === 'copy' && data?.copiar && navigator.clipboard) {
-      navigator.clipboard.writeText(data.texto || '').then(() => setCopiado(true)).catch(() => {});
+    if (comando === 'copy' && data?.copiar) {
+      copiarTexto(data.texto || '').then(ok => setCopiado(ok));
     }
   }, [comando, data]);
 
@@ -43,7 +46,7 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
       <div class="comando-overlay-card" onClick=${e => e.stopPropagation()}>
         <div class="comando-overlay-header">
           <span>${ICONOS[comando] || '⚙️'} ${tituloDe(comando)}</span>
-          <button class="comando-overlay-close" onClick=${onClose} title="Cerrar (Esc)">✕</button>
+          <${Button} iconOnly onClick=${onClose} title="Cerrar (Esc)">✕<//>
         </div>
         <div class="comando-overlay-body">
           ${aplicando && html`<div class="comando-overlay-aplicando">Aplicando…</div>`}
@@ -88,27 +91,19 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
           ${!aplicando && comando === 'settings' && html`
             <div>
               <div class="comando-overlay-subtitulo">Thinking level</div>
-              <div class="comando-overlay-chips">
+              <${AutoFitChips}>
                 ${data.niveles.map(nivel => html`
-                  <button
-                    key=${nivel}
-                    class=${'comando-overlay-chip' + (nivel === data.thinkingActual ? ' comando-overlay-chip--actual' : '')}
-                    onClick=${() => onAction('settings', nivel)}
-                  >${nivel}</button>
+                  <${Chip} key=${nivel} active=${nivel === data.thinkingActual} onClick=${() => onAction('settings', nivel)}>${nivel}<//>
                 `)}
-              </div>
+              <//>
               ${(data.opciones || []).map(op => html`
                 <div key=${op.id}>
                   <div class="comando-overlay-subtitulo">${op.label}</div>
-                  <div class="comando-overlay-chips">
+                  <${AutoFitChips}>
                     ${op.valores.map(v => html`
-                      <button
-                        key=${v}
-                        class=${'comando-overlay-chip' + (v === op.actual ? ' comando-overlay-chip--actual' : '')}
-                        onClick=${() => onAction('settings', `${op.id}:${v}`)}
-                      >${v}</button>
+                      <${Chip} key=${v} active=${v === op.actual} onClick=${() => onAction('settings', `${op.id}:${v}`)}>${v}<//>
                     `)}
-                  </div>
+                  <//>
                 </div>
               `)}
             </div>
@@ -137,7 +132,7 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
         </div>
         ${!interactive && html`
           <div class="comando-overlay-footer">
-            <button class="comando-overlay-btn" onClick=${onClose}>Cerrar</button>
+            <${Chip} onClick=${onClose}>Cerrar<//>
           </div>
         `}
       </div>

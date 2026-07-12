@@ -17,6 +17,7 @@
 @import './graph.css';
 
 @import './globals/utilities-lite.css';
+@import './globals/mobile.css';
 
 @import './lyra/lyra.css';
 

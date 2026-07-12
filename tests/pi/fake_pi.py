@@ -12,7 +12,7 @@ def out(obj):
 
 state = {"n": 1, "session_name": None, "auto_compaction": True,
          "steering_mode": "one-at-a-time", "follow_up_mode": "one-at-a-time",
-         "thinking_level": "medium"}
+         "thinking_level": "medium", "model": None}
 
 
 def session():
@@ -39,6 +39,22 @@ for linea in sys.stdin:
         out({"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": " después"}})
         out({"type": "agent_end", "messages": []})
 
+    elif t == "prompt" and cmd.get("message") == "TEST_TOOLS_PARALELOS":
+        # Regresión: 2+ llamadas a la MISMA tool en un turno (ej. varios
+        # "bash" pedidos en paralelo) — toolCallId es lo único que las
+        # distingue, 'toolName' es igual para ambas. Both starts ANTES de
+        # cualquier end (simula dispatch paralelo real), y los resultados
+        # llegan en orden INVERSO al de inicio (c2 termina antes que c1).
+        out({"id": cid, "type": "response", "command": "prompt", "success": True})
+        out({"type": "agent_start"})
+        out({"type": "tool_execution_start", "toolCallId": "c1", "toolName": "bash", "args": {"command": "uno"}})
+        out({"type": "tool_execution_start", "toolCallId": "c2", "toolName": "bash", "args": {"command": "dos"}})
+        out({"type": "tool_execution_end", "toolCallId": "c2", "toolName": "bash",
+             "result": {"content": [{"type": "text", "text": "RESULTADO_DOS"}]}, "isError": False})
+        out({"type": "tool_execution_end", "toolCallId": "c1", "toolName": "bash",
+             "result": {"content": [{"type": "text", "text": "RESULTADO_UNO"}]}, "isError": False})
+        out({"type": "agent_end", "messages": []})
+
     elif t == "prompt":
         out({"id": cid, "type": "response", "command": "prompt", "success": True})
         out({"type": "agent_start"})
@@ -52,7 +68,7 @@ for linea in sys.stdin:
 
     elif t == "get_state":
         out({"id": cid, "type": "response", "command": "get_state", "success": True,
-             "data": {**session(), "model": None, "isStreaming": False,
+             "data": {**session(), "model": state["model"], "isStreaming": False,
                        "thinkingLevel": state["thinking_level"],
                        "sessionName": state["session_name"],
                        "autoCompactionEnabled": state["auto_compaction"],
@@ -111,6 +127,7 @@ for linea in sys.stdin:
              "data": {"userMessages": 2, "assistantMessages": 2, "toolCalls": 1, "toolResults": 1,
                        "totalMessages": 4,
                        "tokens": {"input": 100, "output": 50, "cacheRead": 0, "cacheWrite": 0, "total": 150},
+                       "contextUsage": {"percent": 7.4, "contextWindow": 200000},
                        "cost": 0.0123}})
 
     elif t == "get_last_assistant_text":
@@ -122,8 +139,9 @@ for linea in sys.stdin:
              "data": {"text": "hola", "cancelled": False}})
 
     elif t == "cycle_model":
+        state["model"] = {"id": "otro-modelo", "provider": "lm-studio"}
         out({"id": cid, "type": "response", "command": "cycle_model", "success": True,
-             "data": {"model": {"id": "otro-modelo", "provider": "lm-studio"}}})
+             "data": {"model": state["model"]}})
 
     elif t == "set_model" and cmd.get("modelId") == "modelo-que-falla":
         # Regresión: bridge.py marcaba éxito sin mirar esto.
@@ -131,6 +149,7 @@ for linea in sys.stdin:
              "error": "Model not found: prueba/modelo-que-falla"})
 
     elif t == "set_model":
+        state["model"] = {"id": cmd.get("modelId"), "provider": cmd.get("provider")}
         out({"id": cid, "type": "response", "command": "set_model", "success": True})
 
     elif t == "new_session":
@@ -143,12 +162,15 @@ for linea in sys.stdin:
              "data": {"cancelled": False}})
 
     elif t == "get_available_models":
+        # 'input' replica el schema real de pi (pi-ai/types.d.ts: Model.input
+        # es ("text"|"image")[], NO existe 'capabilities') — llamacpp sin
+        # "image" simula un modelo local chico sin soporte de visión.
         out({"id": cid, "type": "response", "command": "get_available_models", "success": True,
              "data": {"models": [
-                 {"id": "llamacpp", "name": "llamacpp", "provider": "llama-cpp"},
-                 {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "provider": "anthropic"},
-                 {"id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5 (pinned)", "provider": "anthropic"},
-                 {"id": "modelo-que-falla", "name": "Modelo que falla", "provider": "prueba"},
+                 {"id": "llamacpp", "name": "llamacpp", "provider": "llama-cpp", "input": ["text"]},
+                 {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "provider": "anthropic", "input": ["text", "image"]},
+                 {"id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5 (pinned)", "provider": "anthropic", "input": ["text", "image"]},
+                 {"id": "modelo-que-falla", "name": "Modelo que falla", "provider": "prueba", "input": ["text"]},
              ]}})
 
     elif t == "abort":

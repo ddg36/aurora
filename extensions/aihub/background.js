@@ -28,11 +28,24 @@ async function _fetchToken() {
   } catch { return null; }
 }
 
+async function _ensureToken() {
+  if (!_auroraToken) _auroraToken = await _fetchToken();
+  return _auroraToken;
+}
+
+// Headers con token — el servidor exige Bearer en todo salvo /health e init.
+function _hdrs() {
+  const h = { 'Content-Type': 'application/json' };
+  if (_auroraToken) h.Authorization = 'Bearer ' + _auroraToken;
+  return h;
+}
+
 async function connectExtWs() {
   if (_extWs && _extWs.readyState <= 1) return;
   if (!_auroraToken) _auroraToken = await _fetchToken();
   try {
-    _extWs = new WebSocket(AURORA_WS);
+    // Token también por query: el guard del server valida el WS antes del HELLO.
+    _extWs = new WebSocket(AURORA_WS + '?token=' + encodeURIComponent(_auroraToken || ''));
     _extWs.onopen = () => {
       console.log('[BG] ext/ws connected');
       _extWs.send(JSON.stringify({
@@ -251,7 +264,7 @@ async function notifyTabChange(tabId) {
     // También POST REST como fallback
     fetch(AURORA + '/ext/tab-change', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: _hdrs(),
       body: JSON.stringify(payload),
     }).catch(() => {});
   } catch (_) {}
@@ -323,6 +336,23 @@ chrome.runtime.onConnect.addListener(port => {
 // ─── MENSAJES ─────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
+  // ── LLM_SESSION_URL ────────────────────────────────────
+  // session-sniffer.js (iframes de LLM cloud): persiste la última URL de
+  // conversación por host — Aurora restaura ese hilo al reabrir LLM Cloud.
+  if (msg.type === 'LLM_SESSION_URL') {
+    try {
+      const host = new URL(msg.url).host;
+      // _ensureToken(): el SW MV3 despierta por este mensaje con _auroraToken
+      // en null — _hdrs() directo mandaría el PUT sin Bearer → 401 silencioso.
+      _ensureToken().then(() => fetch(AURORA + '/db/llm/history', {
+        method: 'PUT',
+        headers: _hdrs(),
+        body: JSON.stringify({ slot: 'sniffer', ai_id: host, url: msg.url }),
+      })).catch(() => {});
+    } catch (_) {}
+    return;
+  }
+
   // ── AIHUB_PROTOCOL_RUN ─────────────────────────────────
   // Fallback desde content scripts dentro de iframes cloud:
   // iframe → runtime → sidepanel. Mantiene postMessage como camino principal.
@@ -367,26 +397,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   // ── NEXUS_EXECUTE ─────────────────────────────────────
+  // Endpoint real del server: POST /nexus/shell/run {cmd, cwd}
+  // (el viejo /nexus/run-shell no existe en aurora v2).
   if (msg.type === 'NEXUS_EXECUTE') {
-    fetch(AURORA + '/nexus/run-shell', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id:    'aihub_' + Date.now(),
-        cmd:   msg.command,
-        shell: 'bash'
-      }),
-      signal: AbortSignal.timeout(35000)
-    })
+    _ensureToken()
+      .then(() => fetch(AURORA + '/nexus/shell/run', {
+        method:  'POST',
+        headers: _hdrs(),
+        body: JSON.stringify({
+          cmd: msg.command,
+          origin: { kind: 'extension', id: 'aihub' },
+        }),
+        signal: AbortSignal.timeout(35000)
+      }))
       .then(r => r.json())
       .then(d => {
-        const res = d.result || {};
         sendResponse({
-          success:    d.ok && res.ok !== false,
-          stdout:     res.stdout || '',
-          stderr:     res.stderr || '',
-          returncode: res.code ?? (d.ok ? 0 : 1),
-          error:      d.error || res.error || ''
+          success:    d.ok === true,
+          stdout:     d.stdout || '',
+          stderr:     d.stderr || '',
+          returncode: d.code ?? (d.ok ? 0 : 1),
+          error:      d.error || ''
         });
       })
       .catch(err => sendResponse({ success: false, error: err.message }));
@@ -507,9 +538,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const text = result[0].result;
         const tabInfo = { title: tab.title, url: tab.url };
         // Push al servidor para procesamiento/historial
+        await _ensureToken();
         fetch(AURORA + '/ext/capture', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: _hdrs(),
           body: JSON.stringify({ tipo: 'page', content: text, tab: tabInfo, ts: Date.now() }),
         }).catch(() => {});
         sendResponse({ success: true, data: text, tab: tabInfo });
@@ -1515,7 +1547,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // ── BOLD (Neural HUD) ──────────────────────────────────
   if (msg.type === 'AURORA_BOLD_GET_CONFIG') {
-    fetch(AURORA + '/db/extensions/bold')
+    _ensureToken()
+      .then(() => fetch(AURORA + '/db/extensions/bold', { headers: _hdrs() }))
       .then(r => r.json())
       .then(d => sendResponse({ ok: true, config: d.config || {} }))
       .catch(err => sendResponse({ ok: false, error: err.message }));
@@ -1523,11 +1556,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'AURORA_BOLD_SET_CONFIG') {
-    fetch(AURORA + '/db/extensions/bold', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: msg.enabled !== false, config: msg.config || {} }),
-    })
+    _ensureToken()
+      .then(() => fetch(AURORA + '/db/extensions/bold', {
+        method: 'PUT',
+        headers: _hdrs(),
+        body: JSON.stringify({ enabled: msg.enabled !== false, config: msg.config || {} }),
+      }))
       .then(r => r.json())
       .then(() => sendResponse({ ok: true }))
       .catch(err => sendResponse({ ok: false, error: err.message }));

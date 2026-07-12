@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 export class Hellfire extends Component {
   constructor(props) {
@@ -101,16 +101,22 @@ export class Hellfire extends Component {
       return out;
     };
 
+    // Celu/tablet (pointer:coarse): 1/4 de partículas — GPU mucho más
+    // débil que una PC, 262 elementos/frame (22 bases + 40 partículas +
+    // 200 brasas) tira el framerate a 5-10fps (reportado en vivo).
+    const liviano = esDispositivoLiviano();
+    const escala = liviano ? 0.25 : 1;
+
     let embers, bases;
     const init = () => {
       resize();
-      const N = 22;
+      const N = Math.max(4, Math.round(22 * escala));
       bases = Array.from({ length: N }, (_, i) => ({
         ...makeBase(),
         x: (W / N) * i + (W / N) * (0.1 + Math.random() * 0.8),
       }));
-      particles = Array.from({ length: 40 }, () => makeParticle(true));
-      embers    = Array.from({ length: 200 }, () => makeEmber(true));
+      particles = Array.from({ length: Math.max(6, Math.round(40 * escala)) }, () => makeParticle(true));
+      embers    = Array.from({ length: Math.max(20, Math.round(200 * escala)) }, () => makeEmber(true));
     };
 
     const CEIL = 0.92; // no pasan del 92% de altura — solo el 8% inferior

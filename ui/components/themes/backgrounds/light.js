@@ -541,7 +541,7 @@ class LightBackground extends Component {
         for (let i = 0; i < 8; i++) {
           const x = ((i * 230 + t * (18 + i)) % (W + 420)) - 210;
           const y = H * (.18 + (i % 5) * .14);
-          cloud(ctx, x, y, 220 + i * 18, 58 + i * 5, `rgba(${edgeDim[0]},${edgeDim[1]},${edgeDim[2]},ALPHA)`, .18);
+          cloud(ctx, x, y, 220 + i * 18, 58 + i * 5, theme, .18, t, i);
         }
         drawDust(ctx, this.items, t, W, H, edgeDim, { speed: .45 });
       } else if (variant === 'ravens') {
@@ -582,7 +582,7 @@ class LightBackground extends Component {
       } else if (variant === 'lava') {
         bg('#ffffff', rgba(mix(edgeDim, [255, 255, 255], .82), .62), '#ffffff');
         for (let i = 0; i < 10; i++) {
-          cloud(ctx, W * (i / 9), H * (.78 + Math.sin(t + i) * .04), 130 + i * 16, 34 + i * 3, `rgba(${edgeDim[0]},${edgeDim[1]},${edgeDim[2]},ALPHA)`, .12);
+          cloud(ctx, W * (i / 9), H * (.78 + Math.sin(t + i) * .04), 130 + i * 16, 34 + i * 3, theme, .12, t, i);
         }
         ctx.strokeStyle = rgba(edgeDim, .16);
         ctx.lineWidth = 2;
@@ -611,7 +611,7 @@ class LightBackground extends Component {
         }
       } else if (variant === 'moonlit') {
         bg('#ffffff', rgba(mix(accent, [255, 255, 255], .90), .72), '#ffffff');
-        cloud(ctx, W * .72, H * .2, W * .22, H * .1, `rgba(${accent[0]},${accent[1]},${accent[2]},ALPHA)`, .28);
+        cloud(ctx, W * .72, H * .2, W * .22, H * .1, theme, .28, t, 0);
         for (const l of this.items) {
           l.y += l.vy;
           if (l.y > H + 20) { l.y = -20; l.x = Math.random() * W; }

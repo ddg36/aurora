@@ -6,6 +6,8 @@ import { crearAutosave } from '../../../components/shared/autosave.js';
 import { setViewActions, clearViewActions } from '../../../components/footer/registry.js';
 import { getJSON } from '../../../components/shared/api.js';
 import { FileTree } from '../../../components/shared/FileTree.js';
+import { SplitPane } from '../../../components/shared/SplitPane.js';
+import { Button, Chip } from '../../../components/index.js';
 
 export default function Wiki() {
   const [raiz, setRaiz] = useState([]);
@@ -115,18 +117,15 @@ export default function Wiki() {
   }, [archivo, preview, buscando]);
 
   return html`
-    <div class="flex h-full">
-      <aside class="w-56 border-r border-white/5 p-2 overflow-y-auto shrink-0">
+    <${SplitPane} sidebarClassName="p-2" sidebar=${html`
         <div class="flex items-center gap-1 mb-2">
           <span class="text-xs font-semibold flex-1">📖 Wiki</span>
-          <button onClick=${nuevoArchivo} title="Nuevo archivo" class="text-xs px-1.5 rounded hover:bg-white/10">＋</button>
-          <button onClick=${nuevaCarpeta} title="Nueva carpeta" class="text-xs px-1.5 rounded hover:bg-white/10">📁</button>
+          <${Button} iconOnly onClick=${nuevoArchivo} title="Nuevo archivo">＋<//>
+          <${Button} iconOnly onClick=${nuevaCarpeta} title="Nueva carpeta">📁<//>
         </div>
         <${FileTree} entries=${raiz} abierto=${abierto} onToggle=${toggle} onOpen=${abrir} seleccion=${archivo} loadChildren=${listar} />
         ${raiz.length === 0 && html`<div class="text-xs text-white/30 p-2">Wiki vacía</div>`}
-      </aside>
-
-      <div class="flex-1 flex flex-col min-w-0">
+      `}>
         ${buscando && html`
           <div class="border-b border-white/5 p-2 bg-black/20">
             <input autofocus
@@ -153,11 +152,11 @@ export default function Wiki() {
           <div class="flex items-center gap-2 px-3 py-1.5 border-b border-white/5 text-xs">
             <span class="text-white/60 truncate flex-1">${archivo.replace(WIKI_ROOT + '/', '')}</span>
             <span class="text-white/30">${sucio ? '● sin guardar' : msg}</span>
-            <button onClick=${() => setPreview(!preview)} class=${`px-2 py-0.5 rounded ${preview ? 'bg-white/15' : 'hover:bg-white/10 text-white/50'}`}>👁 preview</button>
-            <button onClick=${renombrar} class="px-2 py-0.5 rounded hover:bg-white/10 text-white/50">✎</button>
-            <button onClick=${borrarActual} class="px-2 py-0.5 rounded hover:bg-white/10 text-red-400/60">🗑</button>
+            <${Chip} active=${preview} onClick=${() => setPreview(!preview)}>👁 preview<//>
+            <${Button} iconOnly onClick=${renombrar} title="Renombrar">✎<//>
+            <${Button} iconOnly variant="danger" onClick=${borrarActual} title="Borrar">🗑<//>
           </div>
-          <div class="flex-1 flex min-h-0">
+          <div class="flex-1 flex flex-col md:flex-row min-h-0">
             <textarea
               class="flex-1 bg-transparent p-3 text-xs font-mono outline-none resize-none text-white/80"
               value=${contenido}
@@ -165,7 +164,7 @@ export default function Wiki() {
               spellcheck="false"
             />
             ${preview && html`
-              <div class="flex-1 border-l border-white/5 p-3 overflow-y-auto text-sm"
+              <div class="flex-1 border-t md:border-t-0 md:border-l border-white/5 p-3 overflow-y-auto text-sm"
                 dangerouslySetInnerHTML=${{ __html: renderMarkdown(contenido) }} />
             `}
           </div>
@@ -174,7 +173,6 @@ export default function Wiki() {
             Seleccioná un archivo o creá uno nuevo
           </div>
         `}
-      </div>
-    </div>
+      </${SplitPane}>
   `;
 }

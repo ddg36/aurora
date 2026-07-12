@@ -8,7 +8,10 @@ import asyncio
 import itertools
 import json
 import logging
+import os
 import pathlib
+
+from db.auth import TOKEN_INTERNO
 
 from . import config
 
@@ -29,12 +32,19 @@ class PiProceso:
 
     @staticmethod
     def _argv_default() -> list[str]:
-        return [
-            config.RUNTIME, config.PI_BIN,
-            '--mode', 'rpc',
-            '--session-dir', config.SESSION_DIR,
-            *config.EXTRA_ARGS,
-        ]
+        if config.PI_BIN.lower().endswith(('.cmd', '.bat')):
+            # Windows: CreateProcess no ejecuta shims .cmd/.bat directo —
+            # van vía cmd.exe, y el shim ya trae su propio runtime.
+            argv = ['cmd', '/c', config.PI_BIN, '--mode', 'rpc']
+        else:
+            argv = [config.RUNTIME, config.PI_BIN, '--mode', 'rpc']
+        if config.SESSION_DIR:
+            # Sólo si se pidió explícito en config/llm.toml — sin esto pi
+            # usa su default real (~/.pi/agent/sessions/), igual que correr
+            # `pi` a mano.
+            argv += ['--session-dir', config.SESSION_DIR]
+        argv += config.EXTRA_ARGS
+        return argv
 
     @property
     def vivo(self) -> bool:
@@ -47,13 +57,26 @@ class PiProceso:
             await self._spawn()
 
     async def _spawn(self):
-        pathlib.Path(config.SESSION_DIR).mkdir(parents=True, exist_ok=True)
+        if config.SESSION_DIR:
+            pathlib.Path(config.SESSION_DIR).mkdir(parents=True, exist_ok=True)
         self.proc = await asyncio.create_subprocess_exec(
             *self.argv,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=self.cwd,
+            # aurora-tools.ts autentica contra Aurora con este token efímero;
+            # sin él, el guard global (post-auditoría) devuelve 401 a las tools.
+            env={**os.environ, 'AURORA_TOKEN': TOKEN_INTERNO},
+            # get_available_models (y otras respuestas grandes) superan
+            # los 64KB default de StreamReader — readline() tira
+            # LimitOverrunError sin consumir el buffer, así que el loop de
+            # _leer_stdout queda repitiendo el mismo error para siempre:
+            # pi sigue vivo pero Aurora nunca vuelve a leer nada de él
+            # (cualquier RPC posterior cuelga 30s). pi (docs/rpc.md) no
+            # documenta ningún límite de línea — el cliente de ejemplo
+            # bufferea sin tope.
+            limit=1024 * 1024 * 16,
         )
         self.generacion += 1
         self._tareas = [
@@ -99,10 +122,25 @@ class PiProceso:
         self._futuros.clear()
 
     async def _despachar(self, msg: dict):
-        if msg.get('type') == 'response' and msg.get('id') in self._futuros:
-            fut = self._futuros.pop(msg['id'])
-            if not fut.done():
-                fut.set_result(msg)
+        if msg.get('type') == 'response':
+            if msg.get('id') in self._futuros:
+                fut = self._futuros.pop(msg['id'])
+                if not fut.done():
+                    fut.set_result(msg)
+                return
+            # Respuesta real de pi para un id que pedir() ya dejó de esperar
+            # (encontrado en vivo con /fork: pi contesta success:true, pero
+            # Aurora ya se había rendido — bajo qué condición exacta pedir()
+            # se rinde antes de que llegue esta línea no se pudo reproducir
+            # aislado, ni siquiera simulando llamadas concurrentes de
+            # get_session_stats — sólo pasa en el motor compartido real).
+            # Antes esto cascaba en silencio total a on_event() de abajo, que
+            # tampoco hace nada con type='response' — se perdía sin dejar
+            # rastro. Bug real, root cause no confirmado — este log es lo
+            # mínimo para no seguir a ciegas la próxima vez que pase.
+            log.warning('pi respuesta huérfana (pedir() ya no la esperaba): '
+                        'id=%s command=%s success=%s', msg.get('id'),
+                        msg.get('command'), msg.get('success'))
             return
         if self.on_event:
             try:

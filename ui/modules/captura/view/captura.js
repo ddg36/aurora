@@ -14,6 +14,7 @@ import {
   Button,
   Chip,
   ChipGroup,
+  Disclosure,
   Dropdown,
   DropdownItem,
   List,
@@ -139,16 +140,7 @@ function ChapterPanel({ chapters, isOpen, onToggle, onJump }) {
 
   return html`
     <${Panel}>
-      <button
-        type="button"
-        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-aurora-text-muted transition-colors hover:bg-aurora-surface-hover"
-        onClick=${onToggle}
-      >
-        <span>📑 Capítulos detectados</span>
-        <span class="rounded-full bg-aurora-accent/15 px-2 py-0.5 text-[9px] font-bold text-aurora-accent">${chapters.length}</span>
-        <span class="ml-auto text-[9px] opacity-50">${isOpen ? '▲' : '▼'}</span>
-      </button>
-      ${isOpen && html`
+      <${Disclosure} open=${isOpen} onToggle=${onToggle} icon="📑" title="Capítulos detectados" count=${chapters.length}>
         <${PanelBody} noPadding class="p-1 max-h-[200px] overflow-y-auto">
           <${List}>
             ${chapters.map(ch => html`
@@ -162,7 +154,7 @@ function ChapterPanel({ chapters, isOpen, onToggle, onJump }) {
             `)}
           </${List}>
         </${PanelBody}>
-      `}
+      </${Disclosure}>
     </${Panel}>
   `;
 }
@@ -256,7 +248,7 @@ function ResultadoTexto({ content, onChange, onCopy, onClear, tipoCaptura, toolR
     setToolResult(null);
     onClearToolFollowUps?.();
     toolResultRef.current = '';
-    Toast.show(`Procesando con Gemita…`, 'info');
+    Toast.show(`Procesando con Lyra…`, 'info');
     try {
       const titulo = extraerTitulo();
       const resultado = await fn(content, titulo, (acumulado) => {
@@ -360,7 +352,7 @@ function ResultadoTexto({ content, onChange, onCopy, onClear, tipoCaptura, toolR
             </${Button}>
           `}
           ${llmBusy && html`
-            <span class="text-[9px] text-aurora-text-dim animate-pulse">Procesando con Gemita…</span>
+            <span class="text-[9px] text-aurora-text-dim animate-pulse">Procesando con Lyra…</span>
           `}
         </${PanelFooter}>
       `}
@@ -452,7 +444,7 @@ export default function Captura() {
       return;
     }
     setStatus({ msg: 'Conectando…', tipo: 'loading' });
-    const sse = new EventSource('/ext/tab-stream');
+    const sse = new EventSource(`/ext/tab-stream?token=${encodeURIComponent(globalThis.AURORA_TOKEN?.() || '')}`);
     sseRef.current = sse;
     sse.onmessage = (e) => {
       try { const t = JSON.parse(e.data); if (t?.url) applyTab(t); } catch {}
@@ -546,7 +538,7 @@ export default function Captura() {
     try {
       const res = await fetch('/tools/ocr', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: globalThis.AURORA_HDRS?.() || { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: preview }),
       });
       const data = await res.json();
@@ -619,10 +611,10 @@ export default function Captura() {
     setChatStreaming('');
     setChatCurrentQuestion(question);
     try {
-      const { sendToGemita } = await import('../../../components/shared/gemita-ws.js');
+      const { sendToLyra } = await import('../../../components/shared/lyra-ws.js');
       const context = `Tengo el siguiente resultado de análisis:\n\n${toolResult}\n\nBasándote en eso, respondé: ${question}`;
       let answer = '';
-      await sendToGemita({
+      await sendToLyra({
         message: context,
         images: imageUrl ? [imageUrl] : undefined,
         system: 'Respondé la pregunta del usuario basándote exclusivamente en el resultado del análisis proporcionado. Sé conciso y directo.',
@@ -686,10 +678,7 @@ export default function Captura() {
       />
 
       ${conExt && html`
-        <button
-          class="flex items-center gap-1 px-2 py-1 text-[9px] text-aurora-text-dim border border-aurora-border rounded-md hover:bg-aurora-surface-hover transition-colors self-start"
-          onClick=${hacerDebugYT}
-        >🔍 Debug ${tipoTab === 'youtube-video' ? 'YouTube' : 'Ext'}</button>
+        <${Chip} class="self-start" onClick=${hacerDebugYT}>🔍 Debug ${tipoTab === 'youtube-video' ? 'YouTube' : 'Ext'}<//>
       `}
 
       ${debugData && html`

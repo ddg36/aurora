@@ -75,19 +75,19 @@ export async function inyectarTextoEnAI(tabId, text, send = false) {
   return res;
 }
 
-// ── Herramientas LLM (Gemita) ────────────────────────────────
+// ── Herramientas LLM (Lyra) ────────────────────────────────
 function truncar(texto, max = 8000) {
   if (!texto) return '';
   return texto.length > max ? texto.slice(0, max) + '\n\n…(truncado)' : texto;
 }
 
 export async function resumirTranscript(transcript, titulo = '', onStream) {
-  const { sendToGemita } = await import('../../../components/shared/gemita-ws.js');
+  const { sendToLyra } = await import('../../../components/shared/lyra-ws.js');
   const tituloStr = titulo ? `Video: "${titulo}"\n` : '';
   const system = 'Sos un asistente útil. Resumí el contenido de forma clara y concisa.';
   const message = `Resumí este transcript de video en 3-5 párrafos cortos. Destacá los puntos principales.\n\n${tituloStr}${truncar(transcript, 8000)}`;
   let result = '';
-  await sendToGemita({
+  await sendToLyra({
     message,
     system,
     onToken: (token) => { result += token; onStream?.(result); },
@@ -96,12 +96,12 @@ export async function resumirTranscript(transcript, titulo = '', onStream) {
 }
 
 export async function puntosClave(transcript, titulo = '', onStream) {
-  const { sendToGemita } = await import('../../../components/shared/gemita-ws.js');
+  const { sendToLyra } = await import('../../../components/shared/lyra-ws.js');
   const tituloStr = titulo ? `Video: "${titulo}"\n` : '';
   const system = 'Sos un asistente útil. Extraé los puntos clave de forma organizada.';
   const message = `Extraé los puntos clave de este transcript. Formato: lista numerada con título corto y una frase de explicación por punto.\n\n${tituloStr}${truncar(transcript, 8000)}`;
   let result = '';
-  await sendToGemita({
+  await sendToLyra({
     message,
     system,
     onToken: (token) => { result += token; onStream?.(result); },
@@ -110,12 +110,12 @@ export async function puntosClave(transcript, titulo = '', onStream) {
 }
 
 export async function traducirTranscript(transcript, idioma, titulo = '', onStream) {
-  const { sendToGemita } = await import('../../../components/shared/gemita-ws.js');
+  const { sendToLyra } = await import('../../../components/shared/lyra-ws.js');
   const tituloStr = titulo ? `Video: "${titulo}"\n` : '';
   const system = `Traducí el contenido al ${idioma} de forma natural, manteniendo el tono y contexto.`;
   const message = `Traducí este transcript al ${idioma}. Mantené los timestamps si los hay.\n\n${tituloStr}${truncar(transcript, 8000)}`;
   let result = '';
-  await sendToGemita({
+  await sendToLyra({
     message,
     system,
     onToken: (token) => { result += token; onStream?.(result); },
@@ -124,12 +124,12 @@ export async function traducirTranscript(transcript, idioma, titulo = '', onStre
 }
 
 export async function notasEstudio(transcript, titulo = '', onStream) {
-  const { sendToGemita } = await import('../../../components/shared/gemita-ws.js');
+  const { sendToLyra } = await import('../../../components/shared/lyra-ws.js');
   const tituloStr = titulo ? `Video: "${titulo}"\n` : '';
   const system = 'Sos un asistente de estudio. Generá notas organizadas para aprender.';
   const message = `Generá notas de estudio para este transcript. Formato: tema principal, explicación con ejemplos, y una sección de "para recordar" al final.\n\n${tituloStr}${truncar(transcript, 8000)}`;
   let result = '';
-  await sendToGemita({
+  await sendToLyra({
     message,
     system,
     onToken: (token) => { result += token; onStream?.(result); },

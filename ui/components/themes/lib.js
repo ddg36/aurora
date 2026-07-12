@@ -119,6 +119,20 @@ const _shared = (() => {
   };
 })();
 
+// Los fondos animados (Hellfire, etc.) dibujan cientos de partículas por
+// frame en canvas 2D vía requestAnimationFrame sin parar — trivial en la
+// GPU de una PC, pero tira el framerate a 5-10fps en celulares (reportado
+// en vivo: "de 60fps en mi PC a 5fps en el celu" corriendo el mismo server
+// por LAN). pointer:coarse detecta touch-primary (celu/tablet) de forma
+// confiable, sin necesidad de parsear user-agent.
+export function esDispositivoLiviano() {
+  try {
+    return matchMedia('(pointer: coarse)').matches || window.innerWidth < 820;
+  } catch (_) {
+    return false;
+  }
+}
+
 export function createAccentWatcher(_defaultHex = '#8b5cf6') {
   const initial = _shared.state;
   const localState = { hex: initial.hex, rgb: initial.rgb };

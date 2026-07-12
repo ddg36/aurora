@@ -1,11 +1,11 @@
-const BASE_WS = `ws://${location.hostname}:7779/gemita`;
+const BASE_WS = `ws://${location.hostname}:7779/lyra`;
 
 function abrirSesion() {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(BASE_WS);
-    const to = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('timeout conectando a gemita')); }, 6000);
+    const to = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('timeout conectando a lyra')); }, 6000);
     ws.addEventListener('open', () => { clearTimeout(to); resolve(ws); }, { once: true });
-    ws.addEventListener('error', () => { clearTimeout(to); reject(new Error('gemita offline')); }, { once: true });
+    ws.addEventListener('error', () => { clearTimeout(to); reject(new Error('lyra offline')); }, { once: true });
   });
 }
 

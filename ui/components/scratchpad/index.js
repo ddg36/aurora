@@ -1,8 +1,8 @@
 import { Button } from '../Button.js';
 import { Chip } from '../Chip.js';
+import { useFloatingMenu, AutoFitChips } from '../shared/iconButton.js';
 
 const { html } = globalThis;
-const { useState, useEffect, useRef } = globalThis.preactHooks;
 
 
 export const SCRATCHPAD_COMMANDS = [
@@ -74,6 +74,8 @@ export function ScratchpadPageShell({
         blocks=${blocks}
         collapsed=${navCollapsed}
         query=${noteQuery}
+        nexusOk=${nexusOk}
+        statusLabel=${statusLabel}
         onToggle=${onToggleNav}
         onQuery=${onNoteQuery}
         onAddBlock=${onAddBlock}
@@ -86,12 +88,9 @@ export function ScratchpadPageShell({
         <div class="sp-cover" aria-hidden="true"></div>
         <div class="sp-document">
           <${ScratchpadTopBar}
-            stats=${stats}
-            statusLabel=${statusLabel}
-            statusTone=${statusTone}
-            nexusOk=${nexusOk}
             createPanelOpen=${createPanelOpen}
             onToggleCreatePanel=${onToggleCreatePanel}
+            nexusOk=${nexusOk}
             onSave=${onSave}
             onPaste=${onPaste}
             onCopy=${onCopy}
@@ -120,6 +119,9 @@ export function ScratchpadPageShell({
           </header>
           ${children}
         </div>
+        <div class="sp-doc-stats" title="Estadísticas del documento">
+          ${stats.blocks} blocks · ${stats.words} words · ~${stats.tokens} tokens
+        </div>
       </div>
       ${createPanelOpen && html`
         <${ScratchpadCreatePanel}
@@ -132,6 +134,58 @@ export function ScratchpadPageShell({
   `;
 }
 
+// Contenido interno compartido entre el modo colapsado (dentro del layout,
+// 44px fijos) y el expandido (flotando encima, nunca empuja el documento —
+// mismo criterio que useFloatingMenu de Lyra: un panel que "se abre" no
+// mueve nada de lo que ya estaba en pantalla, sólo aparece encima).
+function ScratchpadNavContent({ page, pages, activePageId, headings, collections, query, nexusOk, statusLabel, onQuery, onAddBlock, onCreatePage, onSelectPage, onDuplicatePage, onDeletePage, visiblePages }) {
+  return html`
+    <div class="sp-nav-brand">
+      <span>${page.icon || 'SP'}</span>
+      <strong>${page.title || 'Scratchpad'}</strong>
+      <span class=${'sp-nav-status text-[10px] ' + (nexusOk ? 'text-aurora-success' : 'text-aurora-error')} title=${`${statusLabel || ''} — ${nexusOk ? 'wiki/scratchpad.md' : 'Local mode'}`}>●</span>
+    </div>
+    <nav class="sp-nav-links">
+      <button type="button" class="is-active" title="Current page"><span>⌂</span><em>${page.title || 'Scratchpad'}</em></button>
+      <button type="button" onClick=${onCreatePage} title="New note"><span>+</span><em>New note</em></button>
+    </nav>
+    <div class="sp-nav-section sp-notes-manager">
+      <small>Notes</small>
+      <input
+        class="sp-note-search"
+        value=${query}
+        placeholder="Search notes"
+        onInput=${(e) => onQuery?.(e.currentTarget.value)}
+      />
+      ${visiblePages.map(item => html`
+        <div class=${cx('sp-note-row', item.id === activePageId && 'is-active')}>
+          <button type="button" onClick=${() => onSelectPage(item.id)} title=${item.title || 'Untitled'}>
+            <span>${item.icon || 'SP'}</span><em>${item.title || 'Untitled'}</em>
+          </button>
+          <button type="button" class="sp-note-mini" title="Duplicate note" onClick=${() => onDuplicatePage(item.id)}>copy</button>
+          <button type="button" class="sp-note-mini" title="Delete note" disabled=${pages.length <= 1} onClick=${() => onDeletePage(item.id)}>x</button>
+        </div>
+      `)}
+      ${!visiblePages.length && html`<p>No matching notes</p>`}
+    </div>
+    <nav class="sp-nav-links">
+      <button type="button" onClick=${() => onAddBlock('heading_2')} title="Add heading block"><span>#</span><em>Add heading</em></button>
+    </nav>
+    <div class="sp-nav-section">
+      <small>Outline</small>
+      ${headings.length
+        ? headings.map(block => html`<button type="button" onClick=${() => document.querySelector(`[data-block-id="${block.id}"]`)?.scrollIntoView({ block: 'center' })}><span>#</span><em>${block.text}</em></button>`)
+        : html`<p>No headings yet</p>`}
+    </div>
+    <div class="sp-nav-section">
+      <small>Views</small>
+      ${collections.length
+        ? collections.map(block => html`<button type="button" onClick=${() => document.querySelector(`[data-block-id="${block.id}"]`)?.scrollIntoView({ block: 'center' })}><span>${block.type === 'mini_table' ? '▦' : '▥'}</span><em>${block.type === 'mini_table' ? 'Table' : 'Board'}</em></button>`)
+        : html`<p>No views yet</p>`}
+    </div>
+  `;
+}
+
 export function ScratchpadWorkspaceNav({
   page,
   pages = [],
@@ -139,6 +193,8 @@ export function ScratchpadWorkspaceNav({
   blocks = [],
   collapsed,
   query = '',
+  nexusOk,
+  statusLabel,
   onToggle,
   onQuery,
   onAddBlock,
@@ -153,61 +209,35 @@ export function ScratchpadWorkspaceNav({
   const visiblePages = noteQuery
     ? pages.filter(item => `${item.title || ''} ${item.description || ''}`.toLowerCase().includes(noteQuery))
     : pages;
+  // Expandido flota encima (position:fixed, nunca empuja el documento);
+  // colapsado es la columna angosta de siempre, parte real del layout —
+  // mismo criterio que useFloatingMenu: sólo el estado "abierto" es overlay.
+  const navMenu = useFloatingMenu({ anchor: 'fill', openControlled: !collapsed });
+
+  const contentEl = html`
+    <${ScratchpadNavContent}
+      page=${page} pages=${pages} activePageId=${activePageId}
+      headings=${headings} collections=${collections} query=${query}
+      nexusOk=${nexusOk} statusLabel=${statusLabel}
+      onQuery=${onQuery} onAddBlock=${onAddBlock} onCreatePage=${onCreatePage}
+      onSelectPage=${onSelectPage} onDuplicatePage=${onDuplicatePage} onDeletePage=${onDeletePage}
+      visiblePages=${visiblePages}
+    />
+  `;
+
   return html`
-    <aside class=${cx('sp-workspace-nav', collapsed && 'is-collapsed')}>
-      <button type="button" class="sp-nav-toggle" title=${collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick=${onToggle}>
-        ${collapsed ? '>' : '<'}
-      </button>
-      <div class="sp-nav-brand">
-        <span>${page.icon || 'SP'}</span>
-        <strong>${page.title || 'Scratchpad'}</strong>
-      </div>
-      <nav class="sp-nav-links">
-        <button type="button" class="is-active" title="Current page"><span>⌂</span><em>${page.title || 'Scratchpad'}</em></button>
-        <button type="button" onClick=${onCreatePage} title="New note"><span>+</span><em>New note</em></button>
-      </nav>
-      <div class="sp-nav-section sp-notes-manager">
-        <small>Notes</small>
-        <input
-          class="sp-note-search"
-          value=${query}
-          placeholder="Search notes"
-          onInput=${(e) => onQuery?.(e.currentTarget.value)}
-        />
-        ${visiblePages.map(item => html`
-          <div class=${cx('sp-note-row', item.id === activePageId && 'is-active')}>
-            <button type="button" onClick=${() => onSelectPage(item.id)} title=${item.title || 'Untitled'}>
-              <span>${item.icon || 'SP'}</span><em>${item.title || 'Untitled'}</em>
-            </button>
-            <button type="button" class="sp-note-mini" title="Duplicate note" onClick=${() => onDuplicatePage(item.id)}>copy</button>
-            <button type="button" class="sp-note-mini" title="Delete note" disabled=${pages.length <= 1} onClick=${() => onDeletePage(item.id)}>x</button>
-          </div>
-        `)}
-        ${!visiblePages.length && html`<p>No matching notes</p>`}
-      </div>
-      <nav class="sp-nav-links">
-        <button type="button" onClick=${() => onAddBlock('heading_2')} title="Add heading block"><span>#</span><em>Add heading</em></button>
-      </nav>
-      <div class="sp-nav-section">
-        <small>Outline</small>
-        ${headings.length
-          ? headings.map(block => html`<button type="button" onClick=${() => document.querySelector(`[data-block-id="${block.id}"]`)?.scrollIntoView({ block: 'center' })}><span>#</span><em>${block.text}</em></button>`)
-          : html`<p>No headings yet</p>`}
-      </div>
-      <div class="sp-nav-section">
-        <small>Views</small>
-        ${collections.length
-          ? collections.map(block => html`<button type="button" onClick=${() => document.querySelector(`[data-block-id="${block.id}"]`)?.scrollIntoView({ block: 'center' })}><span>${block.type === 'mini_table' ? '▦' : '▥'}</span><em>${block.type === 'mini_table' ? 'Table' : 'Board'}</em></button>`)
-          : html`<p>No views yet</p>`}
-      </div>
+    <aside class="sp-workspace-nav is-collapsed">
+      <${Button} iconOnly btnRef=${navMenu.anchorRef} class="sp-nav-toggle" title="Expand sidebar" onClick=${onToggle}>☰<//>
+      ${contentEl}
     </aside>
+    <${navMenu.FloatingMenu} class="sp-workspace-nav sp-workspace-nav-floating">
+      <${Button} iconOnly class="sp-nav-toggle" title="Collapse sidebar" onClick=${onToggle}>✕<//>
+      ${contentEl}
+    <//>
   `;
 }
 
 export function ScratchpadTopBar({
-  stats,
-  statusLabel,
-  statusTone,
   nexusOk,
   createPanelOpen,
   onToggleCreatePanel,
@@ -216,25 +246,14 @@ export function ScratchpadTopBar({
   onCopy,
   onClear,
 }) {
-  const toneCls = statusTone === 'ok' ? 'is-ok' : statusTone === 'error' ? 'is-error' : '';
   return html`
-    <div class="sp-topbar">
-      <div class="sp-topbar-left">
-        <${Chip}>${stats.blocks} blocks</${Chip}>
-        <${Chip}>${stats.words} words</${Chip}>
-        <${Chip}>~${stats.tokens} tokens</${Chip}>
-      </div>
-      <div class="sp-topbar-actions">
-        <span class=${cx('sp-sync', toneCls)} title=${nexusOk ? 'wiki/scratchpad.md' : 'Local mode'}>
-          ${statusLabel}
-        </span>
-        <${Button} size="sm" variant=${createPanelOpen ? 'primary' : undefined} onClick=${onToggleCreatePanel} title="Insert block or view">Insert</${Button}>
-        ${nexusOk && html`<${Button} size="sm" variant="primary" onClick=${onSave} title="Save to wiki/scratchpad.md">Save</${Button}>`}
-        <${Button} size="sm" onClick=${onPaste} title="Paste from clipboard">Paste</${Button}>
-        <${Button} size="sm" onClick=${onCopy} title="Copy markdown export">Copy</${Button}>
-        <${Button} size="sm" onClick=${onClear} title="Clear scratchpad">Clear</${Button}>
-      </div>
-    </div>
+    <${AutoFitChips} class="sp-topbar">
+      <${Chip} active=${createPanelOpen} onClick=${onToggleCreatePanel} title="Insert block or view">Insert<//>
+      ${nexusOk && html`<${Chip} variant="accent" onClick=${onSave} title="Save to wiki/scratchpad.md">Save<//>`}
+      <${Chip} onClick=${onPaste} title="Paste from clipboard">Paste<//>
+      <${Chip} onClick=${onCopy} title="Copy markdown export">Copy<//>
+      <${Chip} onClick=${onClear} title="Clear scratchpad">Clear<//>
+    <//>
   `;
 }
 
@@ -354,6 +373,8 @@ export function ScratchpadBlockRow({
 }) {
   const rowClass = cx('sp-block-row', `is-${block.type}`, slash?.blockId === block.id && 'has-menu');
   const editableClass = cx('sp-editable', block.type?.startsWith('heading') && block.type);
+  const slashOpen = slash?.blockId === block.id;
+  const slashMenu = useFloatingMenu({ anchor: 'below', matchWidth: true, openControlled: slashOpen });
 
   const handleTextInput = (e) => {
     autoSize(e.currentTarget);
@@ -382,7 +403,7 @@ export function ScratchpadBlockRow({
           onTransform=${(type) => onTransformBlock(block.id, type)}
         />
       </div>
-      <div class="sp-block-main">
+      <div class="sp-block-main" ref=${slashMenu.anchorRef}>
         ${renderBlockContent({
           block,
           editableClass,
@@ -397,8 +418,9 @@ export function ScratchpadBlockRow({
           onTableRows,
           onBoardColumns,
         })}
-        ${slash?.blockId === block.id && html`
+        ${slashOpen && html`
           <${ScratchpadSlashMenu}
+            FloatingMenu=${slashMenu.FloatingMenu}
             query=${slash.query}
             commands=${commands}
             onPick=${(type) => onSlashPick(block.id, type)}
@@ -551,59 +573,8 @@ export function ScratchpadBlockToolbar({
   onDelete,
   onTransform,
 }) {
-  const [open, setOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
-  const btnRef = useRef(null);
-  const menuNodeRef = useRef(null);
+  const typeMenu = useFloatingMenu({ anchor: 'below' });
   const currentLabel = commands.find(c => c.type === block.type)?.label ?? 'Text';
-
-  const handleOpen = (e) => {
-    e.stopPropagation();
-    if (btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setMenuPos({ top: rect.bottom + 4, left: rect.right });
-    }
-    setOpen(o => !o);
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e) => {
-      if (menuNodeRef.current?.contains(e.target) || btnRef.current?.contains(e.target)) return;
-      setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      if (menuNodeRef.current) {
-        preact.render(null, menuNodeRef.current);
-        try { document.body.removeChild(menuNodeRef.current); } catch (_) {}
-        menuNodeRef.current = null;
-      }
-      return;
-    }
-    if (!menuNodeRef.current) {
-      const el = document.createElement('div');
-      document.body.appendChild(el);
-      menuNodeRef.current = el;
-    }
-    const style = { top: menuPos.top + 'px', left: menuPos.left + 'px' };
-    preact.render(html`
-      <div class="sp-type-menu is-fixed" style=${style}>
-        ${commands.map(cmd => html`
-          <button
-            type="button"
-            key=${cmd.type}
-            class=${cx('sp-type-option', cmd.type === block.type && 'is-active')}
-            onMouseDown=${(e) => { e.preventDefault(); onTransform(cmd.type); setOpen(false); }}
-          >${cmd.label}</button>
-        `)}
-      </div>
-    `, menuNodeRef.current);
-  }, [open, menuPos, commands, block.type, onTransform]);
 
   return html`
     <div class="sp-block-toolbar">
@@ -612,20 +583,30 @@ export function ScratchpadBlockToolbar({
       <button type="button" title="Move down" disabled=${isLast} onClick=${onMoveDown}>↓</button>
       <button type="button" title="Duplicate" onClick=${onDuplicate}>⧉</button>
       <div class="sp-type-picker">
-        <button ref=${btnRef} type="button" class="sp-type-btn" onClick=${handleOpen}>
+        <button ref=${typeMenu.anchorRef} type="button" class="sp-type-btn" onClick=${typeMenu.toggle}>
           ${currentLabel} ▾
         </button>
+        <${typeMenu.FloatingMenu} class="sp-type-menu">
+          ${commands.map(cmd => html`
+            <button
+              type="button"
+              key=${cmd.type}
+              class=${cx('sp-type-option', cmd.type === block.type && 'is-active')}
+              onMouseDown=${(e) => { e.preventDefault(); onTransform(cmd.type); typeMenu.close(); }}
+            >${cmd.label}</button>
+          `)}
+        <//>
       </div>
       <button type="button" title="Delete" onClick=${onDelete}>✕</button>
     </div>
   `;
 }
 
-export function ScratchpadSlashMenu({ query = '', commands = SCRATCHPAD_COMMANDS, onPick }) {
+export function ScratchpadSlashMenu({ FloatingMenu, query = '', commands = SCRATCHPAD_COMMANDS, onPick }) {
   const q = query.trim().toLowerCase();
   const filtered = commands.filter(cmd => !q || cmd.label.toLowerCase().includes(q) || cmd.type.includes(q)).slice(0, 8);
   return html`
-    <div class="sp-slash-menu">
+    <${FloatingMenu} class="sp-slash-menu">
       ${filtered.map(cmd => html`
         <button type="button" key=${cmd.type} class="sp-slash-item" onMouseDown=${(e) => { e.preventDefault(); onPick(cmd.type); }}>
           <span>${cmd.label}</span>
@@ -633,7 +614,7 @@ export function ScratchpadSlashMenu({ query = '', commands = SCRATCHPAD_COMMANDS
         </button>
       `)}
       ${!filtered.length && html`<div class="sp-slash-empty">No blocks found</div>`}
-    </div>
+    <//>
   `;
 }
 

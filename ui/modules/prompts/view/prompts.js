@@ -12,6 +12,7 @@ import { copiarTexto } from '../../../components/shared/clipboard.js';
 import { Button } from '../../../components/Button.js';
 import { Input, Select, Textarea } from '../../../components/Input.js';
 import { Chip } from '../../../components/Chip.js';
+import { AutoFitChips } from '../../../components/shared/iconButton.js';
 import { Panel, PanelHeader, PanelBody, PanelFooter } from '../../../components/Panel.js';
 import { Empty } from '../../../components/Empty.js';
 import { getTeamRoles } from '../../../components/shared/builder-api.js';
@@ -21,7 +22,7 @@ import { TeamRolesEditor } from './editor-roles.js';
 import { CreativityIdeasEditor } from './editor-ideas.js';
 
 const AI_DESTINOS = [
-  { id: 'gemita',     label: '🦙 Gemita (local)', url: null },
+  { id: 'lyra',     label: '🦙 Lyra (local)', url: null },
   { id: 'chatgpt',    label: '💬 ChatGPT',        url: 'https://chatgpt.com' },
   { id: 'claude',     label: '◆ Claude',          url: 'https://claude.ai' },
   { id: 'gemini',     label: '✦ Gemini',          url: 'https://gemini.google.com' },
@@ -54,7 +55,7 @@ function rand(arr) { return arr?.length ? arr[Math.floor(Math.random() * arr.len
 function ModalVariables({ prompt, onClose, onEnviar }) {
   const vars = detectarVariables(prompt.contenido);
   const [vals, setVals] = useState({});
-  const [destino, setDestino] = useState('gemita');
+  const [destino, setDestino] = useState('lyra');
   const preview = reemplazarVariables(prompt.contenido, vals);
 
   return html`
@@ -391,7 +392,7 @@ function TabIdeas({ onEnviarPrompt, onIdeaAComfy, onIdeaAWan }) {
           </div>
           <div class="flex gap-1.5 flex-wrap mt-1">
             <${Button} size="sm" onClick=${copiar}>${copiado ? '✓ copiado' : '⧉ Copiar'}</${Button}>
-            <${Button} size="sm" onClick=${() => onEnviarPrompt(ideaAPrompt(idea))}>▶ Enviar a Gemita</${Button}>
+            <${Button} size="sm" onClick=${() => onEnviarPrompt(ideaAPrompt(idea))}>▶ Enviar a Lyra</${Button}>
             ${onIdeaAComfy && html`<${Button} size="sm" variant="primary" onClick=${() => onIdeaAComfy(idea)}>🖼 → ComfyUI</${Button}>`}
             ${onIdeaAWan   && html`<${Button} size="sm" variant="primary" onClick=${() => onIdeaAWan(idea)}>🎬 → Wan</${Button}>`}
           </div>
@@ -524,7 +525,7 @@ export default function Prompts() {
     return prompts.subscribe(setLista);
   }, []);
 
-  const enviarAGemita = useCallback((texto) => {
+  const enviarALyra = useCallback((texto) => {
     window.dispatchEvent(new CustomEvent('aurora:sendToLocal', { detail: { texto } }));
   }, []);
 
@@ -538,18 +539,17 @@ export default function Prompts() {
 
   return html`
     <div class="prompts-view">
-      <nav class="prompts-nav">
+      <${AutoFitChips} class="prompts-nav">
         ${SECCIONES.map(s => html`
-          <button key=${s.id} class=${'prompts-nav-btn' + (tab === s.id ? ' active' : '')}
-            onClick=${() => setTab(s.id)}>${s.label}</button>
+          <${Chip} key=${s.id} active=${tab === s.id} onClick=${() => setTab(s.id)}>${s.label}<//>
         `)}
-      </nav>
+      <//>
 
-      ${tab === 'biblioteca' && html`<${TabBiblioteca} lista=${lista} onEnviarPrompt=${enviarAGemita} />`}
+      ${tab === 'biblioteca' && html`<${TabBiblioteca} lista=${lista} onEnviarPrompt=${enviarALyra} />`}
       ${tab === 'historial'  && html`<${TabHistorial} />`}
       ${tab === 'guardados'  && html`<${TabGuardados} />`}
-      ${tab === 'ideas'      && html`<${TabIdeas} onEnviarPrompt=${enviarAGemita} onIdeaAComfy=${irAComfy} onIdeaAWan=${irAWan} />`}
-      ${tab === 'equipo'     && html`<${TabEquipo} onEnviarPrompt=${enviarAGemita} />`}
+      ${tab === 'ideas'      && html`<${TabIdeas} onEnviarPrompt=${enviarALyra} onIdeaAComfy=${irAComfy} onIdeaAWan=${irAWan} />`}
+      ${tab === 'equipo'     && html`<${TabEquipo} onEnviarPrompt=${enviarALyra} />`}
       ${tab === 'comfyui'   && html`<${TabComfyUI} />`}
       ${tab === 'wan'        && html`<${TabWan} />`}
     </div>

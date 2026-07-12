@@ -90,6 +90,36 @@ async def main():
     tokens = [m["content"] for m in sock3.enviados if m["type"] == "token"]
     assert tokens and "1/3" in tokens[-1], sock3.enviados
 
+    # Regresión: el evento real trae 'errorMessage' (agent-session.js:2022,
+    # _prepareRetry) y se tiraba — el usuario nunca sabía SI el reintento
+    # era por rate limit, overload, timeout, etc, sólo veía "Reintentando"
+    # pelado (encontrado porque el usuario preguntó explícitamente "si hay
+    # rate limit, por que no avisa?").
+    sock3b = FakeSocket()
+    br3b = B.PiBridge(sock3b)
+    await br3b.evento_pi({"type": "auto_retry_start", "attempt": 2, "maxAttempts": 3,
+                          "errorMessage": "429 Rate limit exceeded"})
+    tokens_b = [m["content"] for m in sock3b.enviados if m["type"] == "token"]
+    assert "429 Rate limit exceeded" in tokens_b[-1], tokens_b
+
+    # ── Caso 4: auto_retry_end leía un campo ('reason') que no existe en el
+    # evento real ({success, attempt, finalError}, agent-session.js:697-712)
+    # — siempre mandaba vacío y el frontend ni tenía handler. pi real, en
+    # fallo final, muestra "Retry failed after N attempts: <error>".
+    sock4 = FakeSocket()
+    br4 = B.PiBridge(sock4)
+    await br4.evento_pi({"type": "auto_retry_end", "success": False, "attempt": 3,
+                        "finalError": "503 Service Unavailable"})
+    tokens4 = [m["content"] for m in sock4.enviados if m["type"] == "token"]
+    assert tokens4 and "3 intentos" in tokens4[-1] and "503 Service Unavailable" in tokens4[-1], sock4.enviados
+
+    # Éxito tras reintentar (success:true) no debe generar ningún mensaje de
+    # fallo — el turno ya se resolvió bien, no hay nada que avisar acá.
+    sock4b = FakeSocket()
+    br4b = B.PiBridge(sock4b)
+    await br4b.evento_pi({"type": "auto_retry_end", "success": True, "attempt": 2})
+    assert not sock4b.enviados, sock4b.enviados
+
     print("OK — error de proveedor se buffer-ea y respeta willRetry antes de cerrar el turno")
 
 

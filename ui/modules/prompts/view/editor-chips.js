@@ -1,6 +1,7 @@
 const html = (...args) => globalThis.html(...args);
 const { useState, useEffect } = globalThis.preactHooks;
 import { Button } from '../../../components/Button.js';
+import { Chip, ChipGroup } from '../../../components/Chip.js';
 import { Input } from '../../../components/Input.js';
 import { Panel, PanelHeader, PanelBody } from '../../../components/Panel.js';
 import { getBuilderTemplate, saveBuilderTemplate } from '../../../components/shared/builder-api.js';
@@ -72,14 +73,11 @@ export function BuilderChipsEditor({ tipo, onClose }) {
               <span class="text-[9px] text-aurora-text-dim">(${(sec.chips || []).length})</span>
               <${Button} size="sm" variant="danger" onClick=${() => removeSection(sec.id)}>🗑</${Button}>
             </div>
-            <div class="flex flex-wrap gap-1">
+            <${ChipGroup}>
               ${(sec.chips || []).map((chip, idx) => html`
-                <span key=${idx} class="inline-flex items-center gap-1 bg-aurora-surface-2 border border-aurora-border rounded px-2 py-0.5 text-[10px] text-aurora-text-dim">
-                  ${chip}
-                  <button class="text-aurora-text-dim hover:text-aurora-error ml-0.5" onClick=${() => removeChip(sec.id, idx)}>✕</button>
-                </span>
+                <${Chip} key=${idx} onClick=${() => removeChip(sec.id, idx)} title="Quitar">${chip} ✕<//>
               `)}
-            </div>
+            <//>
             <div class="flex gap-1">
               <${Input} class="flex-1" placeholder="Agregar chip…"
                 value=${newChip[sec.id] || ''}

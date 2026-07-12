@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
 
 export class Autumn extends Component {
   constructor(props) {
@@ -44,7 +44,7 @@ export class Autumn extends Component {
 
     const init = () => {
       resize();
-      particles = Array.from({ length: 70 }, () => makeParticle(true));
+      particles = Array.from({ length: esDispositivoLiviano() ? 20 : 70 }, () => makeParticle(true));
     };
 
     // paleta otoñal derivada del accent

@@ -1,8 +1,10 @@
 import pathlib
 
 from litestar import post
+from litestar.connection import Request
 
-from .config import BLOCK_PATTERNS, DESTRUCTIVE, IS_WIN, clip
+from .audit import registrar
+from .config import BLOCK_PATTERNS, DESTRUCTIVE, IS_WIN, bloqueo_solo_lectura, clip
 from .tasks import create_job
 from .workspace import safe
 
@@ -37,7 +39,9 @@ async def ejecutar_shell_async(cmd: str, cwd: str = '.', origin: dict | None = N
 
 
 @post('/nexus/shell/run')
-async def shell_run(data: dict) -> dict:
+async def shell_run(request: Request, data: dict) -> dict:
+    if bloqueo := bloqueo_solo_lectura():
+        return bloqueo
     r = await ejecutar_shell_async(
         str(data.get('cmd') or ''),
         str(data.get('cwd') or '.'),
@@ -48,6 +52,11 @@ async def shell_run(data: dict) -> dict:
     if r.get('killed'):
         r['ok'] = False
         r['error'] = 'Interrupted'
+    await registrar(request, 'shell/run', {
+        'cmd': str(data.get('cmd') or '')[:500],
+        'cwd': str(data.get('cwd') or '.'),
+        'code': r.get('code'),
+    })
     return r
 
 

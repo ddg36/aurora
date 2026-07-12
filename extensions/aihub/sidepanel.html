@@ -27,6 +27,9 @@
   </style>
 </head>
 <body>
+  <!-- La capa #llm-layer (iframes de LLM cloud embebidos a nivel de
+       extensión, ver aurora-bridge.js) se crea por JS, no acá — así el mismo
+       script sirve para cualquier cascarón sin marcado propio. -->
   <iframe id="frame" src="http://localhost:7779/ui/"
     allow="clipboard-read; clipboard-write; microphone; camera"></iframe>
   <div id="offline">
@@ -35,6 +38,7 @@
     <code>python3 -m uvicorn src.main:app --port 7779</code>
     <button id="retry-btn">Reintentar</button>
   </div>
+  <script src="aurora-bridge.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

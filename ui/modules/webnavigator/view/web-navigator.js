@@ -4,6 +4,8 @@ import { cargarSesiones, fechaCorta } from '../scripts/sesion.js';
 import { cargarLog, TIPO_COLOR } from '../scripts/log.js';
 import { cargarCapturas } from '../scripts/capturas.js';
 import { postJSON } from '../../../components/shared/api.js';
+import { SplitPane } from '../../../components/shared/SplitPane.js';
+import { Chip } from '../../../components/index.js';
 
 export default function WebNavigator() {
   const [sesiones, setSesiones] = useState([]);
@@ -38,7 +40,7 @@ export default function WebNavigator() {
 
   function conectarSSE(sesionId) {
     if (sseRef.current) sseRef.current.close();
-    const sse = new EventSource(`/nav/stream/${sesionId}`);
+    const sse = new EventSource(`/nav/stream/${sesionId}?token=${encodeURIComponent(globalThis.AURORA_TOKEN?.() || '')}`);
     sseRef.current = sse;
     sse.onmessage = (e) => {
       try {
@@ -68,6 +70,7 @@ export default function WebNavigator() {
     setTab('live');
     try {
       const res = await postJSON('/nav/run', { objetivo: objetivo.trim(), max_steps: 30 });
+      if (res.ok === false) throw new Error(res.error || 'WebNavigator no disponible');
       setLiveSesionId(res.id);
       conectarSSE(res.id);
     } catch (e) {
@@ -86,8 +89,7 @@ export default function WebNavigator() {
   }
 
   return html`
-    <div class="flex h-full">
-      <aside class="w-64 border-r border-white/5 flex flex-col shrink-0">
+    <${SplitPane} sidebarWidth="md:w-64" sidebarMaxH="max-h-52" sidebarClassName="flex flex-col" sidebar=${html`
         <div class="p-2 border-b border-white/5">
           <div class="text-xs font-semibold mb-2">🧭 Web Navigator</div>
           <textarea
@@ -98,13 +100,12 @@ export default function WebNavigator() {
             rows="3"
             class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white resize-none outline-none focus:border-white/25"
           />
-          <button
+          <${Chip}
+            variant="accent"
+            class="w-full justify-center mt-1"
             onClick=${ejecutar}
             disabled=${ejecutando || !objetivo.trim()}
-            class=${`mt-1 w-full text-xs py-1 rounded font-medium
-              ${ejecutando ? 'bg-white/10 text-white/40 cursor-not-allowed'
-                           : 'bg-sky-600/80 hover:bg-sky-600 text-white cursor-pointer'}`}
-          >${ejecutando ? '⏳ Ejecutando…' : '▶ Ejecutar'}</button>
+          >${ejecutando ? '⏳ Ejecutando…' : '▶ Ejecutar'}<//>
           ${err && html`<div class="text-[10px] text-red-400/70 mt-1">${err}</div>`}
         </div>
 
@@ -144,19 +145,11 @@ export default function WebNavigator() {
           `)}
           ${sesiones.length === 0 && !liveSesionId && html`<div class="text-xs text-white/30 p-2">Sin sesiones</div>`}
         </div>
-      </aside>
-
-      <div class="flex-1 flex flex-col min-w-0">
+      `}>
         <div class="flex items-center gap-1 px-3 py-1.5 border-b border-white/5 text-xs">
           ${tab !== 'live' && html`
-            <button onClick=${() => setTab('log')}
-              class=${`px-2 py-0.5 rounded ${tab === 'log' ? 'bg-white/15' : 'hover:bg-white/10 text-white/50'}`}>
-              Log (${log.length})
-            </button>
-            <button onClick=${() => setTab('capturas')}
-              class=${`px-2 py-0.5 rounded ${tab === 'capturas' ? 'bg-white/15' : 'hover:bg-white/10 text-white/50'}`}>
-              Capturas (${capturas.length})
-            </button>
+            <${Chip} active=${tab === 'log'} onClick=${() => setTab('log')}>Log (${log.length})<//>
+            <${Chip} active=${tab === 'capturas'} onClick=${() => setTab('capturas')}>Capturas (${capturas.length})<//>
           `}
           ${tab === 'live' && html`
             <span class="text-white/60">Log en vivo</span>
@@ -211,7 +204,6 @@ export default function WebNavigator() {
             `)}
           `}
         </div>
-      </div>
-    </div>
+      </${SplitPane}>
   `;
 }
