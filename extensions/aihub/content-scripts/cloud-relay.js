@@ -312,6 +312,8 @@
       let settle = null, hecho = false, capturando = false;
       let respondeMs = null, ultimaCaptura = submitAt;
       let siteObs = null, vioGenerando = false;
+      let ultimoMd = 0;
+      const MD_MS = 350;   // throttle del armado de markdown durante el stream
       const esChatGPT = /chatgpt\.com|chat\.openai\.com/.test(location.hostname);
       const ocultoSinShim = () => document.hidden &&
         document.documentElement.dataset.auroraVisibilityShim !== 'active';
@@ -358,7 +360,16 @@
         if (base?.lastText && t === base.lastText) return;
         lastText = t; lastChange = Date.now(); ultimaCaptura = Date.now();
         if (respondeMs === null && t) respondeMs = Date.now() - submitAt;
-        onChunk?.(t);   // preview en texto plano; markdown se arma al final
+        // Markdown formateado DURANTE el stream, pero THROTTLED: domToMarkdown es
+        // O(n) y llamarlo en cada mutación era O(n²) (pineaba el renderer). Cada
+        // MD_MS armamos el markdown (headings, listas, negritas); entre medio no
+        // hacemos nada. El cierre (terminar) arma el markdown final una vez más.
+        const ahora = Date.now();
+        if (ahora - ultimoMd >= MD_MS) {
+          ultimoMd = ahora;
+          const md = domToMarkdown(nodoTexto(current));
+          onChunk?.(md || t);
+        }
       };
 
       const terminar = (reason) => {
