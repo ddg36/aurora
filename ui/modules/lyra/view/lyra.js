@@ -240,6 +240,18 @@ export function Local() {
   const cloudStatusTiming = cloudStatus.fase === 'answer' && cloudStatus.generaMs != null
     ? `${(cloudStatus.generaMs / 1000).toFixed(1)}s`
     : cloudStatus.queue ? `${cloudStatus.queue} pendiente${cloudStatus.queue === 1 ? '' : 's'}` : '';
+  // Frases rotativas mientras la nube trabaja (el indicador ya tiene 3 dots).
+  const FRASES_TRABAJO = ['Pensando', 'Trabajando', 'Procesando', 'Razonando', 'Analizando', 'Buscando', 'Conectando ideas', 'Casi ahí'];
+  const FASES_EN_PROGRESO = ['thinking', 'working', 'uploading', 'queued'];
+  const [fraseIdx, setFraseIdx] = useState(0);
+  useEffect(() => {
+    if (!cloudGenerandoVal) { setFraseIdx(0); return; }
+    const id = setInterval(() => setFraseIdx(i => i + 1), 2000);
+    return () => clearInterval(id);
+  }, [cloudGenerandoVal]);
+  const cloudStatusDisplay = FASES_EN_PROGRESO.includes(cloudStatusTone)
+    ? FRASES_TRABAJO[fraseIdx % FRASES_TRABAJO.length]
+    : cloudStatusLabel;
 
   useEffect(() => {
     cargarInstruccion();
@@ -1282,7 +1294,7 @@ export function Local() {
             <span class="cloud-activity-orbit"><i></i><i></i><i></i></span>
             <span class="cloud-activity-copy">
               <strong>${cloudAiLabel}</strong>
-              <small>${cloudStatusLabel}${cloudStatusTiming ? ' · ' + cloudStatusTiming : ''}</small>
+              <small key=${cloudStatusDisplay}>${cloudStatusDisplay}${cloudStatusTiming ? ' · ' + cloudStatusTiming : ''}</small>
             </span>
             <span class="cloud-activity-pulse"></span>
           </div>

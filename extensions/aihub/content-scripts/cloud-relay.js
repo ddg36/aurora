@@ -78,6 +78,11 @@
   const getSend  = () => SEND_SELECTORS.map(s => document.querySelector(s)).find(b => b && b.offsetParent !== null) || null;
   const getStop  = () => STOP_SELECTORS.map(s => document.querySelector(s)).find(b => b && b.offsetParent !== null) || null;
 
+  // Sentinel de "trabajando": mientras el LLM piensa/busca y aún no hay
+  // respuesta real, emitimos este marcador; Aurora lo reemplaza por un
+  // indicador animado bonito (no mostramos el status crudo del proveedor).
+  const WORKING = 'AURORA_WORKING';
+
   function injectText(el, text) {
     el.focus();
     if (el.getAttribute('contenteditable') === 'true') {
@@ -351,6 +356,15 @@
             t = latestText;
           }
         }
+        // Progreso EN VIVO: si aún no hay respuesta real (vacío o placeholder
+        // "Thinking"/"Analyzing image"), mostrar la ACTIVIDAD de ChatGPT
+        // (Searching en.wikipedia.org, Analyzing image, Reading…) como línea de
+        // estado en cursiva, hasta que aparezca el texto real.
+        const sinRespuesta = !t || /^(thinking|reasoning|pensando|razonando|analyzing image|analizando)\.?$/i.test(t);
+        // Aún pensando/buscando (placeholder o vacío): NO streamear nada como
+        // contenido. Aurora muestra su propio indicador animado (cloud-activity)
+        // mientras tanto; el texto real fluye recién cuando aparece.
+        if (esChatGPT && sinRespuesta) return;
         if (t === lastText) return;
         // Durante el "Pensando"/búsqueda de ChatGPT, el target inicial puede ser
         // el turno ANTERIOR re-renderizado: no streamear su texto como preview

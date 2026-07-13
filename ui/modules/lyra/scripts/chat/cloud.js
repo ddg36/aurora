@@ -127,7 +127,7 @@ function throttleContenido(paneId = 'cloud') {
   const aplicar = () => {
     if (pendiente != null) {
       const draft = detectarToolDraft(pendiente);
-      actualizarUltimo({ content: pendiente, _toolDraft: draft || undefined });
+      actualizarUltimo({ content: pendiente, _toolDraft: draft || undefined, _working: false });
       if (draft) emitirToolVisual({ ...draft, paneId, transient: true });
     }
     pendiente = null; ultimo = Date.now(); timer = null;
