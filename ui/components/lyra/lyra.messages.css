@@ -249,12 +249,12 @@
 /* Chibi de Lyra animado por frames (sprite) como indicador de "trabajando".
    Reemplaza al spin de puntos. 5 frames de 78x72 en una tira de 390x72. */
 .cloud-activity-chibi {
-  width: 78px; height: 72px; flex-shrink: 0;
-  background: url(/ui/assets/lyra-chibi-idle.png) 0 0 / 390px 72px no-repeat;
-  animation: cloud-chibi-frames .9s steps(5) infinite;
+  width: 72px; height: 72px; flex-shrink: 0;
+  background: url(/ui/assets/lyra-chibi-idle.png) 0 0 / 360px 72px no-repeat;
+  animation: cloud-chibi-frames 1.5s steps(5) infinite;
   filter: drop-shadow(0 2px 4px rgba(0,0,0,.35));
 }
-@keyframes cloud-chibi-frames { from { background-position-x: 0; } to { background-position-x: -390px; } }
+@keyframes cloud-chibi-frames { from { background-position-x: 0; } to { background-position-x: -360px; } }
 
 /* pi tool: ejecución de herramienta pedida por la nube. Verde, monoespaciado,
    claramente distinto de la nube (acento) y de Lyra (sin tinte). */
