@@ -350,6 +350,12 @@
           }
         }
         if (t === lastText) return;
+        // Durante el "Pensando"/búsqueda de ChatGPT, el target inicial puede ser
+        // el turno ANTERIOR re-renderizado: no streamear su texto como preview
+        // (se veía la respuesta vieja mientras ChatGPT aún pensaba). Esperar a
+        // que aparezca texto DISTINTO del último turno del baseline; el observer
+        // migra al contenedor real y ahí sí fluye.
+        if (base?.lastText && t === base.lastText) return;
         lastText = t; lastChange = Date.now(); ultimaCaptura = Date.now();
         if (respondeMs === null && t) respondeMs = Date.now() - submitAt;
         onChunk?.(t);   // preview en texto plano; markdown se arma al final
