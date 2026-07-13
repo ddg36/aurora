@@ -172,7 +172,7 @@ function salidaCompacta(s) {
 }
 
 export async function enviarACloud({ iframe, texto, aiId, url, images, files }) {
-  agregar({ role: 'user', content: texto, _adjuntos: (images?.length || 0) + (files?.length || 0) || undefined });
+  agregar({ role: 'user', content: texto, _imagenes: images?.length ? images : undefined, _adjuntos: (files?.length || 0) || undefined });
 
   cargando.value = true;
   cloudGenerando.value = true;

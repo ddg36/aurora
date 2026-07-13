@@ -405,6 +405,14 @@
         // ese señuelo antes de darle tiempo al ID actual para materializarse.
         const minimo = /chatgpt\.com|chat\.openai\.com/.test(location.hostname) ? 12000 : 12000;
         if (Date.now() - submitAt < minimo) return;
+        // ChatGPT: mientras el botón Stop siga presente, sigue generando (su
+        // Stop es FIABLE, a diferencia de Gemini). NO declarar 'estable' sobre
+        // texto viejo idle mientras ChatGPT todavía piensa/busca — era el bug:
+        // enganchaba el turno anterior (idle) y cerraba a los ~20s con la
+        // respuesta VIEJA aunque ChatGPT seguía buscando. Dejar que el observer
+        // migre al contenedor real cuando aparezca; sólo cerrar por idle cuando
+        // Stop ya no está. (Gemini mantiene Stop 40s+ idle → sigue por texto.)
+        if (esChatGPT && getStop()) return;
         if (Date.now() - lastChange > FIN_IDLE) return terminar('estable');
       };
 

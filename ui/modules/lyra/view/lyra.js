@@ -1197,6 +1197,13 @@ export function Local() {
               <div class="message-content"
                 dangerouslySetInnerHTML=${{ __html: renderizarContenido(msg.content, { externo: esExternoFinal }) }}
               ></div>
+              ${msg._imagenes?.length && html`
+                <div class="flex flex-wrap gap-2 mt-2">
+                  ${msg._imagenes.map((src, i) => html`
+                    <img key=${i} src=${src} alt="Imagen adjunta" class="max-w-[160px] max-h-40 rounded-lg border border-white/10 object-contain bg-black/10" />
+                  `)}
+                </div>
+              `}
               ${msg._timing && html`
                 <div class="text-[10px] text-aurora-text-muted font-mono mt-1 opacity-70">
                   ⏱ responde ${(msg._timing.responde / 1000).toFixed(1)}s · genera ${(msg._timing.genera / 1000).toFixed(1)}s
