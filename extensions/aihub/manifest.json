@@ -15,6 +15,7 @@
     "clipboardRead",
     "tabCapture",
     "windows",
+    "webNavigation",
     "debugger",
     "downloads",
     "notifications"
@@ -81,6 +82,25 @@
     "ids": ["amgjbhnocmeiifdgdgjabbgblcggleah"]
   },
   "content_scripts": [
+    {
+      "matches": [
+        "*://gemini.google.com/*",
+        "*://chat.openai.com/*",
+        "*://chatgpt.com/*",
+        "*://claude.ai/*",
+        "*://grok.com/*",
+        "*://*.perplexity.ai/*",
+        "*://copilot.microsoft.com/*",
+        "*://kimi.moonshot.cn/*",
+        "*://poe.com/*",
+        "*://you.com/*",
+        "*://chat.qwen.ai/*"
+      ],
+      "js": ["content-scripts/aurora-visibility-shim.js"],
+      "all_frames": true,
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": [
         "*://gemini.google.com/*",

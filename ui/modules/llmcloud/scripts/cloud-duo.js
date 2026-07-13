@@ -2,12 +2,13 @@
 // permanecen visibles; un agente sólo activa al otro mediante `panel_send`.
 // No hay alternancia artificial ni transcript duplicado de Aurora.
 
-import { askCloud, detenerCloud } from '../../../components/shared/cloud-ask.js';
+import { askCloud, detenerCloud, nuevaConversacionCloud } from '../../../components/shared/cloud-ask.js';
 import { postJSON } from '../../../components/shared/api.js';
+import { submitForge } from '../../../components/shared/forge-submit.js';
 
 const MAX_ITER = 6;
 const MAX_TOOL_FEEDBACK = 8 * 1024;
-const TOOLS = new Set(['read', 'bash', 'edit', 'write', 'panel_send']);
+const TOOLS = new Set(['read', 'bash', 'edit', 'write', 'panel_send', 'forge_submit', 'view_describe', 'view_invoke']);
 const PRIMER =
   'Participás en una conversación con otra IA dentro de Aurora. Tenés acceso REAL a tools de la PC. ' +
   'Cuando necesites una, emití UN objeto completo dentro de un bloque ```json y cerrá siempre el bloque. ' +
@@ -16,6 +17,8 @@ const PRIMER =
   '{"tool":"edit","args":{"path":"/ruta","oldText":"texto anterior","newText":"texto nuevo"}}; ' +
   '{"tool":"write","args":{"path":"/ruta","content":"contenido"}}. ' +
   'Para comunicarte con el otro agente usá {"tool":"panel_send","args":{"to":"panel1|panel2","message":"mensaje completo"}}. ' +
+  'Para entregar una herramienta a Tool Forge usá {"tool":"forge_submit","args":{"manifest":{...},"code":"handler.py completo"}}; Aurora crea una versión inmutable y corre sus tests en sandbox, pero sólo el humano puede aprobarla/activarla. ' +
+  'Para operar Aurora sin clics: {"tool":"view_describe","args":{"view":"scratchpad|md-reader|canvas"}} y después {"tool":"view_invoke","args":{"view":"...","action":"...","args":{...}}}. ' +
   'panel1 es el iframe izquierdo y panel2 el derecho. Sólo panel_send entrega un mensaje al otro panel; una respuesta normal termina tu participación. ' +
   'Usá un nombre real de tool, nunca una unión con | ni {...}. Preferí una tool por turno y esperá su resultado. ' +
   'No afirmes que un archivo fue creado, leído o modificado si Aurora no confirmó una ejecución exitosa.';
@@ -69,7 +72,17 @@ async function turnoAgente({ paneId, prompt, primed, runId, cancelado, onChunk, 
   let intentoTool = false, toolsExitosas = 0, pidioCorreccionEvidencia = false;
   for (let iter = 0; iter < MAX_ITER; iter++) {
     if (cancelado()) throw new Error('cancelado');
-    const r = await askCloud(null, siguiente, { paneId, onChunk, timeoutMs: 240000 });
+    let r;
+    for (let providerAttempt = 0; providerAttempt < 2; providerAttempt++) {
+      r = await askCloud(null, siguiente, { paneId, onChunk, timeoutMs: 240000 });
+      if (r.ok && r.text?.trim()) break;
+      if (providerAttempt === 0 && ['site_empty', 'submit_failed', 'never_started'].includes(r.reason)) {
+        onTool?.({ paneId, error: `Proveedor ${r.reason}; reintentando el turno una vez`, runId });
+        await new Promise(resolve => setTimeout(resolve, 500));
+        continue;
+      }
+      break;
+    }
     if (!r.ok || !r.text?.trim()) throw new Error(r.text || `sin respuesta del panel ${paneId}`);
     const parsed = extraerTools(r.text);
     if (!parsed.calls.length && !parsed.errors.length) {
@@ -119,6 +132,14 @@ async function turnoAgente({ paneId, prompt, primed, runId, cancelado, onChunk, 
           result = { ok: true, output: `Mensaje entregado a ${toPane === 'izq' ? 'panel1' : 'panel2'}.` };
           handoff = { toPane, message, fromPane: paneId };
         }
+      } else if (call.tool === 'forge_submit') {
+        try { result = await submitForge(call.args); }
+        catch (e) { result = { ok: false, is_error: true, output: e.message }; }
+      } else if (call.tool === 'view_describe' || call.tool === 'view_invoke') {
+        try {
+          const response = await postJSON(`/tools/${call.tool}/run`, { arguments: call.args });
+          result = { ...response, is_error: response.ok === false, output: JSON.stringify(response.result ?? response, null, 2) };
+        } catch (e) { result = { ok: false, is_error: true, output: e.message }; }
       } else {
         try { result = await postJSON('/pi/cloud-tool', call); }
         catch (e) { result = { ok: false, is_error: true, output: e.message }; }
@@ -151,8 +172,22 @@ export function crearDuoCloud() {
     const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     let quien = config.panelInicial === 2 ? 'B' : 'A';
     let mensaje = config.seedPrompt;
-    onEstado?.('activo');
     try {
+      if (config.nuevaConversacion !== false) {
+        onEstado?.('preparando');
+        const resets = await Promise.all([
+          nuevaConversacionCloud(null, 'izq'),
+          nuevaConversacionCloud(null, 'der'),
+        ]);
+        const fallos = resets.filter(r => !r.ok);
+        if (fallos.length) {
+          const detalle = fallos.map(r => `${r.paneId}: ${r.error || r.reason || 'sin confirmación'}`).join('; ');
+          throw new Error(`No se pudieron preparar chats nuevos (${detalle})`);
+        }
+        primed.clear();
+      }
+      if (detenido) throw new Error('cancelado');
+      onEstado?.('activo');
       for (let ronda = 0; ronda < config.maxRondas && !detenido; ronda++) {
         const paneId = quien === 'A' ? 'izq' : 'der';
         let parcial = '';

@@ -28,7 +28,7 @@ export function DuoPanel({ onClose, agentes = [] }) {
       ? 'Colaboren en este objetivo. Si necesitás consultar o entregar trabajo al otro agente, usá panel_send explícitamente.'
       : SEED_POR_MODO.libre,
     motor: agentes.length >= 2 ? 'cloud' : 'local',
-    maxRondas: 10, delayMs: 1000, panelInicial: 1, modelA: '', modelB: '',
+    maxRondas: 10, delayMs: 1000, panelInicial: 1, nuevaConversacion: true, modelA: '', modelB: '',
   });
   const [estado, setEstado] = useState('idle');
   const [turnos, setTurnos] = useState([]);
@@ -91,7 +91,7 @@ export function DuoPanel({ onClose, agentes = [] }) {
   };
 
   const detener = () => { duoRef.current?.detener(); setEstado('cancelado'); };
-  const activo = estado === 'activo' || estado === 'conectando';
+  const activo = estado === 'activo' || estado === 'conectando' || estado === 'preparando';
 
   const colorQuien = (q) => q === 'A' ? 'text-aurora-accent' : q === 'B' ? 'text-emerald-400' : 'text-red-400';
   const labelQuien = (q) => q === 'A' ? 'Panel 1' : q === 'B' ? 'Panel 2' : 'Error';
@@ -121,6 +121,10 @@ export function DuoPanel({ onClose, agentes = [] }) {
                 ${[1, 2].map(n => html`<${Chip} key=${n} active=${config.panelInicial === n} onClick=${() => merge({ panelInicial: n })}>${n === 1 ? agentes[0]?.nombre || 'Panel 1' : agentes[1]?.nombre || 'Panel 2'}<//>`)}
               </div>
               <div class="flex items-center gap-2">
+                <label class="flex items-center gap-1 text-[10px] text-aurora-text-muted cursor-pointer" title="Abre conversaciones nativas vacías antes de iniciar">
+                  <input type="checkbox" checked=${config.nuevaConversacion}
+                    onChange=${e => merge({ nuevaConversacion: e.target.checked })} /> Chats nuevos
+                </label>
                 <label class="flex items-center gap-1 text-[10px] text-aurora-text-muted">Máx. mensajes
                   <select class="rounded border border-aurora-border bg-aurora-bg text-aurora-text px-1.5 py-1" value=${config.maxRondas} onChange=${e => merge({ maxRondas: Number(e.target.value) })}>
                     ${[3, 5, 10, 20, 50].map(n => html`<option value=${n}>${n}</option>`)}
@@ -134,7 +138,7 @@ export function DuoPanel({ onClose, agentes = [] }) {
         ` : html`
           <div class="flex items-center gap-2 min-h-9">
             <span class=${`w-2 h-2 rounded-full ${activo ? 'bg-emerald-400 animate-pulse' : estado === 'error' ? 'bg-red-400' : 'bg-white/30'}`}></span>
-            <span class="text-xs font-semibold">Duo ${estado}</span>
+            <span class="text-xs font-semibold">${estado === 'preparando' ? 'Preparando chats nuevos…' : `Duo ${estado}`}</span>
             ${agenteActivo && html`<span class="text-[11px] text-aurora-text-muted">${agenteActivo} procesando</span>`}
             ${ultimoError && html`<span class="text-[11px] text-red-400 truncate">${ultimoError}</span>`}
             <span class="flex-1"></span>
@@ -212,6 +216,11 @@ export function DuoPanel({ onClose, agentes = [] }) {
             <span class="text-white/40">Prompt inicial (seed)</span>
             <textarea rows="2" class="bg-black/30 border border-white/10 rounded px-2 py-1 resize-none font-mono" value=${config.seedPrompt} onInput=${e => merge({ seedPrompt: e.target.value })} disabled=${activo} />
           </label>
+          ${config.motor === 'cloud' && html`<label class="flex items-center gap-2 col-span-2 text-white/60 cursor-pointer">
+            <input type="checkbox" checked=${config.nuevaConversacion} disabled=${activo}
+              onChange=${e => merge({ nuevaConversacion: e.target.checked })} />
+            Abrir chats nativos nuevos antes de cada ejecución (evita contaminar un Arena con el anterior)
+          </label>`}
         </div>
 
         <div ref=${scrollRef} class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 text-sm">

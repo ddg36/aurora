@@ -53,6 +53,21 @@ async function extCmd(cmd: string, params: Record<string, unknown> = {}, timeout
   return json.data;
 }
 
+async function auroraJson(path: string, init: RequestInit = {}, timeoutMs = 120_000): Promise<any> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: { ...headers(), ...((init.headers as Record<string, string>) || {}) },
+      signal: init.signal || AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err: any) {
+    throw new Error(`Aurora no responde en ${BASE}: ${err.message}`);
+  }
+  if (!res.ok) throw new Error(`Aurora HTTP ${res.status}`);
+  return await res.json();
+}
+
 async function ytTranscript(timestamps: boolean): Promise<string> {
   const data = await extCmd("capture_youtube", { type: timestamps ? "withTimestamps" : "withoutTimestamps" }, 30);
   if (!data?.content) throw new Error(data?.error || "Sin transcript disponible");
@@ -175,6 +190,111 @@ export default function (pi: ExtensionAPI) {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "ask_cloud falló");
       return { content: [{ type: "text", text: json.respuesta || "(sin respuesta)" }], details: {} };
+    },
+  });
+
+  pi.registerTool({
+    name: "aurora_forge_list",
+    label: "Tool Forge — capacidades",
+    description:
+      "Lista las herramientas construidas por el colectivo Cloud, probadas, aprobadas y activas en Aurora. " +
+      "Usar cuando necesites una capacidad que no aparece entre tus tools habituales.",
+    parameters: Type.Object({}),
+    async execute() {
+      const json = await auroraJson("/tools");
+      const tools = (json.tools || []).filter((tool: any) => (tool.tags || []).includes("forge"));
+      const text = tools.length
+        ? tools.map((tool: any) => `${tool.name} — ${tool.description}\n  args: ${JSON.stringify(tool.input_schema)}${tool.requires_approval ? "\n  requiere aprobación por ejecución" : ""}`).join("\n\n")
+        : "(no hay herramientas Forge activas todavía)";
+      return { content: [{ type: "text", text }], details: { tools } };
+    },
+  });
+
+  pi.registerTool({
+    name: "aurora_forge_run",
+    label: "Tool Forge — ejecutar",
+    description:
+      "Ejecuta una herramienta activa creada por Tool Forge. Primero usa aurora_forge_list para conocer " +
+      "el nombre exacto y su contrato. Sólo admite nombres forge.* y respeta permisos/aprobaciones de Aurora.",
+    parameters: Type.Object({
+      name: Type.String({ description: "Nombre exacto forge.*" }),
+      arguments: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Argumentos según el contrato" })),
+    }),
+    async execute(_id, params) {
+      if (!/^forge\.[a-z][a-z0-9_]{2,47}$/.test(params.name)) throw new Error("Nombre Forge inválido");
+      const json = await auroraJson(`/tools/${encodeURIComponent(params.name)}/run`, {
+        method: "POST",
+        body: JSON.stringify({ arguments: params.arguments || {} }),
+      });
+      if (!json.ok) {
+        if (json.approval_required) throw new Error("La herramienta requiere aprobación humana para esta ejecución.");
+        throw new Error(json.error || "La herramienta Forge falló");
+      }
+      const text = json.text || JSON.stringify(json.data ?? json, null, 2);
+      return { content: [{ type: "text", text }], details: json };
+    },
+  });
+
+  pi.registerTool({
+    name: "aurora_forge_build",
+    label: "Tool Forge — construir con Cloud",
+    description:
+      "Convoca Gemini/ChatGPT en el Duo Cloud para diseñar, revisar e implementar una nueva herramienta " +
+      "cuando Lyra detecta una capacidad que le falta. Devuelve un paquete probado; Diego debe aprobarlo y activarlo después.",
+    parameters: Type.Object({
+      objective: Type.String({ description: "Capacidad concreta y resultado verificable que necesitas" }),
+      name_hint: Type.Optional(Type.String({ description: "Nombre sugerido forge.nombre" })),
+      requirements: Type.Optional(Type.Array(Type.String())),
+      acceptance_tests: Type.Optional(Type.Array(Type.String())),
+    }),
+    async execute(_id, params) {
+      const json = await auroraJson("/tools/forge_build/run", {
+        method: "POST",
+        body: JSON.stringify({ arguments: params }),
+      }, 11 * 60 * 1000);
+      if (!json.ok) throw new Error(json.error || "El colectivo Cloud no produjo una herramienta probada");
+      return { content: [{ type: "text", text: json.text || `Paquete probado: ${json.package?.name || "Forge"}` }], details: json };
+    },
+  });
+
+  pi.registerTool({
+    name: "aurora_view_describe",
+    label: "Aurora — descubrir vista",
+    description:
+      "Descubre acciones semánticas publicadas por una vista de Aurora. La monta si hace falta; " +
+      "usar antes de aurora_view_invoke para no depender de botones o del DOM.",
+    parameters: Type.Object({
+      view: Type.Optional(Type.String({ description: "Vista opcional: canvas, scratchpad o md-reader" })),
+    }),
+    async execute(_id, params) {
+      const json = await auroraJson("/tools/view_describe/run", {
+        method: "POST", body: JSON.stringify({ arguments: params }),
+      });
+      if (!json.ok) throw new Error(json.error || "No se pudo describir la vista");
+      return { content: [{ type: "text", text: JSON.stringify(json.result ?? json, null, 2) }], details: json };
+    },
+  });
+
+  pi.registerTool({
+    name: "aurora_view_invoke",
+    label: "Aurora — acción de vista",
+    description:
+      "Invoca una acción nativa de Aurora por view/action. No simula clics. Las acciones sensibles " +
+      "siguen bloqueadas hasta recibir aprobación humana en Aurora.",
+    parameters: Type.Object({
+      view: Type.String({ description: "ID exacto obtenido con aurora_view_describe" }),
+      action: Type.String({ description: "Acción exacta publicada por la vista" }),
+      args: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    }),
+    async execute(_id, params) {
+      const json = await auroraJson("/tools/view_invoke/run", {
+        method: "POST", body: JSON.stringify({ arguments: params }),
+      });
+      if (!json.ok) {
+        if (json.requiresApproval) throw new Error(`Aprobación humana requerida: ${params.view}.${params.action}`);
+        throw new Error(json.error || "La acción de vista falló");
+      }
+      return { content: [{ type: "text", text: JSON.stringify(json.result ?? json, null, 2) }], details: json };
     },
   });
 

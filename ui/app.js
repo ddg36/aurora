@@ -38,18 +38,19 @@ import { iconButtonClass } from './components/shared/iconButton.js';
 // Inicializa el registro semántico AIHub aunque la vista activa todavía no
 // haya publicado acciones.
 import './components/shared/ai-view-actions.js';
+import './components/shared/ai-view-bridge.js';
 
 const MODULE_LOADERS = {
 
 inicio:       () => import('./modules/inicio/view/inicio.js?v=v2-clean-ui-14'),
 
-aurora:       () => import('./modules/aurora/view/aurora.js?v=v2-control-center-2'),
+aurora:       () => import('./modules/aurora/view/aurora.js?v=v2-control-center-3'),
 
 productividad: () => import('./modules/productividad/view/productividad.js?v=v2-productividad-1'),
 
-lyra:         () => import('./modules/lyra/view/lyra.js?v=v2-clean-ui-14'),
+lyra:         () => import('./modules/lyra/view/lyra.js?v=v2-clean-ui-15'),
 
-llmcloud:     () => import('./modules/llmcloud/view/llmcloud.js?v=v2-clean-ui-14'),
+llmcloud:     () => import('./modules/llmcloud/view/llmcloud.js?v=v2-clean-ui-15'),
 
 prompts:      () => import('./modules/prompts/view/prompts.js?v=v2-clean-ui-14'),
 
@@ -65,7 +66,7 @@ stats:        () => import('./modules/stats/view/stats.js?v=v2-clean-ui-14'),
 
 captura:      () => import('./modules/captura/view/captura.js?v=v2-bd-real-1'),
 
-toolkit:      () => import('./modules/toolkit/view/toolkit.js?v=v2-clean-ui-14'),
+toolkit:      () => import('./modules/toolkit/view/toolkit.js?v=v2-clean-ui-15'),
 
 chain:        () => import('./modules/chain/view/chain.js?v=v2-clean-ui-14'),
 

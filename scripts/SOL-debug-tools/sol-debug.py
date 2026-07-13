@@ -5,6 +5,7 @@ Ejemplos:
   ./sol-debug.py --targets
   ./sol-debug.py --view lyra
   ./sol-debug.py --cloud-ask 'Respondé OK' --pane cloud --timeout 30
+  ./sol-debug.py --new-chat --pane izq
   ./sol-debug.py --cloud-ask 'Leé el adjunto' --file /tmp/x.txt
   ./sol-debug.py --cloud-stop --pane cloud
   ./sol-debug.py --trace 20 --pane cloud
@@ -300,6 +301,27 @@ def start_cloud_job(prompt, pane, timeout_ms, files, images):
     return evaluate(expr), job_id
 
 
+def start_new_chat_job(pane, timeout_ms):
+    """Navega el proveedor a un chat limpio y espera confirmación del relay."""
+    job_id = 'sol-' + uuid.uuid4().hex[:12]
+    expr = f"""
+      (async()=>{{
+        const id={js(job_id)};
+        const jobs=globalThis.__solDebugJobs ||= {{}};
+        const job=jobs[id]={{id,state:'starting',action:'new_chat',pane:{js(pane)},started:Date.now()}};
+        try {{
+          const {{nuevaConversacionCloud}}=await import('/ui/components/shared/cloud-ask.js');
+          job.state='running';
+          nuevaConversacionCloud(null,{js(pane)},{timeout_ms})
+            .then(result=>Object.assign(job,{{state:'done',result,finished:Date.now()}}))
+            .catch(error=>Object.assign(job,{{state:'error',error:String(error?.stack||error),finished:Date.now()}}));
+        }} catch(error) {{ Object.assign(job,{{state:'error',error:String(error?.stack||error),finished:Date.now()}}); }}
+        return id;
+      }})()
+    """
+    return evaluate(expr), job_id
+
+
 def start_lyra_job(prompt, timeout_ms, attachments, expect_cancel=False):
     """Envía por el composer real de Lyra y observa su ciclo UI completo."""
     job_id = 'sol-' + uuid.uuid4().hex[:12]
@@ -451,6 +473,7 @@ def main():
     actions.add_argument('--lyra-enter', metavar='PROMPT', help='escribir y pulsar Enter sin esperar resultado')
     actions.add_argument('--chaos-web', choices=tuple(WEB_CHAOS), help='escenario web complejo por Lyra Cloud')
     actions.add_argument('--cloud-ask', metavar='PROMPT', help='probar directamente el relay/iframe Cloud')
+    actions.add_argument('--new-chat', action='store_true', help='abrir y confirmar un chat nativo nuevo')
     actions.add_argument('--lyra-stop', action='store_true', help='pulsar Stop en el chatbox nativo de Lyra')
     actions.add_argument('--cloud-stop', action='store_true', help='detener generación Cloud')
     actions.add_argument('--trace', nargs='?', const=20, type=int, metavar='N', help='últimos eventos Cloud')
@@ -471,7 +494,8 @@ def main():
             print(t.get('type'), t.get('id'), t.get('url'))
         return
     if a.eval is not None:
-        print(json.dumps(evaluate(a.eval, needle=a.target, target_id=a.target_id), ensure_ascii=False, indent=2))
+        print(json.dumps(evaluate(a.eval, needle=a.target, target_id=a.target_id,
+                                  timeout=max(12, a.timeout + 5)), ensure_ascii=False, indent=2))
         return
     if a.shot:
         t = target(a.target, a.target_id) if a.target_id else aurora_page_target()
@@ -499,8 +523,11 @@ def main():
         return
     if a.click:
         value = evaluate(f"""(()=>{{const q={js(a.click)}.toLowerCase();
-          const b=[...document.querySelectorAll('button')].find(x=>(x.title||'').toLowerCase().includes(q)||(x.innerText||'').trim().toLowerCase().includes(q));
-          b?.click();return {{ok:!!b,label:b?.title||b?.innerText?.trim()}};}})()""")
+          const selectors='button,[role="button"],summary,a,.cursor-pointer';
+          const nodes=[...document.querySelectorAll(selectors)].filter(x=>x.offsetParent!==null);
+          const label=x=>(x.title||x.getAttribute('aria-label')||x.innerText||x.textContent||'').trim();
+          const b=nodes.find(x=>label(x).toLowerCase()===q)||nodes.find(x=>label(x).toLowerCase().includes(q));
+          b?.click();return {{ok:!!b,label:b?label(b):null,tag:b?.tagName||null}};}})()""")
         print(json.dumps(value, ensure_ascii=False, indent=2))
         return
     if a.hard_reload:
@@ -521,6 +548,13 @@ def main():
     if a.cloud_stop:
         expr = f"import('/ui/components/shared/cloud-ask.js').then(m=>{{m.detenerCloud(null,{js(a.pane)});return {{ok:true,pane:{js(a.pane)}}};}})"
         print(json.dumps(evaluate(expr), ensure_ascii=False, indent=2))
+        return
+    if a.new_chat:
+        _, job_id = start_new_chat_job(a.pane, int(a.timeout * 1000))
+        result = poll_job(job_id, a.timeout, verbose=a.verbose)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if result.get('state') != 'done' or result.get('result', {}).get('ok') is False:
+            raise SystemExit(1)
         return
     if a.lyra_stop:
         value = evaluate("""(()=>{

@@ -10,7 +10,9 @@
   if (window.top === window) return;
   const padre = location.ancestorOrigins?.[0] || '';
   if (!/^chrome-extension:|^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(padre)) return;
-  const RELAY_BUILD = '2026-07-13.5';
+  const RELAY_BUILD = '2026-07-13.18';
+  if (globalThis.__auroraCloudRelayActive) return;
+  globalThis.__auroraCloudRelayActive = RELAY_BUILD;
 
   // Traza circular observable por CDP. Permite distinguir "Gemini lento" de
   // "relay bloqueado" sin inundar console ni afectar el streaming.
@@ -120,8 +122,16 @@
   // (el sitio lo limpia al mandar). Sin esto, en segundo plano el prompt
   // quedaba escrito pero sin enviar ("se queda en espera"). Instantáneo: el
   // primer intento sale ya; los reintentos sólo si no se envió.
-  async function enviarVerificado(el, largoPrompt, cancelToken) {
-    const enviado = () => textoInput(getInput()).length < Math.min(15, largoPrompt);
+  async function enviarVerificado(el, largoPrompt, cancelToken, userCountBefore = 0) {
+    const esChatGPT = /chatgpt\.com|chat\.openai\.com/.test(location.hostname);
+    const userCount = () => /gemini\.google\.com/.test(location.hostname)
+      ? document.querySelectorAll('user-query').length
+      : document.querySelectorAll('[data-message-author-role="user"]').length;
+    const inputVacio = () => textoInput(getInput()).length < Math.min(15, largoPrompt);
+    // Gemini conserva un Stop fantasma y a veces limpia temporalmente el
+    // editor sin crear el turno. Exigir un user-query nuevo evita declarar
+    // `submitted` cuando el proveedor en realidad descartó el mensaje.
+    const enviado = () => inputVacio() && (esChatGPT || userCount() > userCountBefore);
     const esperarCambio = (ms = 500) => new Promise(resolve => {
       let done = false;
       const finish = () => { if (done) return; done = true; obs.disconnect(); clearTimeout(to); resolve(); };
@@ -129,22 +139,32 @@
       obs.observe(document.body, { childList: true, subtree: true, attributes: true });
       const to = setTimeout(finish, ms);
     });
-    const deadline = Date.now() + 12000;
+    // Después de una respuesta con bloque JSON, Gemini puede conservar el
+    // composer bloqueado bastante más de 12s mientras cierra el toolbar. El
+    // loop sigue verificando que el mensaje realmente se vacíe: ampliar este
+    // margen no declara falsos positivos ni reenvía un turno ya aceptado.
+    const deadline = Date.now() + 30000;
     let intento = 0;
     while (Date.now() < deadline) {
       if (cancelToken?.cancelled) return false;
+      // Gemini puede abrir Canvas para redactar código. El composer sigue en
+      // el DOM pero queda inutilizable detrás del panel inmersivo; cerrarlo no
+      // borra la respuesta y permite entregar feedback/tool result.
+      const cerrarCanvas = [...document.querySelectorAll('button')].find(b =>
+        b.offsetParent !== null && /cerrar panel|close panel/i.test(b.getAttribute('aria-label') || ''));
+      if (cerrarCanvas) { cerrarCanvas.click(); await esperarCambio(250); }
       // ChatGPT cambia el submit genérico por Stop antes de limpiar siempre el
       // contenteditable. Esa transición YA demuestra que aceptó el envío. Sin
       // este guard, el retry encontraba `form button[type=submit]` convertido
       // en Stop y cortaba la respuesta tras 2–3 caracteres.
-      if (intento > 0 && (enviado() || getStop())) return true;
+      if (intento > 0 && (enviado() || (esChatGPT && getStop()))) return true;
       const input = getInput() || el;
       try { input.focus(); } catch (_) {}
       const btn = getSendAny();
       if (btn) btn.click(); else dispararEnter(input);
       await esperarCambio(intento++ === 0 ? 180 : 500);
       if (cancelToken?.cancelled) return false;
-      if (enviado() || getStop()) return true;
+      if (enviado() || (esChatGPT && getStop())) return true;
     }
     return false;
   }
@@ -222,8 +242,9 @@
   // generando() acá: al enviar, el botón "Detener" aparece al instante y
   // haría enganchar el mensaje VIEJO (el nuevo turno tarda ~4.5s en existir).
   // Ese era el bug de "captura el anterior".
-  async function esperarTarget(base, deadline) {
+  async function esperarTarget(base, deadline, cancelToken) {
     while (Date.now() < deadline) {
+      if (cancelToken?.cancelled) return null;
       const cs = contenedores();
       // ChatGPT: anclar la respuesta al mensaje de USUARIO que acabamos de
       // enviar. La virtualización puede insertar asistentes viejos con IDs
@@ -243,12 +264,11 @@
       // data-message-id permanece estable: elegir el ÚLTIMO id realmente nuevo.
       const porId = cs.filter(c => idContainer(c) && !base.ids.has(idContainer(c)));
       if (porId.length) {
-        // Al hacer submit, ChatGPT puede materializar primero el turno anterior
-        // virtualizado y unos cientos de ms después crear la respuesta actual.
-        // Una ventana corta permite que aparezcan ambos; elegimos el último ID.
-        await new Promise(r => setTimeout(r, 900));
-        const despues = contenedores().filter(c => idContainer(c) && !base.ids.has(idContainer(c)));
-        return (despues.length ? despues : porId).at(-1);
+        // No esperar con setTimeout dentro de un iframe oculto: Chromium puede
+        // convertir 900ms en minutos. El ancla de user turn de arriba resuelve
+        // el caso moderno; para el fallback por ID tomamos el último nodo nuevo
+        // y `seguirTarget` ya migra si aparece otro más reciente.
+        return porId.at(-1);
       }
       // Sitios sin id estable (Gemini): un turno nuevo normalmente aumenta el
       // conteo. Elegir el último evita enganchar un nodo viejo re-renderizado.
@@ -261,7 +281,16 @@
       // Sitio que reutiliza/reemplaza el último nodo sin aumentar el conteo.
       const last = cs.at(-1);
       if (last && norm(textOf(last)) && norm(textOf(last)) !== base.lastText) return last;
-      await new Promise(r => setTimeout(r, 200));
+      // Esperar una mutación real, no un timer de polling. En iframes Cloud
+      // opacos Chromium puede estirar 200ms durante minutos; el DOM del turno
+      // sí muta aunque el panel esté detrás de otra vista.
+      await new Promise(resolve => {
+        let done = false;
+        const finish = () => { if (done) return; done = true; obs.disconnect(); clearTimeout(fallback); resolve(); };
+        const obs = new MutationObserver(finish);
+        obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+        const fallback = setTimeout(finish, 1000);
+      });
     }
     return null;
   }
@@ -284,6 +313,8 @@
       let respondeMs = null, ultimaCaptura = submitAt;
       let siteObs = null, vioGenerando = false;
       const esChatGPT = /chatgpt\.com|chat\.openai\.com/.test(location.hostname);
+      const ocultoSinShim = () => document.hidden &&
+        document.documentElement.dataset.auroraVisibilityShim !== 'active';
 
       // Durante el streaming SOLO leemos innerText (nativo, O(n) barato) para
       // detectar cambios y streamear preview. NADA de domToMarkdown acá: caminar
@@ -327,8 +358,9 @@
       const terminar = (reason) => {
         if (hecho) return; hecho = true;
         obs.disconnect(); siteObs?.disconnect(); clearInterval(poll); clearTimeout(settle); clearTimeout(arranque);
+        document.removeEventListener('visibilitychange', onVisibility);
         capturando = true; leer();   // lectura final de texto
-        const esPlaceholder = /^(thinking|reasoning|pensando|razonando)\.?$/i.test(lastText);
+        const esPlaceholder = /^(thinking|reasoning|pensando|razonando|json|code)\.?$/i.test(lastText);
         // domToMarkdown UNA sola vez (fiel: bloques de código, listas, etc.).
         lastMd = domToMarkdown(nodoTexto(current));
         resolve({
@@ -345,7 +377,10 @@
         });
       };
 
-      // Arranque de captura tras el head-start único.
+      // Arranque de captura tras el head-start único. Una microtarea de
+      // respaldo evita depender exclusivamente de timers del iframe oculto:
+      // ChatGPT puede materializar toda la respuesta de razonamiento de golpe
+      // cuando Stop ya desapareció.
       const arranque = setTimeout(() => { capturando = true; leer(); }, INICIO_DELAY);
 
       // Supervisor de fin: ESTABILIDAD DE TEXTO. Verificado por CDP que en
@@ -357,20 +392,28 @@
       // ChatGPT puede pausar varios segundos después del primer carácter
       // (observado: "A" → pausa → respuesta completa del adjunto). Gemini
       // streamea de forma continua y conserva el cierre rápido.
-      const FIN_IDLE = esChatGPT ? 8000 : 2500;
+      const FIN_IDLE = esChatGPT ? 8000 : 8000;
       const chequearFin = () => {
         if (!capturando || !lastText) return;
+        // Algunos proveedores detienen el render de tokens al ocultarse. Un
+        // fragmento congelado no es una respuesta estable: esperar a que el
+        // documento vuelva a estar visible o al timeout explícito.
+        if (ocultoSinShim()) return;
         if (/^(thinking|reasoning|pensando|razonando)\.?$/i.test(lastText)) return;
         // En ChatGPT, el nodo virtualizado del turno anterior puede aparecer
         // varios segundos antes que la respuesta nueva. No declarar estable
         // ese señuelo antes de darle tiempo al ID actual para materializarse.
-        const minimo = /chatgpt\.com|chat\.openai\.com/.test(location.hostname) ? 12000 : 8000;
+        const minimo = /chatgpt\.com|chat\.openai\.com/.test(location.hostname) ? 12000 : 12000;
         if (Date.now() - submitAt < minimo) return;
         if (Date.now() - lastChange > FIN_IDLE) return terminar('estable');
       };
 
       const obs = new MutationObserver(() => { leer(); chequearFin(); });
       obs.observe(target, { childList: true, subtree: true, characterData: true });
+      const onVisibility = () => {
+        if (!document.hidden) { leer(); chequearFin(); }
+      };
+      document.addEventListener('visibilitychange', onVisibility);
 
       // En background, Chromium puede convertir el poll de 350ms en uno de
       // 60s. ChatGPT sí tiene una señal de cierre útil: el botón Stop aparece
@@ -380,6 +423,11 @@
         siteObs = new MutationObserver(() => {
           leer();
           if (getStop()) { vioGenerando = true; return; }
+          // En una pestaña oculta ChatGPT puede retirar Stop antes de que el
+          // último lote de texto llegue al DOM. La señal produjo cierres como
+          // `BACKGROUND` mientras el sitio aún completaba `_RELAY_OK`. En
+          // background sólo la estabilidad textual puede cerrar el turno.
+          if (ocultoSinShim()) return;
           if (vioGenerando && lastText && !/^(thinking|reasoning|pensando|razonando)\.?$/i.test(lastText)) {
             terminar('site_complete');
           }
@@ -387,6 +435,18 @@
         siteObs.observe(document.body, { childList: true, subtree: true, attributes: true });
         vioGenerando = !!getStop();
       }
+
+      queueMicrotask(() => {
+        if (hecho) return;
+        capturando = true;
+        leer();
+        // Si el target apareció ya completo después de un razonamiento largo,
+        // no habrá transición Stop ni otra mutación que despierte al observer.
+        if (esChatGPT && !getStop()) {
+          const vacio = !lastText || /^(json|code)$/i.test(lastText);
+          terminar(vacio ? 'site_empty' : 'site_complete');
+        }
+      });
 
       // Respaldo por sondeo (por si la última mutación fue la que quitó el
       // stop button y el observer ya no dispara más).
@@ -403,8 +463,8 @@
     const deadline = Date.now() + timeoutMs;
     // Algunos modelos tardan >30s antes de crear el contenedor. Esperar todo el
     // presupuesto evita declarar never_started y provocar reenvíos duplicados.
-    const target = await esperarTarget(base, deadline);
-    if (!target) return { ok: false, text: '', reason: 'never_started', respondeMs: null, generaMs: null };
+    const target = await esperarTarget(base, deadline, cancelToken);
+    if (!target) return { ok: false, text: '', reason: cancelToken?.cancelled ? 'cancelled' : 'never_started', respondeMs: null, generaMs: null };
     return seguirTarget(target, { base, onChunk, cancelToken, timeoutMs: deadline - Date.now(), submitAt: submitAt || Date.now() });
   }
 
@@ -422,11 +482,195 @@
   let ultimoTurnoTerminado = 0;
   let ultimoFueTool = false;
   const colaAsks = [];
+  const ASK_PENDING_KEY = 'aurora_cloud_ask_pending_v1';
+
+  function leerAskPendiente() {
+    try { return JSON.parse(sessionStorage.getItem(ASK_PENDING_KEY) || 'null'); } catch { return null; }
+  }
+  function guardarAskPendiente(value) {
+    try { sessionStorage.setItem(ASK_PENDING_KEY, JSON.stringify(value)); return true; } catch { return false; }
+  }
+  function borrarAskPendiente(requestId) {
+    try {
+      const current = leerAskPendiente();
+      if (!requestId || current?.requestId === requestId) sessionStorage.removeItem(ASK_PENDING_KEY);
+    } catch (_) {}
+  }
+
+  // El primer envío de una conversación suele navegar /app → /app/<id>.
+  // Esa navegación destruye el content script, pero NO la generación del
+  // proveedor. Persistimos sólo el ancla de captura (nunca permisos/tokens) y
+  // la nueva instancia continúa observando el mismo turno.
+  async function reanudarAskPendiente() {
+    const pending = leerAskPendiente();
+    if (!pending?.requestId || ocupado) return false;
+    const remaining = Number(pending.deadline || 0) - Date.now();
+    if (remaining <= 0) {
+      borrarAskPendiente(pending.requestId);
+      post({ type: 'AURORA_CLOUD_ANSWER', requestId: pending.requestId, ok: false,
+        text: 'Error: la captura no sobrevivió antes del timeout.', reason: 'resume_timeout' });
+      return false;
+    }
+    const cancel = { cancelled: false };
+    ocupado = true; cancelActual = cancel; reqActual = pending.requestId;
+    const now = contenedores();
+    const base = {
+      prev: new Set(now.length <= pending.baseCount ? now : []),
+      ids: new Set(pending.ids || []),
+      userIds: new Set(pending.userIds || []),
+      count: Number(pending.baseCount || 0),
+      lastEl: null,
+      lastText: pending.lastText || '',
+    };
+    trace('ask_resume', { requestId: pending.requestId, remainingMs: remaining, baseCount: base.count });
+    try {
+      let chunkPend = null, chunkTimer = null, ultimoPost = 0;
+      const postChunk = () => {
+        if (chunkPend != null) post({ type: 'AURORA_CLOUD_CHUNK', requestId: pending.requestId, text: chunkPend });
+        chunkPend = null; chunkTimer = null; ultimoPost = Date.now();
+      };
+      const res = await esperarRespuesta({
+        base, cancelToken: cancel, submitAt: pending.submitAt || Date.now(), timeoutMs: remaining,
+        onChunk: text => {
+          chunkPend = text;
+          const delay = Date.now() - ultimoPost;
+          if (delay >= 140) postChunk(); else if (!chunkTimer) chunkTimer = setTimeout(postChunk, 140 - delay);
+        },
+      });
+      if (chunkTimer) clearTimeout(chunkTimer);
+      borrarAskPendiente(pending.requestId);
+      trace('answer_resumed', { requestId: pending.requestId, ok: res.ok, reason: res.reason });
+      post({ type: 'AURORA_CLOUD_ANSWER', requestId: pending.requestId, ok: res.ok,
+        text: res.reason === 'cancelled' ? 'Cancelado por el usuario.' : (res.text || '(sin respuesta detectada)'),
+        reason: res.reason, respondeMs: res.respondeMs, generaMs: res.generaMs });
+    } catch (error) {
+      borrarAskPendiente(pending.requestId);
+      post({ type: 'AURORA_CLOUD_ANSWER', requestId: pending.requestId, ok: false,
+        text: 'Error reanudando cloud-relay: ' + (error?.message || String(error)), reason: 'resume_error' });
+    } finally {
+      if (reqActual === pending.requestId) { ocupado = false; cancelActual = null; reqActual = null; }
+    }
+    return true;
+  }
+
+  // Avisar al parent permite que ASK que estaban en cola se reenvíen al relay
+  // nuevo. La ASK activa se deduplica por el marcador anterior.
+  window.addEventListener('beforeunload', () => {
+    if (leerAskPendiente()?.requestId) post({ type: 'AURORA_CLOUD_RESETTING', reason: 'provider_navigation' });
+  });
+
+  // ── Nueva conversación confirmada ──────────────────────
+  // El marcador sobrevive a navegación same-origin. ChatGPT suele recargar al
+  // ir a `/`; Gemini puede hacerlo como SPA. La instancia vieja y la nueva
+  // llaman al mismo confirmador, pero sólo una consume el marcador.
+  const NEW_CHAT_KEY = 'aurora_cloud_new_chat_pending';
+
+  function botonNuevoChat() {
+    const candidatos = [
+      ...document.querySelectorAll('a[href="/"], button[aria-label], [role="button"][aria-label]'),
+    ];
+    return candidatos.find(el => {
+      if (!el || el.offsetParent === null) return false;
+      const label = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.textContent || ''}`;
+      return /new chat|nuevo chat|chat nuevo/i.test(label);
+    }) || null;
+  }
+
+  function leerMarcaNuevoChat() {
+    try { return JSON.parse(sessionStorage.getItem(NEW_CHAT_KEY) || 'null'); } catch { return null; }
+  }
+
+  function borrarMarcaNuevoChat() {
+    try { sessionStorage.removeItem(NEW_CHAT_KEY); } catch (_) {}
+  }
+
+  async function confirmarNuevoChatPendiente() {
+    const marca = leerMarcaNuevoChat();
+    if (!marca?.requestId) return false;
+    const deadline = Date.now() + 30000;
+    let limpioDesde = 0;
+    while (Date.now() < deadline) {
+      const input = getInput();
+      const count = contenedores().length;
+      const cambioUrl = location.href !== marca.beforeUrl;
+      const rutaLimpia = /chatgpt\.com|chat\.openai\.com/.test(location.hostname)
+        ? !/^\/c\//.test(location.pathname)
+        : /gemini\.google\.com/.test(location.hostname)
+          ? /^\/app\/?$/.test(location.pathname)
+          : cambioUrl;
+      const domLimpio = count === 0 || count < (marca.beforeCount || 0);
+      const candidato = input && domLimpio && (rutaLimpia || cambioUrl) && Date.now() - marca.startedAt > 500;
+      if (candidato && !limpioDesde) limpioDesde = Date.now();
+      if (!candidato) limpioDesde = 0;
+      // ChatGPT puede mostrar `/` y DOM vacío durante ~800ms y restaurar el
+      // hilo anterior justo después. Exigir estabilidad evita declarar un
+      // chat limpio que en realidad vuelve a contaminarse con el historial.
+      if (candidato && Date.now() - limpioDesde >= 2200) {
+        borrarMarcaNuevoChat();
+        trace('new_chat_ready', { requestId: marca.requestId, url: location.href, count });
+        post({ type: 'AURORA_CLOUD_READY', host: location.hostname, relayBuild: RELAY_BUILD });
+        post({ type: 'AURORA_CLOUD_NEW_CHAT_ANSWER', requestId: marca.requestId,
+          ok: true, reason: 'new_chat_ready', url: location.href });
+        return true;
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    borrarMarcaNuevoChat();
+    trace('new_chat_error', { requestId: marca.requestId, reason: 'new_chat_not_ready' });
+    post({ type: 'AURORA_CLOUD_NEW_CHAT_ANSWER', requestId: marca.requestId,
+      ok: false, reason: 'new_chat_not_ready', error: 'El composer limpio no quedó listo en 30s.' });
+    return false;
+  }
+
+  function iniciarNuevoChat(requestId) {
+    if (!requestId) return;
+    const esChatGPT = /chatgpt\.com|chat\.openai\.com/.test(location.hostname);
+    // Gemini puede conservar un control de Stop visible varios segundos aun
+    // después de terminar. `ocupado` es nuestra fuente fiable allí; en
+    // ChatGPT el botón sí bloquea correctamente un reset durante generación.
+    if (ocupado || (esChatGPT && getStop())) {
+      post({ type: 'AURORA_CLOUD_NEW_CHAT_ANSWER', requestId, ok: false,
+        reason: 'provider_busy', error: 'El panel todavía está generando.' });
+      return;
+    }
+    const marca = { requestId, beforeUrl: location.href, beforeCount: contenedores().length, startedAt: Date.now() };
+    try { sessionStorage.setItem(NEW_CHAT_KEY, JSON.stringify(marca)); }
+    catch (err) {
+      post({ type: 'AURORA_CLOUD_NEW_CHAT_ANSWER', requestId, ok: false,
+        reason: 'storage_error', error: err?.message || String(err) });
+      return;
+    }
+    trace('new_chat_start', { requestId, beforeUrl: marca.beforeUrl, beforeCount: marca.beforeCount });
+    post({ type: 'AURORA_CLOUD_RESETTING', reason: 'new_chat' });
+    const destino = /gemini\.google\.com/.test(location.hostname) ? '/app'
+      : /chatgpt\.com|chat\.openai\.com/.test(location.hostname) ? '/' : null;
+    if (destino) {
+      // Navegación física conocida: más fuerte que un click SPA, que ChatGPT
+      // a veces revierte al hilo anterior tras mostrar `/` fugazmente.
+      location.assign(destino);
+    } else {
+      const boton = botonNuevoChat();
+      if (boton) boton.click();
+      else {
+        borrarMarcaNuevoChat();
+        post({ type: 'AURORA_CLOUD_NEW_CHAT_ANSWER', requestId, ok: false,
+          reason: 'new_chat_unsupported', error: `Proveedor sin selector de nuevo chat: ${location.hostname}` });
+        return;
+      }
+    }
+    // Gemini suele navegar como SPA y no reinjecta el content script.
+    setTimeout(() => confirmarNuevoChatPendiente(), 250);
+  }
+
+  // Si esta instancia nació por una navegación completa, consume el marcador.
+  setTimeout(() => confirmarNuevoChatPendiente(), 0);
+  setTimeout(() => reanudarAskPendiente(), 0);
 
   // Detiene la generación de la nube: cancela nuestra captura Y clickea el
   // botón "Detener respuesta" del sitio (nuestra parada conectada a la suya).
   function detenerNube(reason = 'stop') {
     if (cancelActual) cancelActual.cancelled = true;
+    borrarAskPendiente(reqActual);
     const stop = getStop();
     if (stop && !stop.disabled) stop.click();
     // STOP significa detener el flujo completo, no ejecutar luego prompts que
@@ -529,6 +773,15 @@
   window.addEventListener('message', async (e) => {
     if (e.data?.type === 'AURORA_CLOUD_PING') { anunciar(); return; }
     if (e.data?.type === 'AURORA_CLOUD_STOP') { detenerNube(); return; }
+    if (e.data?.type === 'AURORA_CLOUD_NEW_CHAT') {
+      try { iniciarNuevoChat(e.data.requestId); }
+      catch (err) {
+        trace('new_chat_error', { requestId: e.data.requestId, reason: 'relay_exception', error: err?.message || String(err) });
+        post({ type: 'AURORA_CLOUD_NEW_CHAT_ANSWER', requestId: e.data.requestId, ok: false,
+          reason: 'relay_exception', error: err?.message || String(err) });
+      }
+      return;
+    }
     if (e.data?.type !== 'AURORA_CLOUD_ASK') return;
     const { prompt, requestId, images, files, captureTimeoutMs } = e.data;
     if (!prompt || !requestId) return;
@@ -600,6 +853,9 @@
       // relay queda exactamente un turno atrasado. Aún no enviamos, así que
       // todo lo visible en este punto pertenece inequívocamente al baseline.
       const base0 = contenedores();
+      const userCountBefore = /gemini\.google\.com/.test(location.hostname)
+        ? document.querySelectorAll('user-query').length
+        : document.querySelectorAll('[data-message-author-role="user"]').length;
       const base = {
         prev: new Set(base0),
         ids: new Set(base0.map(idContainer).filter(Boolean)),
@@ -610,8 +866,14 @@
         lastText: base0.length ? norm(textOf(base0[base0.length - 1])) : '',
       };
       const submitAt = Date.now();   // t0 real: apenas se envía el prompt
-      const seEnvio = await enviarVerificado(input, prompt.length, cancel);
+      guardarAskPendiente({
+        requestId, submitAt,
+        deadline: submitAt + (Number.isFinite(captureTimeoutMs) ? Math.max(1000, Math.min(240000, captureTimeoutMs)) : 240000),
+        baseCount: base.count, ids: [...base.ids], userIds: [...base.userIds], lastText: base.lastText,
+      });
+      const seEnvio = await enviarVerificado(input, prompt.length, cancel, userCountBefore);
       if (!seEnvio) {
+        borrarAskPendiente(requestId);
         post({ type: 'AURORA_CLOUD_ANSWER', requestId, ok: false,
           text: cancel.cancelled ? 'Cancelado por el usuario.' : 'Error: no se pudo enviar el mensaje al AI (iframe sin foco o botón enviar bloqueado). Reintentá.',
           reason: cancel.cancelled ? 'cancelled' : 'submit_failed' });
@@ -648,6 +910,7 @@
     } catch (err) {
       post({ type: 'AURORA_CLOUD_ANSWER', requestId, ok: false, text: 'Error en cloud-relay: ' + err.message });
     } finally {
+      borrarAskPendiente(requestId);
       if (reqActual === requestId) {
         ocupado = false;
         const siguiente = colaAsks.shift();

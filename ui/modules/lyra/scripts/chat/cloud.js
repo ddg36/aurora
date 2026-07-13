@@ -12,6 +12,7 @@ import { historial, cargando, cloudGenerando } from './mensajes.js';
 import { askCloud } from '../../../../components/shared/cloud-ask.js';
 import { postJSON } from '../../../../components/shared/api.js';
 import { detectarToolDraft, toolVisual, emitirToolVisual } from '../../../../components/shared/cloud-tool-visual.js';
+import { submitForge } from '../../../../components/shared/forge-submit.js';
 
 // Tools reales del harness de pi (verificado). Solo estas se aceptan.
 const TOOLS_PI = {
@@ -19,6 +20,9 @@ const TOOLS_PI = {
   bash:  'Corré un comando de shell. args: {"cmd": "comando"}',
   edit:  'Editá un archivo por reemplazo exacto. args: {"path","oldText","newText"}',
   write: 'Escribí/creá un archivo. args: {"path","content"}',
+  forge_submit: 'Entrega una herramienta versionada. args: {"manifest":{...},"code":"handler.py"}',
+  view_describe: 'Descubre una interfaz de Aurora. args: {"view":"scratchpad|md-reader|canvas"}',
+  view_invoke: 'Invoca una acción nativa de Aurora. args: {"view","action","args":{...}}',
 };
 
 // Reconocedor: busca TODOS los objetos JSON {"tool":...,"args":...} en la
@@ -87,7 +91,11 @@ const PRIMER =
   'emití un bloque de código ```json con el objeto EXACTO {"tool":"NOMBRE","args":{...}} ' +
   '— siempre entre ```json y ``` para que el sistema lo capture bien. Tools y sus args EXACTOS: ' +
   'read {"path"} (lee un archivo; si el path es una IMAGEN .png/.jpg/.jpeg/.gif/.webp, el sistema te ADJUNTA esa imagen a tu próximo mensaje y la VES de verdad — SÍ tenés visión de imágenes a través de read, NUNCA digas que no podés ver imágenes); ' +
-  'bash {"cmd"}; edit {"path","oldText","newText"}; write {"path","content"}. ' +
+  'bash {"cmd"}; edit {"path","oldText","newText"}; write {"path","content"}; ' +
+  'forge_submit {"manifest":{name,version,description,input_schema,permissions,timeout,tests,docs},"code":"handler.py completo"} ' +
+  '(crea draft y corre tests aislados; nunca aprueba ni activa sin el humano). ' +
+  'view_describe {"view":"scratchpad|md-reader|canvas"}; ' +
+  'view_invoke {"view":"...","action":"...","args":{...}} (usa primero view_describe; acciones sensibles esperan aprobación humana). ' +
   'Reglas: usá el nombre de arg EXACTO (bash usa "cmd", no "command"). Preferí UNA tool por turno ' +
   'y esperá su resultado (llega como mensaje nuevo) antes de la siguiente. SOLO cuando necesites ' +
   'datos reales de la PC. Si una tool devuelve error, leé el mensaje, corregí y reintentá.';
@@ -249,7 +257,14 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files }) 
           content: `${etiqueta}\n\nIteración ${iter + 1}/${MAX_ITER} · ejecutando…`, _toolVisual: visual });
         let salida, esError = false, r;
         try {
-          r = await postJSON('/pi/cloud-tool', { tool: call.tool, args: call.args });
+          r = call.tool === 'forge_submit'
+            ? await submitForge(call.args)
+            : call.tool === 'view_describe' || call.tool === 'view_invoke'
+            ? await postJSON(`/tools/${call.tool}/run`, { arguments: call.args })
+            : await postJSON('/pi/cloud-tool', { tool: call.tool, args: call.args });
+          if ((call.tool === 'view_describe' || call.tool === 'view_invoke') && !r.output) {
+            r = { ...r, is_error: r.ok === false, output: JSON.stringify(r.result ?? r, null, 2) };
+          }
           salida = formatearResultado(r);
           esError = !!(r?.is_error || r?.ok === false);
         } catch (err) {

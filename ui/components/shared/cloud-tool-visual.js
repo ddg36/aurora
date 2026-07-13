@@ -4,7 +4,7 @@
 
 const html = (...args) => globalThis.html(...args);
 
-const ICONOS = { read: '◫', bash: '›_', edit: '✎', write: '＋', panel_send: '⇢' };
+const ICONOS = { read: '◫', bash: '›_', edit: '✎', write: '＋', panel_send: '⇢', forge_submit: '⚒', view_describe: '⌘', view_invoke: '⌁' };
 const FASES = {
   preparing: ['Preparando', 'text-sky-300', 'bg-sky-400'],
   ready: ['Lista', 'text-violet-300', 'bg-violet-400'],
@@ -47,6 +47,10 @@ export function detectarToolDraft(texto = '') {
   }
   const summary = tool === 'panel_send'
     ? `→ ${to || 'panel'}${message ? ` · ${message.replace(/\s+/g, ' ').slice(0, 120)}` : ''}`
+    : tool === 'forge_submit'
+    ? `${valorParcial(tramo, 'name') || 'Paquete Forge'} · validando contrato y código`
+    : tool === 'view_describe' || tool === 'view_invoke'
+    ? `${valorParcial(tramo, 'view') || 'vista'}${valorParcial(tramo, 'action') ? ` · ${valorParcial(tramo, 'action')}` : ''}`
     : path || command || (content ? `${content.length.toLocaleString()} caracteres recibidos` : 'Recibiendo argumentos…');
   return { tool, status: completa ? 'ready' : 'preparing', path, command, size: content.length, summary };
 }
@@ -59,6 +63,10 @@ export function toolVisual({ tool, args = {}, status = 'running', result, error,
     size: typeof args.content === 'string' ? args.content.length : 0,
     summary: tool === 'panel_send'
       ? `→ ${args.to || 'panel'} · ${String(args.message || '').replace(/\s+/g, ' ').slice(0, 120)}`
+      : tool === 'forge_submit'
+      ? `${args.manifest?.name || 'Paquete Forge'}@${args.manifest?.version || '?'}`
+      : tool === 'view_describe' || tool === 'view_invoke'
+      ? `${args.view || 'Aurora'}${args.action ? ` · ${args.action}` : ''}`
       : '',
     status: fallo ? 'error' : status,
     output: error || result?.output || result?.error || '',

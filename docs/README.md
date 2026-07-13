@@ -190,7 +190,9 @@ aurora/
 │   │   ├── policy.py         ← Políticas de ejecución
 │   │   ├── browser_task.py   ← browser_task tool (pi → /nav)
 │   │   ├── cloud_ask.py      ← cloud_ask tool (pi → cloud LLM)
-│   │   └── cloud_tools.py    ← Cloud tools executor
+│   │   ├── cloud_tools.py    ← Cloud tools executor
+│   │   ├── forge.py          ← paquetes inmutables, sandbox y lifecycle
+│   │   └── forge_build.py    ← Lyra → Duo Cloud → draft probado
 │   ├── ext/                  ← Extension communication bus
 │   │   └── router.py
 │   └── jobs/                 ← Scheduled jobs
@@ -790,7 +792,8 @@ aihub/
 - [x] Inicio: dashboard health (3 HealthDots)
 - [x] LLM Cloud: iframes persistentes, Split y relay por pane
 - [x] LLM Cloud: Duo explícito mediante `panel_send` sin transcript duplicado
-- [x] AI view actions: contrato semántico inicial para Canvas, Scratchpad y MD Reader
+- [x] AI view actions: bridge describe/invoke auditado para Aurora, Toolkit, Canvas, Scratchpad y MD Reader
+- [x] Tool Forge: Cloud construye drafts; sandbox, tests, aprobación, versión y rollback
 - [x] Prompts: CRUD con filtros, búsqueda, ideas, plantillas
 - [x] Wiki: árbol recursivo + editor + preview markdown
 - [x] Scratchpad: notas con bloques, sidebar, outline
@@ -832,11 +835,13 @@ aihub/
 
 ### 🔲 Cloud/Arena — siguiente etapa
 
-- [ ] **Aislamiento físico por ejecución** — `runId` ya evita mezclar evidencia
-  lógicamente; falta poder iniciar una conversación nueva/opcional en cada
-  proveedor para que su historial anterior no contamine Arena.
+- [x] **Aislamiento físico por ejecución** — `runId` separa evidencia y, por
+  defecto, Duo abre y confirma una conversación nativa nueva en Gemini y
+  ChatGPT. El controlador permite desactivarlo para pruebas deliberadas de
+  continuidad/contaminación.
 - [ ] **Pruebas destructivas de `panel_send`** — destino inválido, autoenvío,
-  mensaje vacío, ping-pong, Stop, timeout, recarga del receptor y background.
+  mensaje vacío, recuperación y Stop ya verificados entre ChatGPT y Gemini;
+  faltan ping-pong acotado, timeout completo, recarga y background.
 - [ ] **Más proveedores gratuitos** — adaptar y verificar DeepSeek, GLM,
   Kimi/Z.ai y otros sin acoplar el protocolo a selectores de Gemini/ChatGPT.
 - [ ] **Artefactos completos** — refresco después de `edit`, MD Reader,
@@ -1101,6 +1106,10 @@ sqlite3 databases/aihub.db "SELECT * FROM schema_migrations ORDER BY version;"
 .venv-linux/bin/python3 tests/pi/test_error_proveedor_retry.py
 .venv-linux/bin/python3 tests/pi/test_stats_y_compactacion.py
 
+# Tool Forge (lifecycle y orquestación Cloud)
+.venv-linux/bin/python3 tests/test_tool_forge.py
+.venv-linux/bin/python3 tests/test_forge_build.py
+
 # Verificar import limpio
 python -c "from src.main import app; print('OK')"
 ```
@@ -1155,18 +1164,21 @@ FASE 3 — Migración de lógica ✅ Completo (14 módulos operan contra DB/nexu
 FASE 4 — Features nuevos    🔲 Parcial (Arena, MD Reader y más emisores bus)
 FASE 5 — Producto           🔲 Pendiente (start.bat Windows, Aurora Pro, sync nube)
 LAB CLOUD — Relay/tools     🟡 Gemini + ChatGPT verificados; más proveedores pendientes
-LAB ARENA — Split/Duo       🟡 panel_send bidireccional; aislamiento físico pendiente
+LAB ARENA — Split/Duo       🟡 panel_send bidireccional + aislamiento físico verificados
+SUPERIDEA 1 — Tool Forge    ✅ Pipeline completo; instalación siempre humana
+SUPERIDEA 2 — AIHub actions 🟡 Bridge operativo en 5 vistas; catálogo total pendiente
 ```
 
 ### Roadmap próximo
 
-1. **Aislamiento de Arena por conversación** — contexto limpio por ejecución
-2. **Chaos tests de `panel_send`** — cancelación, errores, loops y background
+1. **AIHub operativo** — catálogo/invocación auditada de acciones semánticas de vistas
+2. **Chaos tests restantes de `panel_send`** — ping-pong, timeout, recarga y background
 3. **Artefactos Cloud completos** — MD Reader, refresh y navegación
 4. **Arena dentro de Lyra** — coordinación inicial de hasta cuatro agentes
 5. **Browser/app bridge** — percepción semántica y acciones auditables
 6. **Más emisores del bus `/eventos`** — chats, md_reader, eventos pi
-7. **start.bat + Windows / Aurora Pro** — cierre de producto
+7. **Más proveedores Cloud** — DeepSeek, GLM, Kimi/Z.ai y equivalentes
+8. **start.bat + Windows / Aurora Pro** — cierre de producto
 
 ---
 

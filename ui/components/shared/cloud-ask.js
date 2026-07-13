@@ -11,6 +11,7 @@ let _seq = 0;
 const _readyWindows = new WeakSet();
 const _extPanesReady = new Set();
 const _readyWaiters = new Set();
+const _paneReloadWaiters = new Map();
 globalThis.__auroraCloudTrace = globalThis.__auroraCloudTrace || [];
 const emitirEstado = entry => window.dispatchEvent(new CustomEvent('aurora:cloud-status', { detail: entry }));
 window.addEventListener('message', (e) => {
@@ -19,6 +20,9 @@ window.addEventListener('message', (e) => {
     if (e.source === window.parent) _extPanesReady.delete(paneId);
     else if (e.source) _readyWindows.delete(e.source);
     emitirEstado({ ts: Date.now(), fase: 'resetting', reason: e.data.reason, paneId });
+    if (e.data.reason === 'pane_reload') {
+      for (const wake of [...(_paneReloadWaiters.get(paneId) || [])]) wake();
+    }
     return;
   }
   if (e.data?.type === 'AURORA_CLOUD_STATUS' && e.data.entry) {
@@ -83,6 +87,36 @@ export function detenerCloud(iframe, paneId = 'cloud') {
   try { postAlRelay(iframe, { type: 'AURORA_CLOUD_STOP', __llmPane: paneId }); } catch (_) {}
 }
 
+// Abre y CONFIRMA una conversación limpia en el proveedor. El relay guarda un
+// marcador en sessionStorage para sobrevivir a la navegación y sólo responde
+// cuando el nuevo composer existe y el DOM del hilo anterior desapareció.
+export async function nuevaConversacionCloud(iframe, paneId = 'cloud', timeoutMs = 35000) {
+  if (!await esperarRelay(iframe, paneId)) {
+    return { ok: false, reason: 'relay_not_ready', paneId,
+      error: `El relay Cloud (${paneId}) no quedó listo para iniciar una conversación.` };
+  }
+  const requestId = `cloud-new-${Date.now()}-${++_seq}`;
+  return new Promise(resolve => {
+    let done = false;
+    const finish = result => {
+      if (done) return;
+      done = true;
+      clearTimeout(tid);
+      window.removeEventListener('message', onMsg);
+      resolve({ paneId, ...result });
+    };
+    const onMsg = e => {
+      const d = e.data;
+      if (d?.type !== 'AURORA_CLOUD_NEW_CHAT_ANSWER' || d.requestId !== requestId) return;
+      finish({ ok: !!d.ok, reason: d.reason, error: d.error, url: d.url });
+    };
+    window.addEventListener('message', onMsg);
+    const tid = setTimeout(() => finish({ ok: false, reason: 'new_chat_timeout',
+      error: `El panel ${paneId} no confirmó un chat nuevo en ${Math.round(timeoutMs / 1000)}s.` }), timeoutMs);
+    postAlRelay(iframe, { type: 'AURORA_CLOUD_NEW_CHAT', requestId, __llmPane: paneId });
+  });
+}
+
 // askCloud(iframe, prompt, { onChunk, timeoutMs, images, files }) → Promise<{ok, text}>
 // iframe null/sin contentWindow → modo extPane (ruteo por el bridge).
 // images: array de data URLs / base64 (se pegan al composer del LLM).
@@ -97,16 +131,37 @@ export async function askCloud(iframe, prompt, { onChunk, timeoutMs = 240000, im
 
   return new Promise((resolve) => {
     let done = false;
+    let onPaneReload = null;
+    let needsResume = false;
+    const request = {
+      type: 'AURORA_CLOUD_ASK', prompt, requestId, images, files,
+      captureTimeoutMs: Math.max(1000, timeoutMs - 1500), __llmPane: paneId,
+    };
     const finish = (r) => {
       if (done) return;
       done = true;
       window.removeEventListener('message', onMsg);
+      if (onPaneReload) {
+        const waiters = _paneReloadWaiters.get(paneId);
+        waiters?.delete(onPaneReload);
+        if (!waiters?.size) _paneReloadWaiters.delete(paneId);
+      }
       clearTimeout(tid);
       resolve(r);
     };
 
     const onMsg = (e) => {
       const d = e.data;
+      const messagePane = d?.__llmPane || paneId;
+      if (d?.type === 'AURORA_CLOUD_RESETTING' && messagePane === paneId && d.reason === 'provider_navigation') {
+        needsResume = true;
+        return;
+      }
+      if (d?.type === 'AURORA_CLOUD_READY' && messagePane === paneId && needsResume) {
+        needsResume = false;
+        postAlRelay(iframe, request);
+        return;
+      }
       if (!d || d.requestId !== requestId) return;
       if (d.type === 'AURORA_CLOUD_CHUNK') { onChunk?.(d.text || ''); return; }
       if (d.type === 'AURORA_CLOUD_ANSWER') {
@@ -115,6 +170,11 @@ export async function askCloud(iframe, prompt, { onChunk, timeoutMs = 240000, im
       }
     };
     window.addEventListener('message', onMsg);
+    onPaneReload = () => finish({ ok: false,
+      text: 'El panel Cloud fue recargado durante la solicitud.',
+      reason: 'pane_reloaded', paneId });
+    if (!_paneReloadWaiters.has(paneId)) _paneReloadWaiters.set(paneId, new Set());
+    _paneReloadWaiters.get(paneId).add(onPaneReload);
 
     const tid = setTimeout(() => {
       detenerCloud(iframe, paneId);
@@ -134,10 +194,6 @@ export async function askCloud(iframe, prompt, { onChunk, timeoutMs = 240000, im
     // El relay debe cerrar ANTES que esta Promise. Si ambos usan 95s exactos,
     // el padre puede declarar timeout y perder el error específico que llega
     // milisegundos después (p. ej. ChatGPT atascado en Thinking).
-    postAlRelay(iframe, {
-      type: 'AURORA_CLOUD_ASK', prompt, requestId, images, files,
-      captureTimeoutMs: Math.max(1000, timeoutMs - 1500),
-      __llmPane: paneId,
-    });
+    postAlRelay(iframe, request);
   });
 }

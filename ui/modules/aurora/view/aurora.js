@@ -7,6 +7,7 @@ import { cargarHealth } from '../scripts/services.js';
 import { cargarTools, ejecutarTool } from '../scripts/tools.js';
 import { cargarMcpClientConfig, cargarMcpStatus, llamarMcp } from '../scripts/mcp.js';
 import { copiarTexto } from '../../../components/shared/clipboard.js';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 
 const SECTIONS = ['Services', 'LLM', 'Tools', 'MCP'];
 
@@ -327,8 +328,10 @@ export function AuroraControl() {
   const loadHealth = () => cargarHealth().then(setHealth).catch(() => setHealth(null));
   const loadTools = () => cargarTools().then(setTools).catch(() => setTools([]));
   const loadMcp = () => {
-    cargarMcpStatus().then(setMcpStatus).catch(() => setMcpStatus(null));
-    cargarMcpClientConfig().then(setMcpClientConfig).catch(() => setMcpClientConfig(null));
+    return Promise.all([
+      cargarMcpStatus().then(setMcpStatus).catch(() => setMcpStatus(null)),
+      cargarMcpClientConfig().then(setMcpClientConfig).catch(() => setMcpClientConfig(null)),
+    ]);
   };
 
   useEffect(() => {
@@ -336,6 +339,44 @@ export function AuroraControl() {
     loadTools();
     loadMcp();
   }, []);
+
+  useEffect(() => registerAIView({
+    id: 'aurora',
+    description: 'Centro de control: salud de servicios, providers, tools y MCP.',
+    actions: {
+      status: {
+        description: 'Devuelve un resumen operativo sin depender del panel visible.',
+        readOnly: true,
+        run: async () => {
+          const currentHealth = health || await cargarHealth().catch(() => null);
+          const currentTools = tools.length ? tools : await cargarTools().catch(() => []);
+          if (currentHealth && !health) setHealth(currentHealth);
+          if (currentTools.length && !tools.length) setTools(currentTools);
+          return {
+            section: active,
+            server: currentHealth ? 'online' : 'offline',
+            database: currentHealth?.db?.ok ? 'online' : 'offline',
+            localLLM: currentHealth?.llama?.ok ? 'online' : 'offline',
+            providers: (currentHealth?.llm?.providers || []).map(provider => ({ name: provider.name, online: !!provider.online })),
+            tools: { total: currentTools.length, forge: currentTools.filter(tool => (tool.tags || []).includes('forge')).length },
+            mcp: { loaded: !!mcpStatus, external: (mcpStatus?.external || []).length },
+          };
+        },
+      },
+      refresh: {
+        description: 'Recarga health, registry y MCP usando la misma lógica de los botones humanos.',
+        run: async () => {
+          await Promise.all([loadHealth(), loadTools(), loadMcp()]);
+          return { refreshed: true };
+        },
+      },
+      show_section: {
+        description: 'Muestra una sección del centro de control.',
+        input: { section: { type: 'string', required: true, enum: SECTIONS } },
+        run: ({ section }) => { setActive(section); return { section }; },
+      },
+    },
+  }), [active, health, tools, mcpStatus]);
 
   const content = useMemo(() => {
     if (active === 'LLM') return html`<${LlmView} health=${health} />`;

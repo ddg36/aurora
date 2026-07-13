@@ -228,6 +228,25 @@ connectExtWs();
 // Reconectar cada 30s si el server estuvo caído
 setInterval(connectExtWs, 30000);
 
+// ChatGPT/Gemini crean conversaciones mediante history.pushState y en ciertos
+// renders reemplazan el mundo aislado sin disparar una navegación que vuelva a
+// inyectar content_scripts. Reinyectar idempotentemente en ese frame permite
+// que cloud-relay retome el request persistido en sessionStorage.
+const CLOUD_RELAY_HOSTS = /(^|\.)(chatgpt\.com|chat\.openai\.com|gemini\.google\.com)$/;
+chrome.webNavigation.onHistoryStateUpdated.addListener(async details => {
+  let host = '';
+  try { host = new URL(details.url).hostname; } catch { return; }
+  if (!CLOUD_RELAY_HOSTS.test(host)) return;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: details.tabId, frameIds: [details.frameId] },
+      files: ['content-scripts/cloud-relay.js'],
+    });
+  } catch (error) {
+    console.debug('[BG] cloud relay SPA reinjection skipped:', error?.message || error);
+  }
+});
+
 // ─── Tab Observer ─────────────────────────────────────────
 // Detecta cambio de tab y notifica al servidor con info de la nueva tab activa.
 

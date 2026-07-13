@@ -220,6 +220,7 @@ export function Local() {
   const [comandoOverlay, setComandoOverlay]         = useState(null); // {comando, interactive, data, aplicando}
   const [sessionStats, setSessionStats]             = useState(null); // get_session_stats — estilo footer.js de pi
   const [ultimoTps, setUltimoTps]                   = useState(null); // tok/s del último turno — no existe en pi, agregado propio
+  const [forgeTools, setForgeTools]                 = useState([]);
   const assistantMessageRef                          = useRef(asistenteEnVivo);
 
   const chatRef   = useRef(null);
@@ -251,6 +252,11 @@ export function Local() {
       }
     });
     fetchModels().then(ms => setModelosDisp(ms || [])).catch(() => {});
+    const refreshForge = () => getJSON('/tools')
+      .then(r => setForgeTools((r.tools || []).filter(t => (t.tags || []).includes('forge'))))
+      .catch(() => {});
+    refreshForge();
+    window.addEventListener('aurora:forge-changed', refreshForge);
     connectLyra().catch(() => {});
     onWidgetUpdate(setWidgets);
     getJSON('/db/ajustes/avatar').then(d => {
@@ -276,7 +282,10 @@ export function Local() {
       canvasVisible.value = true;
     };
     document.addEventListener('lyra:canvas', onCanvasEvent);
-    return () => document.removeEventListener('lyra:canvas', onCanvasEvent);
+    return () => {
+      document.removeEventListener('lyra:canvas', onCanvasEvent);
+      window.removeEventListener('aurora:forge-changed', refreshForge);
+    };
   }, []);
 
   useEffect(() => {
@@ -870,6 +879,13 @@ export function Local() {
     setMensaje(prev => prev + promptParaHerramienta(tool, soloNombre));
   }, []);
 
+  const handleForgeChipClick = useCallback((tool, soloNombre) => {
+    const text = soloNombre
+      ? tool.name
+      : `Usá aurora_forge_run con name "${tool.name}" y arguments según este contrato: ${JSON.stringify(tool.input_schema)}. Objetivo: `;
+    setMensaje(prev => prev + text);
+  }, []);
+
   const onChatScroll = useCallback(() => {
     setEnFondo(estaCercaDelFondo(chatRef.current));
   }, []);
@@ -1016,6 +1032,21 @@ export function Local() {
                     title=${t.desc}
                     onClick=${e => handleSysChipClick(t, e.ctrlKey || e.metaKey)}
                   >${t.name}</button>
+                `)}
+              </div>
+            `}
+          </div>
+          <div class="toolbar-section mb-1">
+            <div class=${toolbarHeaderClass} onClick=${() => toggleCategory('forge')}>
+              <span class="toolbar-section-title flex-1 font-semibold">Forjadas (${forgeTools.length})</span>
+              <span class="expand-icon text-[9px]">${expandedCategories['forge'] ? '▼' : '▶'}</span>
+            </div>
+            ${expandedCategories['forge'] && html`
+              <div class="toolbar-chips flex flex-wrap gap-1 px-1 py-1.5">
+                ${forgeTools.length === 0 && html`<span class="text-[10px] text-aurora-text-dim px-1">Todavía no hay tools aprobadas y activas.</span>`}
+                ${forgeTools.map(t => html`
+                  <button key=${t.name} class=${toolbarChipClass} title=${`${t.description} · riesgo ${t.risk}`}
+                    onClick=${e => handleForgeChipClick(t, e.ctrlKey || e.metaKey)}>${t.name}</button>
                 `)}
               </div>
             `}

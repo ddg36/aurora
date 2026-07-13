@@ -16,6 +16,7 @@ navegador; `--verbose` permite verlas en vivo únicamente al investigar un fallo
 ```bash
 python3 scripts/SOL-debug-tools/sol-debug.py --targets
 python3 scripts/SOL-debug-tools/sol-debug.py --view lyra
+python3 scripts/SOL-debug-tools/sol-debug.py --click 'Tool Forge'
 python3 scripts/SOL-debug-tools/sol-debug.py --status
 python3 scripts/SOL-debug-tools/sol-debug.py --full-reload
 python3 scripts/SOL-debug-tools/sol-debug.py --background
@@ -23,6 +24,7 @@ python3 scripts/SOL-debug-tools/sol-debug.py --foreground
 python3 scripts/SOL-debug-tools/sol-debug.py --lyra-send 'Respondé OK'
 python3 scripts/SOL-debug-tools/sol-debug.py --lyra-send 'Leé el archivo' --file /tmp/x.txt
 python3 scripts/SOL-debug-tools/sol-debug.py --cloud-ask 'Respondé OK' --pane izq
+python3 scripts/SOL-debug-tools/sol-debug.py --new-chat --pane izq
 python3 scripts/SOL-debug-tools/sol-debug.py --cloud-ask 'Leé el archivo' --file /tmp/x.txt
 python3 scripts/SOL-debug-tools/sol-debug.py --cloud-ask 'Describí la imagen' --image /tmp/x.png
 python3 scripts/SOL-debug-tools/sol-debug.py --cloud-stop --pane cloud
@@ -43,6 +45,9 @@ python3 scripts/SOL-debug-tools/sol-debug.py --cloud-ask 'Respondé OK' --verbos
 - `--cloud-ask`: prueba de componente. Entra directamente por `askCloud`; sirve
   para aislar relay e iframes en la vista Cloud (`--pane izq|der|cloud`). No se
   considera una prueba suficiente de la interfaz de Lyra.
+- `--new-chat`: abre el control nativo de conversación nueva del proveedor y no
+  termina hasta que el relay confirme URL, composer y DOM limpios. Es útil para
+  detectar contaminación entre ejecuciones Arena.
 
 ## Escenarios web de estrés
 
@@ -83,18 +88,25 @@ Verificado de extremo a extremo el 2026-07-13:
   la interfaz.
 - Stop, segundo plano, colas, adjuntos de texto/imagen y respuestas de
   razonamiento largas fueron ejercitados.
+- Stop también cancela la fase previa a la respuesta: si el proveedor acepta
+  el envío pero nunca crea un contenedor, el relay ya no espera todo el timeout.
 - Los escenarios `landing`, `crm`, `game`, `kanban` y `scheduler` crearon HTML
   reales y superaron sus validaciones de contenido.
 - Cloud Split mantuvo ambos OOPIF visibles mientras Gemini y ChatGPT se
   comunicaron bidireccionalmente mediante `panel_send`.
+- ChatGPT se recuperó de `panel_send` a un destino inválido: Aurora mostró el
+  error, aceptó el reintento a Panel 1 y Gemini recibió el handoff correcto.
+- Autoenvío y mensaje vacío fueron rechazados sin romper el turno; después del
+  feedback, un handoff válido se entregó y Stop canceló al receptor atascado.
+- `--new-chat` confirmó aislamiento físico y después ambos relays continuaron
+  respondiendo desde conversaciones limpias de Gemini y ChatGPT.
 - `write/edit` producen tarjetas de artefacto; HTML abre en preview sandbox y
   Lyra lo carga en Canvas.
 
 Pendiente de automatizar en esta CLI:
 
-- crear una conversación física nueva por ejecución de Arena;
-- chaos suite específica de `panel_send` (destinos inválidos, autoenvío,
-  ping-pong, Stop, timeout y receptor recargado);
+- completar la chaos suite de `panel_send` (ping-pong acotado, timeout completo,
+  receptor recargado y background);
 - matriz de proveedores DeepSeek/GLM/Kimi;
 - aserciones visuales de tarjetas y actualización de artefactos después de
   `edit`.
@@ -102,3 +114,15 @@ Pendiente de automatizar en esta CLI:
 `--cloud-ask` sirve para aislar relay, pero las regresiones de Lyra deben cerrar
 siempre con `--lyra-send`: pasar directamente al iframe no prueba el composer ni
 el estado de la interfaz de Aurora.
+
+`--click` reconoce botones, chips, enlaces, elementos con `role=button` y
+`summary`; sirve para conducir controles Preact semánticos sin escribir un
+selector CDP nuevo para cada pantalla.
+
+Para probar el puente AIHub sin saltarse el transporte real, usar `--eval` sólo
+como cliente HTTP de la tool (el cambio de vista y la acción vuelven por el bus):
+
+```bash
+python3 scripts/SOL-debug-tools/sol-debug.py --eval \
+  'import("/ui/components/shared/api.js").then(({postJSON}) => postJSON("/tools/view_invoke/run", {arguments:{view:"aurora",action:"status",args:{}}}))'
+```

@@ -3,17 +3,22 @@
 // localizar botones ni depender del DOM visual.
 
 const views = new Map();
+// El catálogo sobrevive al unmount. `views` contiene closures ejecutables sólo
+// de la vista montada; `catalog` permite que un agente descubra capacidades sin
+// depender accidentalmente del tab que Diego está mirando.
+const catalog = new Map();
 
-function serializarVista(entry) {
+function serializarVista(entry, active = views.has(entry.id)) {
   return {
     id: entry.id,
     description: entry.description || '',
-    active: entry.active !== false,
+    active,
     actions: Object.fromEntries(Object.entries(entry.actions).map(([id, action]) => [id, {
       description: action.description || '',
       input: action.input || {},
       readOnly: !!action.readOnly,
       requiresApproval: !!action.requiresApproval,
+      risk: action.risk || (action.readOnly ? 'read' : 'write'),
     }])),
   };
 }
@@ -25,7 +30,9 @@ export function registerAIView({ id, description = '', actions = {}, active = tr
     if (!action || typeof action.run !== 'function') throw new Error(`${id}.${actionId} requiere run()`);
     normalized[actionId] = action;
   }
-  views.set(id, { id, description, actions: normalized, active });
+  const entry = { id, description, actions: normalized, active };
+  views.set(id, entry);
+  catalog.set(id, entry);
   window.dispatchEvent(new CustomEvent('aurora:ai-view-registry', { detail: describeAIViews() }));
   return () => unregisterAIView(id);
 }
@@ -38,10 +45,29 @@ export function unregisterAIView(id) {
 
 export function describeAIViews(viewId) {
   if (viewId) {
-    const entry = views.get(viewId);
+    const entry = views.get(viewId) || catalog.get(viewId);
     return entry ? serializarVista(entry) : null;
   }
-  return [...views.values()].map(serializarVista);
+  return [...catalog.values()].map(entry => serializarVista(entry));
+}
+
+function validateArgs(input, args) {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('args debe ser un objeto JSON');
+  for (const [key, rule] of Object.entries(input || {})) {
+    const present = Object.prototype.hasOwnProperty.call(args, key);
+    if (rule.required && !present) throw new Error(`Falta argumento requerido: ${key}`);
+    if (!present) continue;
+    const value = args[key];
+    const validType = rule.type === 'array' ? Array.isArray(value)
+      : rule.type === 'number' ? typeof value === 'number' && Number.isFinite(value)
+      : rule.type === 'object' ? value && typeof value === 'object' && !Array.isArray(value)
+      : !rule.type || typeof value === rule.type;
+    if (!validType) throw new Error(`${key} debe ser ${rule.type}`);
+    if (rule.enum && !rule.enum.includes(value)) throw new Error(`${key} debe ser uno de: ${rule.enum.join(', ')}`);
+    if (typeof value === 'string' && rule.maxLength && value.length > rule.maxLength) throw new Error(`${key} excede ${rule.maxLength} caracteres`);
+    if (typeof value === 'number' && rule.minimum != null && value < rule.minimum) throw new Error(`${key} debe ser >= ${rule.minimum}`);
+    if (typeof value === 'number' && rule.maximum != null && value > rule.maximum) throw new Error(`${key} debe ser <= ${rule.maximum}`);
+  }
 }
 
 export async function invokeAIView({ view, action, args = {}, requestId } = {}) {
@@ -54,6 +80,7 @@ export async function invokeAIView({ view, action, args = {}, requestId } = {}) 
     return { ok: false, requestId: reqId, requiresApproval: true, error: `Requiere aprobación: ${view}.${action}` };
   }
   try {
+    validateArgs(command.input, args || {});
     const result = await command.run(args || {}, { requestId: reqId, view, action });
     return { ok: true, requestId: reqId, view, action, result };
   } catch (err) {

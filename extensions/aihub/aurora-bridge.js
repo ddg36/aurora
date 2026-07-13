@@ -31,7 +31,10 @@ function initAuroraBridge(frame, opts) {
     if (_audioKeepAlive) return;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
+      if (!AC) {
+        globalThis.__auroraKeepAlive = { supported: false, state: 'unavailable' };
+        return;
+      }
       const ctx = new AC();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -41,12 +44,22 @@ function initAuroraBridge(frame, opts) {
       osc.connect(gain); gain.connect(ctx.destination);
       osc.start();
       _audioKeepAlive = ctx;
+      const reportar = () => {
+        globalThis.__auroraKeepAlive = {
+          supported: true, state: ctx.state, sampleRate: ctx.sampleRate,
+          updated: Date.now(), surface,
+        };
+      };
+      ctx.addEventListener?.('statechange', reportar);
+      reportar();
       const resume = () => { if (ctx.state === 'suspended') ctx.resume(); };
       resume();
       // El autoplay puede quedar suspendido hasta el 1er gesto: lo reanudamos.
       window.addEventListener('click', resume, true);
       window.addEventListener('keydown', resume, true);
-    } catch (_) {}
+    } catch (error) {
+      globalThis.__auroraKeepAlive = { supported: false, state: 'error', error: error?.message || String(error) };
+    }
   }
   iniciarKeepAlive();
 
@@ -181,7 +194,17 @@ function initAuroraBridge(frame, opts) {
       f.style.top = r.top + 'px';
       f.style.width = r.width + 'px';
       f.style.height = r.height + 'px';
-      f.style.visibility = hidden ? 'hidden' : 'visible';
+      // `visibility:hidden` se hereda dentro del iframe: Gemini desmonta el
+      // botón Send aunque el visibility shim reporte document.hidden=false.
+      // Mantenerlo renderizado con opacity 0 permite que el agente siga en
+      // background sin cubrir ni capturar clicks de la vista Aurora actual.
+      f.style.visibility = 'visible';
+      // Cero exacto activa optimizaciones de oclusión del renderer y Gemini
+      // deja de hidratar Send tras una navegación. Un alpha mínimo conserva
+      // composición/controles y es visualmente imperceptible detrás de Aurora.
+      f.style.opacity = hidden ? '0.001' : '1';
+      f.style.pointerEvents = hidden ? 'none' : 'auto';
+      f.setAttribute('aria-hidden', hidden ? 'true' : 'false');
     }
     for (const [id, f] of _llmFrames) {
       if (!vistos.has(id)) { f.remove(); _llmFrames.delete(id); }
@@ -251,13 +274,13 @@ function initAuroraBridge(frame, opts) {
     // así que Aurora no puede hablarle directo. Reenviamos en ambos sentidos:
     // Respuestas del relay (origin = host del LLM) → Aurora.
     const t = e.data?.type;
-    if (t === 'AURORA_CLOUD_CHUNK' || t === 'AURORA_CLOUD_ANSWER' || t === 'AURORA_CLOUD_READY' || t === 'AURORA_CLOUD_STATUS' || t === 'AURORA_CLOUD_RESETTING') {
+    if (t === 'AURORA_CLOUD_CHUNK' || t === 'AURORA_CLOUD_ANSWER' || t === 'AURORA_CLOUD_NEW_CHAT_ANSWER' || t === 'AURORA_CLOUD_READY' || t === 'AURORA_CLOUD_STATUS' || t === 'AURORA_CLOUD_RESETTING') {
       const paneId = [..._llmFrames].find(([, iframe]) => iframe.contentWindow === e.source)?.[0] || e.data.__llmPane || 'cloud';
       frame.contentWindow?.postMessage({ ...e.data, __llmPane: paneId }, AURORA_URL);
       return;
     }
-    // ASK/STOP de Aurora → iframe del LLM que gestionamos.
-    if (e.origin === AURORA_URL && (t === 'AURORA_CLOUD_ASK' || t === 'AURORA_CLOUD_STOP' || t === 'AURORA_CLOUD_PING')) {
+    // ASK/STOP/NEW_CHAT de Aurora → iframe del LLM que gestionamos.
+    if (e.origin === AURORA_URL && (t === 'AURORA_CLOUD_ASK' || t === 'AURORA_CLOUD_STOP' || t === 'AURORA_CLOUD_PING' || t === 'AURORA_CLOUD_NEW_CHAT')) {
       _llmFrames.get(e.data.__llmPane || 'cloud')?.contentWindow?.postMessage(e.data, '*');
       return;
     }
@@ -266,9 +289,16 @@ function initAuroraBridge(frame, opts) {
 
     if (e.data?.type === 'AURORA_LLM_PANES') { syncLlmPanes(e.data.panes, e.data.hidden); return; }
     if (e.data?.type === 'AURORA_LLM_RELOAD') {
-      const f = _llmFrames.get(e.data.id || 'cloud');
+      const paneId = e.data.id || 'cloud';
+      const f = _llmFrames.get(paneId);
       if (f) {
         const url = e.data.url || f.dataset.url;
+        // Una navegación destruye el content script y con él cualquier ASK
+        // activa. Avisar antes de poner about:blank evita que Aurora espere el
+        // timeout completo por una respuesta que ya no puede existir.
+        frame.contentWindow?.postMessage({
+          type: 'AURORA_CLOUD_RESETTING', reason: 'pane_reload', __llmPane: paneId,
+        }, AURORA_URL);
         f.src = 'about:blank';
         setTimeout(() => { if (url && f.isConnected) f.src = url; }, 60);
       }

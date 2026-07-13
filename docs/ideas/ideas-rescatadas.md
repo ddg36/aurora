@@ -183,6 +183,20 @@ versionado, rollback y documentación suficientemente simple para Lyra.
 **Dependencia:** requiere Cloud tools, colas robustas, comunicación entre LLMs,
 Canvas, pruebas y aprobación humana.
 
+**Estado:** ✅ Núcleo completo (2026-07-13). Toolkit ya ofrece Tool Forge;
+Lyra puede convocar a Gemini + ChatGPT para diseñar una capacidad, y Cloud sólo
+puede entregar un draft y solicitar sus tests. Cada paquete `forge.*@semver` es
+inmutable, se ejecuta mediante JSON stdin/stdout dentro de Bubblewrap, declara
+permisos y riesgo, conserva evidencia por caso y requiere confirmación humana
+exacta antes de instalarse. Hay activación, upgrade, rollback y aprobación por
+ejecución para capacidades sensibles. Las tools activas aparecen dinámicamente
+en Lyra y en el registry sin reiniciar el servidor.
+
+**Evidencia E2E:** `forge.text_metrics@1.0.2` fue producido por el borde Cloud y
+superó 3/3 casos (texto simple, multilínea y vacío). Las versiones 1.0.0/1.0.1
+fallidas se conservaron para demostrar versionado correctivo e inmutabilidad;
+la 1.0.2 permanece sin instalar hasta que Diego la apruebe desde Toolkit.
+
 ### Superidea 2 — AIHub operativo: Aurora accesible para todas las IA
 
 AIHub no es una colección genérica de chats. Es un espacio común donde modelos
@@ -222,6 +236,18 @@ el DOM cuando existe una acción nativa.
 
 **Primer experimento:** runtime `ai-view-actions` y Scratchpad con `status`,
 `list_pages` y `append`.
+
+**Estado:** 🟡 Puente operativo inicial (2026-07-13). `view_describe` y
+`view_invoke` ya recorren agente → Tool Registry → bus de usuario → vista Preact
+→ respuesta correlacionada. Aurora monta automáticamente el tab dueño del
+contrato, valida tipos/enums/límites, conserva catálogo tras el unmount, bloquea
+acciones `requiresApproval` y expone auditoría con duración y error. Lyra/pi,
+Gemini y ChatGPT reciben las mismas dos tools. Publican acciones `aurora`,
+`toolkit`, `canvas`, `scratchpad` y `md-reader`.
+
+**Pendiente para completar la superidea:** sumar contratos al resto de vistas,
+persistir el audit trail en DB, diseñar aprobación humana reanudable para una
+acción concreta y añadir `subscribe` para observar cambios sin polling.
 
 ### Superidea 3 — Aurora Embodied Bridge: percepción y acción para todas las IA
 
@@ -338,13 +364,21 @@ prototipos de sus capas.
   una tool exitosa, artefacto existente o verificación independiente.
 - **Aislamiento por ejecución:** ChatGPT reutilizó el resultado de un Duo anterior
   para una ruta nueva. Cada Arena necesita `runId`, objetivo activo y rechazo de
-  evidencia perteneciente a otro run. Ya existe el primer aislamiento lógico;
-  falta una conversación física nueva/opcional por ejecución.
+  evidencia perteneciente a otro run. Ya existen ambos niveles: aislamiento
+  lógico y conversación física nueva/opcional confirmada por el relay antes de
+  iniciar cada ejecución.
 - **Proveedores recuperables:** Gemini quedó genuinamente generando más de 240s.
   Al vencer el timeout, Aurora debe detener y resetear el pane, no sólo resolver
-  la Promise. El relay ya incorpora esta recuperación.
+  la Promise. El relay ya incorpora esta recuperación. También se corrigió el
+  caso inverso: envío aceptado sin contenedor de respuesta; Stop ahora interrumpe
+  esa espera inicial en vez de quedar bloqueado hasta el timeout.
 - **Orden configurable:** Cloud Duo ahora permite elegir qué panel empieza; Lyra
   necesitará la misma capacidad para asignar el primer especialista.
+- **Errores de ruteo recuperables:** ChatGPT intentó enviar a `panel9`, Aurora
+  devolvió un error visible y el agente corrigió a `panel1`; Gemini recibió el
+  handoff y cerró la ejecución. Autoenvío y mensaje vacío también se rechazaron,
+  permitiendo un reintento válido y Stop posterior. Estos errores ya no rompen
+  el Duo.
 
 #### Decisión provisional de interfaz para Cloud Split/Duo
 

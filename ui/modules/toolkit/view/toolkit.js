@@ -5,6 +5,8 @@ import { sendToLyra, fetchModels, cancelarMensaje } from '../../../components/sh
 import { renderMarkdown } from '../../../components/shared/markdown.js';
 import { copiarTexto } from '../../../components/shared/clipboard.js';
 import { Button, Chip, Select } from '../../../components/index.js';
+import { ToolForge } from './tool-forge.js';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 
 export default function Toolkit() {
   const [herramienta, setHerramienta] = useState(HERRAMIENTAS[0]);
@@ -14,14 +16,53 @@ export default function Toolkit() {
   const [modelos, setModelos] = useState([]);
   const [modelo, setModelo] = useState('');
   const [err, setErr] = useState('');
+  const [seccion, setSeccion] = useState(globalThis.__auroraOpenForge ? 'forge' : 'rapidas');
   const salidaRef = useRef('');
 
   useEffect(() => {
+    globalThis.__auroraOpenForge = false;
     fetchModels().then(ms => {
       setModelos(ms);
       if (ms.length && !modelo) setModelo(ms[0].id || ms[0]);
     });
   }, []);
+
+  useEffect(() => registerAIView({
+    id: 'toolkit',
+    description: 'Herramientas rápidas y Tool Forge de Aurora.',
+    actions: {
+      resume: {
+        description: 'Resume qué herramienta, sección y salida están activas.',
+        readOnly: true,
+        run: () => ({
+          section: seccion, generating: generando,
+          selectedTool: herramienta?.id || null,
+          inputChars: entrada.length, outputChars: salida.length,
+          models: modelos.length,
+        }),
+      },
+      list_tools: {
+        description: 'Lista las herramientas rápidas visibles en Toolkit.',
+        readOnly: true,
+        run: () => HERRAMIENTAS.map(item => ({ id: item.id, name: item.nombre, description: item.descripcion })),
+      },
+      open_forge: {
+        description: 'Abre la sección Tool Forge sin ejecutar ni aprobar paquetes.',
+        run: () => { setSeccion('forge'); return { section: 'forge' }; },
+      },
+      select_tool: {
+        description: 'Selecciona una herramienta rápida por id, sin ejecutarla.',
+        input: { id: { type: 'string', required: true } },
+        run: ({ id }) => {
+          const found = HERRAMIENTAS.find(item => item.id === id);
+          if (!found) throw new Error(`Herramienta Toolkit desconocida: ${id}`);
+          setHerramienta(found);
+          setSeccion('rapidas');
+          return { selectedTool: found.id, name: found.nombre };
+        },
+      },
+    },
+  }), [seccion, generando, herramienta, entrada, salida, modelos]);
 
   const ejecutar = async () => {
     if (!entrada.trim() || generando) return;
@@ -50,7 +91,13 @@ export default function Toolkit() {
 
   return html`
     <div class="w-full max-w-4xl mx-auto p-4">
-      <h1 class="text-lg font-semibold mb-3">🧰 Toolkit</h1>
+      <div class="flex items-center gap-2 mb-4">
+        <h1 class="text-lg font-semibold flex-1">🧰 Toolkit</h1>
+        <${Chip} active=${seccion === 'rapidas'} onClick=${() => setSeccion('rapidas')}>Herramientas rápidas<//>
+        <${Chip} active=${seccion === 'forge'} onClick=${() => setSeccion('forge')}>⚒ Tool Forge<//>
+      </div>
+
+      ${seccion === 'forge' ? html`<${ToolForge} />` : html`
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
         ${HERRAMIENTAS.map(h => html`
@@ -99,6 +146,7 @@ export default function Toolkit() {
           <${Button} iconOnly onClick=${copiar} title="Copiar" class="absolute top-2 right-2">⧉<//>
           <div class="text-sm pr-8" dangerouslySetInnerHTML=${{ __html: renderMarkdown(salida || '…') }} />
         </div>
+      `}
       `}
     </div>
   `;
