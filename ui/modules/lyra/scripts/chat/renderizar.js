@@ -24,6 +24,9 @@ function highlightCode(raw, lang) {
   const l = (lang || '').toLowerCase();
 
   if (!l || l === 'text' || l === 'plain') return escape(raw);
+  // Bloques enormes (write de HTML, read de archivos): saltar el resaltado —
+  // sus regexes se vuelven carísimas y no aporta nada en 20KB de código.
+  if (raw.length > 20000) return escape(raw);
 
   if (l === 'json') {
     return escape(raw)
@@ -52,7 +55,12 @@ function highlightCode(raw, lang) {
 
   if (esPython) out = out.replace(/#[^\n]*/g, m => guardar('cm', m));
 
-  out = out.replace(/(["'`])(?:(?!\1)[^\\]|\\.)*?\1/g, m => guardar('str', m));
+  // Strings: LINEAL y acotado a una línea. El patrón previo `(?:(?!\1)[^\\]|\\.)*?\1`
+  // cruzaba newlines → con una comilla SIN cerrar (frecuente al streamear un
+  // bloque a medias) backtrackeaba por TODO el texto restante = explosión
+  // exponencial que pineaba/crasheaba el renderer. `(?!\1)[^\\\n]` es no
+  // ambiguo (para en la comilla o el newline) → sin backtracking catastrófico.
+  out = out.replace(/(["'`])(?:\\.|(?!\1)[^\\\n])*\1/g, m => guardar('str', m));
 
   out = escape(out)
     .replace(kwRe, m => wrap('kw', m))

@@ -1,6 +1,7 @@
 import { renderizarContenido } from '../scripts/chat/renderizar.js';
 import { copiarMensaje, añadirANotas, leerMensaje } from '../scripts/chat/acciones-rapidas.js';
 import { Chip, AutoFitChips } from '../../../components/index.js';
+import { ToolVisualCard } from '../../../components/shared/cloud-tool-visual.js';
 
 const html = (...args) => globalThis.html(...args);
 const { useMemo } = globalThis.preactHooks;
@@ -109,7 +110,9 @@ export function MessageList({
                   title="Releer mensaje"
                 >🔊</button>
               </div>
-              ${parsed.length ? parsed.map((p, i) => {
+              ${msg._toolVisual || msg._toolDraft
+                ? html`<${ToolVisualCard} visual=${msg._toolVisual || msg._toolDraft} />`
+                : parsed.length ? parsed.map((p, i) => {
                 if (p.tipo === 'thinking') {
                   const key = `${idx}_${i}`;
                   const abiertoThinking = expandedThinking[key] ?? getThinkingDefault(key);
@@ -161,6 +164,9 @@ export function MessageList({
                 <div class="message-content"
                   dangerouslySetInnerHTML=${{ __html: renderizarContenido(msg.content) }}
                 ></div>
+              `}
+              ${msg._imagen && html`
+                <img src=${msg._imagen} alt="Imagen leída por la tool" class="mt-2 max-w-full max-h-72 rounded-lg border border-white/10 object-contain bg-black/10" />
               `}
               <div class="message-quick-actions mt-2 pt-2 border-t border-aurora-border opacity-50 transition-opacity flex items-center flex-wrap gap-2">
                 <${AutoFitChips}>

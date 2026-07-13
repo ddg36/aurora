@@ -35,6 +35,10 @@ import { restaurarTab, iniciarPersistenciaUI } from './components/nav/sesion-ui.
 
 import { iconButtonClass } from './components/shared/iconButton.js';
 
+// Inicializa el registro semántico AIHub aunque la vista activa todavía no
+// haya publicado acciones.
+import './components/shared/ai-view-actions.js';
+
 const MODULE_LOADERS = {
 
 inicio:       () => import('./modules/inicio/view/inicio.js?v=v2-clean-ui-14'),

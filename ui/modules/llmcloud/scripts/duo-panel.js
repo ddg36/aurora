@@ -2,8 +2,10 @@ const html = (...args) => globalThis.html(...args);
 const { useState, useEffect, useRef } = globalThis.preactHooks;
 
 import { crearDuo } from './duo.js';
+import { crearDuoCloud } from './cloud-duo.js';
 import { fetchModels } from '../../../components/shared/lyra-ws.js';
 import { Button, Chip, Select } from '../../../components/index.js';
+import { detectarToolDraft, toolVisual, ToolVisualCard, emitirToolVisual } from '../../../components/shared/cloud-tool-visual.js';
 
 const MODOS = [
   { id: 'libre',          label: 'Libre — conversan sobre lo que quieran' },
@@ -19,10 +21,13 @@ const SEED_POR_MODO = {
   interrogatorio: 'Vas a hacerle preguntas a la otra IA. Empezá con una pregunta profunda. Solo vos preguntás.',
 };
 
-export function DuoPanel({ onClose }) {
+export function DuoPanel({ onClose, agentes = [] }) {
   const [modelos, setModelos] = useState([]);
   const [config, setConfig] = useState({
-    modo: 'libre', seedPrompt: SEED_POR_MODO.libre,
+    modo: 'libre', seedPrompt: agentes.length >= 2
+      ? 'Colaboren en este objetivo. Si necesitás consultar o entregar trabajo al otro agente, usá panel_send explícitamente.'
+      : SEED_POR_MODO.libre,
+    motor: agentes.length >= 2 ? 'cloud' : 'local',
     maxRondas: 10, delayMs: 1000, panelInicial: 1, modelA: '', modelB: '',
   });
   const [estado, setEstado] = useState('idle');
@@ -49,11 +54,31 @@ export function DuoPanel({ onClose }) {
   const iniciar = () => {
     setTurnos([]);
     setParcial(null);
-    const duo = crearDuo();
+    const duo = config.motor === 'cloud' ? crearDuoCloud() : crearDuo();
     duoRef.current = duo;
     duo.iniciar(config, {
       onEstado: setEstado,
       onError: (m) => setTurnos(t => [...t, { quien: 'err', texto: m }]),
+      onTool: (ev) => {
+        // La respuesta que pidió la tool ya terminó. No dejar el cursor de
+        // streaming pegado sobre ese JSON mientras esperamos la continuación.
+        setParcial(null);
+        const visual = ev.error
+          ? toolVisual({ tool: 'tool', status: 'error', error: ev.error, paneId: ev.paneId, quien: ev.quien, runId: ev.runId })
+          : toolVisual({ tool: ev.call.tool, args: ev.call.args, status: ev.status, result: ev.result, paneId: ev.paneId, quien: ev.quien, runId: ev.runId });
+        emitirToolVisual(visual);
+        setTurnos(t => {
+          if (ev.status !== 'running') {
+            const idx = [...t].reverse().findIndex(x => x.toolVisual?.tool === visual.tool && x.quien === ev.quien && x.toolVisual?.status === 'running');
+            if (idx >= 0) {
+              const real = t.length - 1 - idx;
+              return t.map((x, i) => i === real ? { ...x, toolVisual: visual } : x);
+            }
+          }
+          return [...t, { quien: ev.quien, toolVisual: visual }];
+        });
+        if (ev.status !== 'running') setParcial({ quien: ev.quien, texto: '', esperando: true });
+      },
       onTurno: (ev) => {
         if (ev.parcial) {
           setParcial(p => ({ quien: ev.quien, texto: (p?.quien === ev.quien ? p.texto : '') + ev.token }));
@@ -71,22 +96,83 @@ export function DuoPanel({ onClose }) {
   const colorQuien = (q) => q === 'A' ? 'text-aurora-accent' : q === 'B' ? 'text-emerald-400' : 'text-red-400';
   const labelQuien = (q) => q === 'A' ? 'Panel 1' : q === 'B' ? 'Panel 2' : 'Error';
 
+  // En Cloud no duplicamos los chats dentro de Aurora: Gemini/ChatGPT ya
+  // tienen una interfaz excelente y visible arriba. Este controlador ocupa
+  // sólo una franja del layout (fuera de los OOPIF) y desaparece al cerrarlo.
+  if (agentes.length >= 2) {
+    const agenteActivo = parcial?.quien ? labelQuien(parcial.quien) : null;
+    const ultimoError = [...turnos].reverse().find(t => t.quien === 'err')?.texto;
+    return html`
+      <div class="flex-shrink-0 border-t border-aurora-border bg-aurora-surface text-aurora-text px-3 py-2 shadow-lg">
+        ${estado === 'idle' ? html`
+          <div class="flex items-start gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="text-xs font-semibold">⇆ Puente entre paneles</span>
+                <span class="text-[10px] text-aurora-text-muted">Las IAs se escriben usando la tool panel_send</span>
+              </div>
+              <textarea rows="2" class="w-full rounded-md border border-aurora-border bg-aurora-bg text-aurora-text px-2 py-1.5 resize-none font-mono text-xs"
+                value=${config.seedPrompt} onInput=${e => merge({ seedPrompt: e.target.value })}
+                placeholder="Objetivo inicial para el primer panel…" />
+            </div>
+            <div class="flex flex-col gap-2 min-w-[210px]">
+              <div class="flex items-center gap-1">
+                <span class="text-[10px] text-aurora-text-muted mr-1">Empieza</span>
+                ${[1, 2].map(n => html`<${Chip} key=${n} active=${config.panelInicial === n} onClick=${() => merge({ panelInicial: n })}>${n === 1 ? agentes[0]?.nombre || 'Panel 1' : agentes[1]?.nombre || 'Panel 2'}<//>`)}
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="flex items-center gap-1 text-[10px] text-aurora-text-muted">Máx. mensajes
+                  <select class="rounded border border-aurora-border bg-aurora-bg text-aurora-text px-1.5 py-1" value=${config.maxRondas} onChange=${e => merge({ maxRondas: Number(e.target.value) })}>
+                    ${[3, 5, 10, 20, 50].map(n => html`<option value=${n}>${n}</option>`)}
+                  </select>
+                </label>
+                <${Chip} variant="accent" onClick=${iniciar}>⇆ Iniciar<//>
+                <${Button} iconOnly onClick=${onClose} title="Cerrar controlador">✕<//>
+              </div>
+            </div>
+          </div>
+        ` : html`
+          <div class="flex items-center gap-2 min-h-9">
+            <span class=${`w-2 h-2 rounded-full ${activo ? 'bg-emerald-400 animate-pulse' : estado === 'error' ? 'bg-red-400' : 'bg-white/30'}`}></span>
+            <span class="text-xs font-semibold">Duo ${estado}</span>
+            ${agenteActivo && html`<span class="text-[11px] text-aurora-text-muted">${agenteActivo} procesando</span>`}
+            ${ultimoError && html`<span class="text-[11px] text-red-400 truncate">${ultimoError}</span>`}
+            <span class="flex-1"></span>
+            ${activo
+              ? html`<${Chip} variant="yt" onClick=${detener}>⏹ Detener<//>`
+              : html`<${Chip} onClick=${() => { setEstado('idle'); setTurnos([]); setParcial(null); }}>Nueva ejecución<//>`}
+            <${Button} iconOnly onClick=${() => { if (activo) detener(); onClose(); }} title="Cerrar controlador">✕<//>
+          </div>
+        `}
+      </div>
+    `;
+  }
+
   return html`
     <div class="fixed inset-0 z-[9000] bg-black/70 flex items-center justify-center p-4" onClick=${e => e.target === e.currentTarget && !activo && onClose()}>
       <div class="w-[min(820px,95vw)] h-[min(80vh,720px)] bg-[#14141c] border border-white/10 rounded-xl flex flex-col overflow-hidden">
         <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10">
-          <span class="text-sm font-semibold flex-1">⇆ Duo — dos IAs conversando</span>
+          <span class="text-sm font-semibold flex-1">⇆ Duo — IAs conversando y usando tools</span>
           <span class="text-[11px] text-white/40">${estado}</span>
           <${Button} iconOnly onClick=${() => { detener(); onClose(); }} title="Cerrar">✕<//>
         </div>
 
         <div class="grid grid-cols-2 gap-3 p-3 border-b border-white/10 text-xs">
-          <label class="flex flex-col gap-1">
+          <label class="flex flex-col gap-1 col-span-2">
+            <span class="text-white/40">Participantes</span>
+            <div class="flex gap-1">
+              ${agentes.length >= 2 && html`<${Chip} active=${config.motor === 'cloud'} disabled=${activo} onClick=${() => merge({ motor: 'cloud' })}>
+                ☁ ${agentes[0]?.nombre || 'Panel 1'} ↔ ${agentes[1]?.nombre || 'Panel 2'} · tools reales
+              <//>`}
+              <${Chip} active=${config.motor === 'local'} disabled=${activo} onClick=${() => merge({ motor: 'local' })}>⌂ Dos modelos locales<//>
+            </div>
+          </label>
+          ${config.motor === 'local' && html`<label class="flex flex-col gap-1">
             <span class="text-white/40">Modo</span>
             <${Select} value=${config.modo} onChange=${e => cambiarModo(e.target.value)} disabled=${activo}>
               ${MODOS.map(m => html`<option key=${m.id} value=${m.id}>${m.label}</option>`)}
             <//>
-          </label>
+          </label>`}
           <label class="flex flex-col gap-1">
             <span class="text-white/40">Empieza</span>
             <div class="flex gap-1">
@@ -133,13 +219,19 @@ export function DuoPanel({ onClose }) {
           ${turnos.map((t, i) => html`
             <div key=${i} class="rounded-lg bg-white/5 p-2">
               <div class=${'text-[11px] font-medium mb-0.5 ' + colorQuien(t.quien)}>${labelQuien(t.quien)}${t.ronda != null ? ` · ronda ${t.ronda + 1}` : ''}</div>
-              <div class="whitespace-pre-wrap text-white/80">${t.texto}</div>
+              ${t.toolVisual
+                ? html`<${ToolVisualCard} visual=${t.toolVisual} />`
+                : html`<div class="whitespace-pre-wrap text-white/80">${t.texto}</div>`}
             </div>
           `)}
           ${parcial && html`
             <div class="rounded-lg bg-white/5 p-2">
               <div class=${'text-[11px] font-medium mb-0.5 ' + colorQuien(parcial.quien)}>${labelQuien(parcial.quien)}</div>
-              <div class="whitespace-pre-wrap text-white/80">${parcial.texto}<span class="opacity-50">▋</span></div>
+              ${parcial.esperando && !parcial.texto
+                ? html`<div class="flex items-center gap-2 text-xs text-white/45"><span class="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>Procesando el resultado de la tool…</div>`
+                : detectarToolDraft(parcial.texto)
+                ? html`<${ToolVisualCard} visual=${{ ...detectarToolDraft(parcial.texto), paneId: parcial.quien === 'A' ? 'izq' : 'der' }} />`
+                : html`<div class="whitespace-pre-wrap text-white/80">${parcial.texto}<span class="opacity-50">▋</span></div>`}
             </div>
           `}
         </div>

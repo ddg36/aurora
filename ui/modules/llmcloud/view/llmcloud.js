@@ -8,6 +8,8 @@ import { DuoPanel } from '../scripts/duo-panel.js';
 import { Button, Chip } from '../../../components/index.js';
 import { useFloatingMenu } from '../../../components/shared/iconButton.js';
 import { usePersistedState } from '../../../components/shared/persisted-state.js';
+import { postJSON } from '../../../components/shared/api.js';
+import { ToolVisualCard } from '../../../components/shared/cloud-tool-visual.js';
 
 // Sólo delegamos el iframe a la extensión si ésta anunció la capability
 // `llmPanes` (sidepanel que sabe montar iframes de LLM a nivel de extensión).
@@ -57,7 +59,38 @@ export default function LLMCloud() {
   // DERIVAN de acá — sin estado duplicado no hay carrera al restaurar.
   const [ui, setUi] = usePersistedState('llmcloud_ui', {});
   const [duoAbierto, setDuoAbierto] = useState(false);
+  const [actividadTools, setActividadTools] = useState([]);
+  const [artefacto, setArtefacto] = useState(null);
+  const [artefactoContenido, setArtefactoContenido] = useState('');
+  const [artefactoError, setArtefactoError] = useState('');
   const llmMenu = useFloatingMenu({ anchor: 'below' });
+
+  useEffect(() => {
+    const onTool = e => setActividadTools(prev => {
+      const v = e.detail;
+      // Los drafts llegan cada 120ms: reemplazar el anterior del mismo panel,
+      // no llenar la bandeja con cientos de snapshots del mismo JSON.
+      const key = `${v.paneId || v.quien || 'cloud'}:${v.tool || 'tool'}`;
+      const clean = prev.filter(x => `${x.paneId || x.quien || 'cloud'}:${x.tool || 'tool'}` !== key);
+      return [...clean, v].slice(-4);
+    });
+    const onArtifact = async e => {
+      const a = e.detail;
+      if (!a?.path) return;
+      setArtefacto(a); setArtefactoContenido(''); setArtefactoError('');
+      try {
+        const r = await postJSON('/pi/cloud-tool', { tool: 'read', args: { path: a.path } });
+        if (!r?.ok || r?.is_error) throw new Error(r?.output || r?.error || 'No se pudo leer');
+        setArtefactoContenido(r.output || '');
+      } catch (err) { setArtefactoError(err?.message || String(err)); }
+    };
+    window.addEventListener('aurora:tool-visual', onTool);
+    window.addEventListener('aurora:artifact-open', onArtifact);
+    return () => {
+      window.removeEventListener('aurora:tool-visual', onTool);
+      window.removeEventListener('aurora:artifact-open', onArtifact);
+    };
+  }, []);
 
   const izq = urls.find(u => u.id === ui?.izq) ?? urls[0] ?? null;
   const der = urls.find(u => u.id === ui?.der) ?? urls[1] ?? urls[0] ?? null;
@@ -132,9 +165,9 @@ export default function LLMCloud() {
   const panesRef = useRef([]);
 
   // Reportar a la extensión dónde va cada iframe de LLM (rect en px). El
-  // dropdown de selección NO oculta el iframe (se dibuja encima, a nivel de
-  // extensión). Sólo el modal Duo (que sí cubre todo) lo esconde — y sin
-  // recargar el src, sólo visibility.
+  // El controlador Duo ocupa una franja del layout y NO oculta los iframes:
+  // la conversación ocurre en las interfaces nativas de cada proveedor.
+  // Sólo el visor de artefactos cubre los paneles.
   useEffect(() => {
     if (!enExt()) return;
     const report = () => {
@@ -150,14 +183,14 @@ export default function LLMCloud() {
       add('izq', izq, srcIzq);
       if (split) add('der', der, srcDer);
       panesRef.current = panes;
-      window.parent.postMessage({ type: 'AURORA_LLM_PANES', panes, hidden: duoAbierto }, '*');
+      window.parent.postMessage({ type: 'AURORA_LLM_PANES', panes, hidden: !!artefacto }, '*');
     };
     // Doble rAF: el primero deja que el placeholder tenga tamaño real antes de
     // medir (si no, el rect llega en cero y no se monta el iframe → estrellas).
     const raf = requestAnimationFrame(() => requestAnimationFrame(report));
     window.addEventListener('resize', report);
     return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', report); };
-  }, [izq, der, srcIzq, srcDer, split, duoAbierto, urls, extCaps]);
+  }, [izq, der, srcIzq, srcDer, split, duoAbierto, artefacto, actividadTools.length, urls, extCaps]);
 
   // Elección desde el menú dibujado por la extensión.
   useEffect(() => {
@@ -227,7 +260,7 @@ export default function LLMCloud() {
   };
 
   return html`
-    <div class="flex flex-col h-full">
+    <div class="relative flex flex-col h-full">
       <div class="flex items-center gap-2 px-2 py-1.5 border-b border-white/5">
         <${Button} btnRef=${llmMenu.anchorRef} active=${enExt() ? extMenuOpen : llmMenu.open} onClick=${onTrigger} title="Elegir LLM">
           ${seleccionado?.icono && html`<img src=${seleccionado.icono} class="w-3.5 h-3.5 rounded-sm mr-1" onError=${e => e.target.style.display = 'none'} />`}
@@ -264,7 +297,40 @@ export default function LLMCloud() {
         `}
       </div>
 
-      ${duoAbierto && html`<${DuoPanel} onClose=${() => setDuoAbierto(false)} />`}
+      ${actividadTools.length > 0 && html`
+        <div class="border-t border-white/10 bg-black/20 px-2 py-1.5">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-[10px] uppercase tracking-wider text-white/35">Mesa compartida · actividad</span>
+            <span class="flex-1"></span>
+            <button class="text-[10px] text-white/30 hover:text-white/60" onClick=${() => setActividadTools([])}>Limpiar</button>
+          </div>
+          <div class="grid grid-cols-2 gap-2 max-h-28 overflow-auto">
+            ${actividadTools.map((v, i) => html`<${ToolVisualCard} key=${v.id || i} visual=${v} compact=${true} />`)}
+          </div>
+        </div>
+      `}
+
+      ${artefacto && html`
+        <div class="absolute inset-0 z-[8500] flex flex-col" style="background:rgba(13,14,20,.98)">
+          <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10" style="background:#0d0e14">
+            <span class="text-emerald-300">◆</span>
+            <div class="min-w-0 flex-1"><div class="text-xs font-semibold">Artefacto compartido</div><div class="text-[10px] text-white/40 font-mono truncate">${artefacto.path}</div></div>
+            <${Chip} onClick=${() => setArtefacto(null)}>✕ Cerrar<//>
+          </div>
+          ${artefactoError
+            ? html`<div class="m-4 rounded-lg border border-red-400/20 bg-red-500/5 p-3 text-sm text-red-200">${artefactoError}</div>`
+            : !artefactoContenido
+              ? html`<div class="flex-1 flex items-center justify-center text-white/35 text-sm">Leyendo artefacto…</div>`
+              : artefacto.type === 'html' || artefacto.path.endsWith('.html')
+                ? html`<iframe class="flex-1 w-full bg-white border-0" sandbox="allow-scripts" srcdoc=${artefactoContenido}></iframe>`
+                : html`<pre class="flex-1 overflow-auto m-3 p-3 rounded-lg bg-black/30 border border-white/10 text-xs text-white/70 font-mono whitespace-pre-wrap">${artefactoContenido}</pre>`}
+        </div>
+      `}
+
+      ${duoAbierto && html`<${DuoPanel}
+        agentes=${split ? [{ id: izq?.id, nombre: izq?.nombre }, { id: der?.id, nombre: der?.nombre }] : []}
+        onClose=${() => setDuoAbierto(false)}
+      />`}
     </div>
   `;
 }

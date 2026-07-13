@@ -31,6 +31,7 @@ import {
 import { ScratchpadPageShell, ScratchpadBlockEditor, SCRATCHPAD_COMMANDS } from '../../../components/scratchpad/index.js?v=v2-clean-ui-4';
 import { setViewActions, clearViewActions } from '../../../components/footer/registry.js';
 import { usePersistedState } from '../../../components/shared/persisted-state.js';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 
 const STATUS_LABEL = {
   idle: { text: 'Ready', tone: 'neutral' },
@@ -74,6 +75,50 @@ export default function Scratchpad() {
 
   const currentDoc = snapshot || getScratchpadDoc();
   const page = pageFromDoc(currentDoc);
+
+  useEffect(() => registerAIView({
+    id: 'scratchpad',
+    description: 'Notas estructuradas de Aurora. Permite inspeccionar páginas y añadir ideas.',
+    actions: {
+      status: {
+        description: 'Resume la página activa y el estado de guardado.',
+        readOnly: true,
+        run: () => {
+          const state = getScratchpadDoc();
+          const active = pageFromDoc(state);
+          return {
+            online: isScratchpadOnline(),
+            saveStatus: getSaveStatus(),
+            page: { id: active.id, title: active.title, blocks: active.blocks.length },
+            stats: contarStats(active),
+          };
+        },
+      },
+      list_pages: {
+        description: 'Lista las páginas disponibles sin devolver todo su contenido.',
+        readOnly: true,
+        run: () => {
+          const state = getScratchpadDoc();
+          return (state?.pages || []).map(item => ({ id: item.id, title: item.title, active: item.id === state.activePageId }));
+        },
+      },
+      append: {
+        description: 'Añade un bloque de texto al final de la página activa.',
+        input: { text: { type: 'string', required: true, maxLength: 12000 } },
+        run: async ({ text }) => {
+          const value = String(text || '').trim();
+          if (!value) throw new Error('scratchpad.append requiere text');
+          if (value.length > 12000) throw new Error('text excede 12000 caracteres');
+          const state = getScratchpadDoc();
+          const active = pageFromDoc(state);
+          const lastId = active.blocks[active.blocks.length - 1]?.id || null;
+          const block = addScratchpadBlock(lastId, 'paragraph', { text: value });
+          await guardarAhora();
+          return { blockId: block.id, pageId: active.id, chars: value.length };
+        },
+      },
+    },
+  }), []);
 
   function patchUi(patch) {
     setUi((prev) => ({ ...prev, ...patch }));

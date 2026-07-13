@@ -27,7 +27,10 @@ export function initCloudBridge() {
     if (!reqId) return;
     const iframe = iframeCloud();
     let text;
-    if (!iframe) {
+    // En extPane no existe iframe dentro de Aurora: askCloud(null, ...) enruta
+    // por window.parent hacia aurora-bridge.js. Sólo exigir iframe en browser.
+    const extPane = (globalThis.__aurora_extContext?.value?.caps || []).includes('llmPanes');
+    if (!iframe && !extPane) {
       text = 'Error: no hay panel Cloud abierto. Pedile al usuario que abra ☁ Cloud.';
     } else {
       const r = await askCloud(iframe, prompt).catch(e => ({ ok: false, text: 'Error: ' + e.message }));

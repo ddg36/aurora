@@ -20,6 +20,36 @@ function initAuroraBridge(frame, opts) {
   const ACTIVE_EXTENSIONS = ['aihub'];
   let _auroraToken = null;
 
+  // ── Keep-alive anti-throttle ──────────────────────────────────
+  // Chrome estrangula los timers (setTimeout/Interval) de una TAB en segundo
+  // plano; con ellos se frena el iframe del LLM cloud → generación y detección
+  // se cuelgan. Una tab que reproduce audio queda EXENTA del throttle. Metemos
+  // un oscilador sub-audible (20Hz, ganancia casi nula): inaudible, pero marca
+  // la tab como "audible" y la mantiene viva aunque no esté enfocada.
+  let _audioKeepAlive = null;
+  function iniciarKeepAlive() {
+    if (_audioKeepAlive) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.0015;         // inaudible para el humano, audible para Chrome
+      osc.frequency.value = 20;         // sub-audible
+      osc.type = 'sine';
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start();
+      _audioKeepAlive = ctx;
+      const resume = () => { if (ctx.state === 'suspended') ctx.resume(); };
+      resume();
+      // El autoplay puede quedar suspendido hasta el 1er gesto: lo reanudamos.
+      window.addEventListener('click', resume, true);
+      window.addEventListener('keydown', resume, true);
+    } catch (_) {}
+  }
+  iniciarKeepAlive();
+
   // ── Bridge logging (accesible via CDP desde background) ──────
   window.__aurora_bridgeLog = window.__aurora_bridgeLog || [];
   const _log = (type, detail) => {
@@ -102,6 +132,22 @@ function initAuroraBridge(frame, opts) {
   document.body.appendChild(_llmLayer);
   const _llmFrames = new Map(); // id -> iframe
 
+  // Aurora vive dentro de #auroraFrame y reporta rects relativos a SU
+  // viewport. Convertirlos al viewport de la página extensión; antes faltaba
+  // sumar el offset superior del shell y el iframe LLM tapaba la cabecera.
+  function rectDesdeAurora(r) {
+    const host = frame.getBoundingClientRect();
+    const sx = host.width / (frame.clientWidth || host.width || 1);
+    const sy = host.height / (frame.clientHeight || host.height || 1);
+    return {
+      left: host.left + r.left * sx,
+      top: host.top + r.top * sy,
+      width: r.width * sx,
+      height: r.height * sy,
+      bottom: host.top + (r.top + r.height) * sy,
+    };
+  }
+
   function clearLlmFrames() {
     for (const [, f] of _llmFrames) f.remove();
     _llmFrames.clear();
@@ -130,7 +176,7 @@ function initAuroraBridge(frame, opts) {
         _llmFrames.set(pane.id, f);
       }
       if (f.dataset.url !== pane.url) { f.dataset.url = pane.url; f.src = pane.url; }
-      const r = pane.rect;
+      const r = rectDesdeAurora(pane.rect);
       f.style.left = r.left + 'px';
       f.style.top = r.top + 'px';
       f.style.width = r.width + 'px';
@@ -154,6 +200,7 @@ function initAuroraBridge(frame, opts) {
 
   function openLlmMenu(anchor, options, activeIds) {
     closeLlmMenu();
+    anchor = rectDesdeAurora({ ...anchor, width: anchor.width || 0, height: (anchor.bottom || anchor.top) - anchor.top });
     const m = document.createElement('div');
     m.style.cssText = `position:absolute;left:${anchor.left}px;top:${anchor.bottom + 4}px;width:220px;max-height:320px;overflow-y:auto;z-index:2147483647;background:#14141c;border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:4px;display:flex;flex-direction:column;gap:2px;pointer-events:auto;font:12px system-ui;`;
     for (const u of options) {
@@ -199,9 +246,34 @@ function initAuroraBridge(frame, opts) {
   }
 
   window.addEventListener('message', (e) => {
+    // ── Relay del tool-loop LLM cloud (extPane) ───────────────────
+    // El iframe del LLM vive acá (hijo de la extensión), no dentro de Aurora,
+    // así que Aurora no puede hablarle directo. Reenviamos en ambos sentidos:
+    // Respuestas del relay (origin = host del LLM) → Aurora.
+    const t = e.data?.type;
+    if (t === 'AURORA_CLOUD_CHUNK' || t === 'AURORA_CLOUD_ANSWER' || t === 'AURORA_CLOUD_READY' || t === 'AURORA_CLOUD_STATUS' || t === 'AURORA_CLOUD_RESETTING') {
+      const paneId = [..._llmFrames].find(([, iframe]) => iframe.contentWindow === e.source)?.[0] || e.data.__llmPane || 'cloud';
+      frame.contentWindow?.postMessage({ ...e.data, __llmPane: paneId }, AURORA_URL);
+      return;
+    }
+    // ASK/STOP de Aurora → iframe del LLM que gestionamos.
+    if (e.origin === AURORA_URL && (t === 'AURORA_CLOUD_ASK' || t === 'AURORA_CLOUD_STOP' || t === 'AURORA_CLOUD_PING')) {
+      _llmFrames.get(e.data.__llmPane || 'cloud')?.contentWindow?.postMessage(e.data, '*');
+      return;
+    }
+
     if (e.origin !== AURORA_URL) return;
 
     if (e.data?.type === 'AURORA_LLM_PANES') { syncLlmPanes(e.data.panes, e.data.hidden); return; }
+    if (e.data?.type === 'AURORA_LLM_RELOAD') {
+      const f = _llmFrames.get(e.data.id || 'cloud');
+      if (f) {
+        const url = e.data.url || f.dataset.url;
+        f.src = 'about:blank';
+        setTimeout(() => { if (url && f.isConnected) f.src = url; }, 60);
+      }
+      return;
+    }
     if (e.data?.type === 'AURORA_LLM_MENU_OPEN') { openLlmMenu(e.data.anchor, e.data.options, e.data.activeIds || []); return; }
     if (e.data?.type === 'AURORA_LLM_MENU_CLOSE') { closeLlmMenu(); return; }
 

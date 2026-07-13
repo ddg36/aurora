@@ -15,6 +15,7 @@ import { Input, Select, Textarea } from '../../../components/Input.js';
 import { getPrefs, savePrefs, saveIndex, loadIndex } from '../scripts/db.js';
 import { THEMES, BACKGROUNDS } from '../../../components/themes/index.js';
 import { theme, background } from '../../../store.js';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 import {
   buildWorkspaceGraph,
   indexHeadings,
@@ -262,6 +263,76 @@ export default function MDReader() {
     ]);
     return () => clearViewActions();
   }, [root, activePath, rawDirty, editMode, content, summarizing]);
+
+  useEffect(() => registerAIView({
+    id: 'md-reader',
+    description: 'Explora, lee y presenta documentos Markdown del workspace de Aurora.',
+    actions: {
+      status: {
+        description: 'Resume el workspace y el documento activo.',
+        readOnly: true,
+        run: () => ({
+          root,
+          activePath,
+          mode,
+          loading,
+          dirty: rawDirty,
+          files: files.length,
+          chars: content.length,
+        }),
+      },
+      list_files: {
+        description: 'Lista archivos Markdown indexados, opcionalmente filtrados.',
+        input: {
+          query: { type: 'string', required: false },
+          limit: { type: 'number', required: false, minimum: 1, maximum: 200 },
+        },
+        readOnly: true,
+        run: ({ query = '', limit = 80 } = {}) => {
+          const q = String(query).trim().toLowerCase();
+          const max = Math.max(1, Math.min(200, Number(limit) || 80));
+          return files
+            .filter(file => !q || file.path.toLowerCase().includes(q))
+            .slice(0, max)
+            .map(file => ({ path: file.path, relativePath: relativeToRoot(file.path, root), name: file.name, size: file.size }));
+        },
+      },
+      read: {
+        description: 'Lee un Markdown dentro del root actual sin cambiar la UI.',
+        input: {
+          path: { type: 'string', required: true },
+          maxChars: { type: 'number', required: false, minimum: 100, maximum: 100000 },
+        },
+        readOnly: true,
+        run: async ({ path, maxChars = 30000 } = {}) => {
+          const target = String(path || '');
+          const cleanRoot = String(root || '').replace(/\/+$/, '');
+          if (!target || target.includes('..') || !target.toLowerCase().endsWith('.md')) throw new Error('path Markdown inválido');
+          if (!(target === cleanRoot || target.startsWith(cleanRoot + '/'))) throw new Error('path fuera del root de MD Reader');
+          const text = await leer(target);
+          const max = Math.max(100, Math.min(100000, Number(maxChars) || 30000));
+          return { path: target, content: text.slice(0, max), truncated: text.length > max, chars: text.length };
+        },
+      },
+      open: {
+        description: 'Abre un Markdown indexado y cambia la vista a lectura.',
+        input: { path: { type: 'string', required: true } },
+        run: async ({ path } = {}) => {
+          const target = String(path || '');
+          if (!files.some(file => file.path === target)) throw new Error('archivo no indexado en MD Reader');
+          await openFile(target);
+          setMode('read');
+          return { path: target, opened: true };
+        },
+      },
+      append: {
+        description: 'Añade contenido al documento activo (pendiente de flujo de aprobación).',
+        input: { content: { type: 'string', required: true } },
+        requiresApproval: true,
+        run: async () => null,
+      },
+    },
+  }), [root, activePath, mode, loading, rawDirty, files, content]);
 
   useEffect(() => {
     savePrefs({ root_path: root, active_path: activePath, mode, filters }).catch(() => {});

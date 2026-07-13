@@ -232,10 +232,12 @@
    de borde-izquierdo que ya tenía la vista. */
 .message.direct-ai {
   border-left: 2px solid var(--aurora-accent);
-  padding-left: 12px;
+  padding: 11px 13px;
+  max-width: min(94%, 1080px);
   background: linear-gradient(90deg,
-    color-mix(in srgb, var(--aurora-accent) 8%, transparent), transparent 60%);
-  border-radius: 0 6px 6px 0;
+    color-mix(in srgb, var(--aurora-accent) 10%, var(--surface)), color-mix(in srgb,var(--surface) 88%,transparent) 72%);
+  border-radius: 0 12px 12px 0;
+  box-shadow:0 7px 22px rgba(0,0,0,.07);
 }
 .message.direct-ai .message-header .role {
   color: var(--aurora-accent);
@@ -243,14 +245,29 @@
 /* pi tool: ejecución de herramienta pedida por la nube. Verde, monoespaciado,
    claramente distinto de la nube (acento) y de Lyra (sin tinte). */
 .message.pi-tool {
-  border-left: 2px solid var(--aurora-success, #4ade80);
-  padding-left: 12px;
+  width:min(86%,860px);
+  margin:5px 0 5px 18px;
+  border:1px solid color-mix(in srgb,var(--aurora-success,#4ade80) 28%,transparent);
+  border-left:3px solid var(--aurora-success, #4ade80);
+  padding:9px 11px;
   background: linear-gradient(90deg,
-    color-mix(in srgb, var(--aurora-success, #4ade80) 8%, transparent), transparent 60%);
-  border-radius: 0 6px 6px 0;
+    color-mix(in srgb, var(--aurora-success, #4ade80) 10%, var(--surface)), color-mix(in srgb,var(--surface) 92%,transparent));
+  border-radius:0 11px 11px 0;
+  box-shadow:0 5px 16px rgba(0,0,0,.06);
 }
 .message.pi-tool .message-header .role { color: var(--aurora-success, #4ade80); }
-.message.pi-tool .message-content { font-family: ui-monospace, monospace; font-size: 11px; white-space: pre-wrap; }
+.message.pi-tool .message-header { margin-bottom:5px; }
+.message.pi-tool .message-content { font-family: ui-monospace, monospace; font-size: 10px; line-height:1.5; white-space: pre-wrap; max-height:210px; overflow:auto; }
+
+/* Tool mal escrita / fallida: rojo, como avisa pi. */
+.message.pi-tool.is-error {
+  border-color:color-mix(in srgb,#ef4444 32%,transparent);
+  border-left-color: #ef4444;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, #ef4444 10%, transparent), transparent 60%);
+}
+.message.pi-tool.is-error .message-header .role { color: #ef4444; }
+.message.pi-tool.is-error .message-content { color: #fca5a5; }
 
 /* Turno de nube dentro de un Duo: mismo cian + pulso al llegar. */
 .message.direct-ai.duo-turn { animation: cloud-turn-in 0.35s ease-out; }

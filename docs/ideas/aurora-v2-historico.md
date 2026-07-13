@@ -1,4 +1,4 @@
-# Aurora v2 — Plan de Arquitectura
+# Aurora v2 — Plan de Arquitectura (HISTÓRICO)
 
 > Última actualización: 2026-06-17 — mapeo exacto contra codebase real
 

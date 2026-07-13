@@ -152,7 +152,7 @@ export function CanvasPanel({ code, lang, tab, onTabChange, onCodeChange, onClos
            style="background:color-mix(in srgb,var(--aurora-surface-2) 60%,transparent); min-height:36px;">
         <${AutoFitChips} class=${TOOLBAR_GROUP}>
           ${tabBtn('codigo', 'Código')}
-          ${tabBtn('vista', 'Vista previa')}
+          ${tabBtn('preview', 'Vista previa')}
         <//>
         <div class=${TOOLBAR_GROUP}>
           ${langLabel && html`<${Chip} variant="dim">${langLabel}<//>`}
@@ -165,7 +165,7 @@ export function CanvasPanel({ code, lang, tab, onTabChange, onCodeChange, onClos
       <!-- contenido -->
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         ${tab === 'codigo' && html`<${CanvasEditor} code=${code} lang=${lang} onCodeChange=${onCodeChange} />`}
-        ${tab === 'vista' && (isHtml
+        ${(tab === 'preview' || tab === 'vista') && (isHtml
           ? html`<${CanvasPreview} code=${code} />`
           : html`<div class="flex-1 flex items-center justify-center text-aurora-text-dim text-xs">Vista previa solo disponible para HTML</div>`
         )}

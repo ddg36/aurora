@@ -96,25 +96,46 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 3px 8px;
-  background: color-mix(in srgb, var(--surface) 95%, var(--accent));
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  min-height: 36px;
+  padding: 5px 9px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--aurora-accent) 13%, var(--surface)), var(--surface) 58%);
+  border-bottom: 1px solid color-mix(in srgb, var(--aurora-accent) 22%, transparent);
+  box-shadow: inset 0 1px rgba(255,255,255,.035);
+}
+.cloud-identity { display:flex; align-items:center; gap:7px; min-width:0; }
+.cloud-provider-mark {
+  width:22px; height:22px; display:grid; place-items:center; flex:0 0 auto;
+  border-radius:7px; color:var(--aurora-accent);
+  background:color-mix(in srgb,var(--aurora-accent) 13%,transparent);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--aurora-accent) 25%,transparent);
 }
 .cloud-mini-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-dim);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 11px; font-weight: 700; color: var(--text); letter-spacing: .02em;
 }
+.cloud-live-status {
+  display:inline-flex; align-items:center; gap:5px; min-height:20px; padding:2px 7px;
+  border-radius:999px; font-size:9px; font-weight:650; color:var(--text-dim);
+  background:color-mix(in srgb,var(--surface3) 55%,transparent);
+  border:1px solid color-mix(in srgb,var(--surface3) 80%,transparent);
+}
+.cloud-live-dot { width:5px; height:5px; border-radius:50%; background:currentColor; box-shadow:0 0 7px currentColor; }
+.cloud-live-status--ready { color:var(--aurora-success,#4ade80); }
+.cloud-live-status--thinking,.cloud-live-status--working,.cloud-live-status--uploading { color:var(--aurora-accent); }
+.cloud-live-status--queued,.cloud-live-status--warning { color:#f59e0b; }
+.cloud-live-status--error { color:#ef4444; }
+.cloud-live-status--thinking .cloud-live-dot,
+.cloud-live-status--working .cloud-live-dot,
+.cloud-live-status--uploading .cloud-live-dot { animation:cloud-dot-pulse 1.15s ease-in-out infinite; }
+.cloud-live-timing { font:9px ui-monospace,monospace; color:var(--text-dim); opacity:.72; }
 .cloud-mini-actions {
   display: flex;
   align-items: center;
   gap: 2px;
 }
 .cloud-mini-btn {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -128,6 +149,32 @@
 }
 .cloud-mini-btn:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--text); }
 .cloud-mini-btn--close:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+.cloud-file-chip {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 8px 3px 4px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text-dim);
+  font-size: 10px;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+.cloud-file-chip-icon { padding:2px 4px; border-radius:5px; color:var(--aurora-accent); background:color-mix(in srgb,var(--aurora-accent) 14%,transparent); font:700 8px ui-monospace,monospace; }
+.cloud-file-chip-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+@media (max-width:720px) {
+  .cloud-live-timing { display:none; }
+  .cloud-live-status { max-width:105px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cloud-panel.mini { height:164px; }
+  .cloud-mini-header { padding-inline:6px; }
+  .cloud-activity { width:calc(100% - 16px); margin-inline:8px; }
+}
 
 /* ══════════════════════════════════════════════════════
    INPUT AREA (legacy)
@@ -177,10 +224,15 @@
 /* ── Cloud Panel — integrado encima del input ────────────── */
 .cloud-panel {
   flex-shrink: 0;
-  border-top: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--aurora-accent) 22%, transparent);
+  border-width:1px 0 0;
+  background: color-mix(in srgb,var(--surface) 96%,var(--aurora-accent));
   overflow: hidden;
-  transition: height 0.25s ease;
+  /* No animar height: Aurora suele vivir en un iframe de extensión oculto y
+     Chromium congela la transición en ~1px. Sin altura real, el bridge no
+     puede medir el placeholder ni montar Gemini/ChatGPT. */
+  transition: box-shadow .25s ease;
+  box-shadow:0 -8px 24px rgba(0,0,0,.12);
 }
 
 /* Oculto pero SIEMPRE en el DOM — necesario para que Chrome inyecte el content script */
@@ -202,12 +254,12 @@
 
 /* Mini: miniatura zoom del contenido */
 .cloud-panel.mini {
-  height: 72px;
+  height: 190px;
 }
 .cloud-panel.mini .cloud-panel-iframe-wrap {
   position: relative;
   width: 100%;
-  height: 72px;
+  height: calc(100% - 36px);
   overflow: hidden;
 }
 .cloud-panel.mini iframe {
@@ -222,10 +274,14 @@
 /* Expandido: visible pero sin foco — el control siempre desde el chat local */
 .cloud-panel.expanded {
   height: min(70vh, 620px);
+  display:flex;
+  flex-direction:column;
 }
 .cloud-panel.expanded .cloud-panel-iframe-wrap {
+  flex:1 1 auto;
+  min-height:0;
   width: 100%;
-  height: 100%;
+  height: auto;
 }
 .cloud-panel.expanded iframe {
   width: 100%;
@@ -238,9 +294,28 @@
   position: absolute;
   inset: 0;
   z-index: 10;
-  cursor: default;
+  cursor: zoom-in;
   pointer-events: all;
 }
+
+.cloud-activity {
+  display:flex; align-items:center; gap:10px; width:min(520px,calc(100% - 28px));
+  margin:9px 14px; padding:8px 11px; border-radius:12px;
+  color:var(--text-dim); background:color-mix(in srgb,var(--surface) 92%,transparent);
+  border:1px solid color-mix(in srgb,var(--aurora-accent) 20%,var(--surface3));
+  box-shadow:0 8px 22px rgba(0,0,0,.1),inset 0 1px rgba(255,255,255,.035);
+}
+.cloud-activity-copy { display:flex; flex-direction:column; min-width:0; line-height:1.2; }
+.cloud-activity-copy strong { color:var(--text); font-size:10px; }
+.cloud-activity-copy small { margin-top:2px; font-size:9px; color:var(--text-dim); }
+.cloud-activity-orbit { width:24px; height:24px; position:relative; flex:0 0 auto; animation:cloud-orbit 2.6s linear infinite; }
+.cloud-activity-orbit i { position:absolute; width:5px; height:5px; border-radius:50%; background:var(--aurora-accent); box-shadow:0 0 8px var(--aurora-accent); }
+.cloud-activity-orbit i:nth-child(1){left:9px;top:1px}.cloud-activity-orbit i:nth-child(2){right:1px;bottom:4px}.cloud-activity-orbit i:nth-child(3){left:1px;bottom:4px}
+.cloud-activity-pulse { margin-left:auto; width:34px; height:12px; opacity:.55; background:repeating-linear-gradient(90deg,transparent 0 3px,var(--aurora-accent) 3px 5px); mask:linear-gradient(90deg,transparent,#000,transparent); animation:cloud-wave 1.1s ease-in-out infinite; }
+@keyframes cloud-dot-pulse{50%{opacity:.35;transform:scale(.72)}}
+@keyframes cloud-orbit{to{transform:rotate(360deg)}}
+@keyframes cloud-wave{50%{transform:scaleY(.45);opacity:.25}}
+@media (prefers-reduced-motion:reduce){.cloud-live-dot,.cloud-activity-orbit,.cloud-activity-pulse{animation:none!important}}
 
 /* Full: overlay interno estable sobre el chat, dejando composer abajo. */
 .llama-view.cloud-expanded {

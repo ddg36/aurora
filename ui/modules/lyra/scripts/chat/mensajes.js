@@ -97,10 +97,33 @@ export function agregarMensajeRico(msg) {
   appendIfNotLast({ ts: Date.now(), ...msg });
 }
 
+// Cache por contenido: parsearMensajeRico corre por CADA mensaje en CADA render.
+// Con streaming (muchos renders) y varios mensajes grandes acumulados, re-parsear
+// todo cada vez pinea el main thread. El contenido de un mensaje ya emitido es
+// estable → parsear una vez. Solo el mensaje en streaming (contenido cambiante)
+// hace miss.
+const _cacheRico = new Map();
+const _CACHE_RICO_MAX = 300;
+
 export function parsearMensajeRico(content) {
   if (!content) return [];
+  const hit = _cacheRico.get(content);
+  if (hit !== undefined) return hit;
+  const res = _parsearMensajeRico(content);
+  if (_cacheRico.size >= _CACHE_RICO_MAX) _cacheRico.delete(_cacheRico.keys().next().value);
+  _cacheRico.set(content, res);
+  return res;
+}
+
+function _parsearMensajeRico(content) {
   const partes = [];
   const lineas = content.split('\n');
+  // Sólo estos prefijos abren bloques del protocolo rico. Antes el parser
+  // detenía texto ante CUALQUIER línea que empezara con `[`. Un resultado de
+  // tool como `[ERROR] no such file` no coincidía con ningún branch y tampoco
+  // incrementaba `i`: loop infinito que congelaba por completo Aurora.
+  const esInicioEstructurado = linea =>
+    linea === '[thinking]' || linea.startsWith('[tool_call:') || linea.startsWith('[tool_result:');
   let i = 0;
   while (i < lineas.length) {
     const linea = lineas[i];
@@ -144,7 +167,7 @@ export function parsearMensajeRico(content) {
       i++;
     } else if (linea.trim()) {
       const contenido = [];
-      while (i < lineas.length && !lineas[i].startsWith('[')) {
+      while (i < lineas.length && !esInicioEstructurado(lineas[i])) {
         contenido.push(lineas[i]);
         i++;
       }

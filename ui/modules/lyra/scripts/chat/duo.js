@@ -27,12 +27,21 @@ function abrirWS() {
 function turnoPi(ws, { message, model, history, onToken }) {
   return new Promise((resolve, reject) => {
     let texto = '';
+    let done = false;
+    const finish = (fn, value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(to);
+      ws.removeEventListener('message', handler);
+      fn(value);
+    };
     const handler = ev => {
       let msg; try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.type === 'token') { texto += msg.content || ''; onToken?.(texto); }
-      else if (msg.type === 'done') { ws.removeEventListener('message', handler); resolve(texto.trim()); }
-      else if (msg.type === 'error') { ws.removeEventListener('message', handler); reject(new Error(msg.message || 'error pi')); }
+      else if (msg.type === 'done') finish(resolve, texto.trim());
+      else if (msg.type === 'error') finish(reject, new Error(msg.message || 'error pi'));
     };
+    const to = setTimeout(() => finish(reject, new Error('timeout esperando turno de Lyra (60s)')), 60000);
     ws.addEventListener('message', handler);
     ws.send(JSON.stringify({ type: 'chat', message, model, system: SYSTEM_DUO, history, tools: [] }));
   });
@@ -43,6 +52,12 @@ function actualizarUltimo(patch) {
   const arr = historial.value;
   if (!arr.length) return;
   historial.value = [...arr.slice(0, -1), { ...arr[arr.length - 1], ...patch }];
+}
+
+function quitarUltimoVacio() {
+  const arr = historial.value;
+  const last = arr[arr.length - 1];
+  if (last?.role === 'assistant' && !(last.content || '').trim()) historial.value = arr.slice(0, -1);
 }
 
 export function crearDuoLyraCloud() {
@@ -68,7 +83,7 @@ export function crearDuoLyraCloud() {
         let resp;
         try {
           resp = await turnoPi(ws, { message: mensaje, model, history: [...histPi], onToken: t => actualizarUltimo({ content: t }) });
-        } catch (e) { onError?.(e.message); break; }
+        } catch (e) { quitarUltimoVacio(); onError?.(e.message); break; }
         if (cancelado) break;
         actualizarUltimo({ content: resp });
         histPi.push({ role: 'user', content: mensaje });
@@ -81,8 +96,9 @@ export function crearDuoLyraCloud() {
         cloudGenerando.value = true;
         try {
           const r = await askCloud(iframe, mensaje, { onChunk: t => actualizarUltimo({ content: t }) });
+          if (!r.ok) throw new Error(r.text || 'sin respuesta de la nube');
           resp = r.text || '(sin respuesta de la nube)';
-        } catch (e) { onError?.(e.message); break; }
+        } catch (e) { quitarUltimoVacio(); onError?.(e.message); break; }
         finally { cloudGenerando.value = false; }
         if (cancelado) break;
         actualizarUltimo({ content: resp });

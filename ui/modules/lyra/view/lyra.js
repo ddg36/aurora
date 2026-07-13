@@ -7,7 +7,7 @@ import {
   limpiarStream, borrarMensaje, parsearMensajeRico, combinarPartesRicas,
 } from '../scripts/chat/mensajes.js';
 import { enviarACloud } from '../scripts/chat/cloud.js';
-import { detenerCloud } from '../../../components/shared/cloud-ask.js';
+import { detenerCloud, invalidarCloudRelay } from '../../../components/shared/cloud-ask.js';
 import { crearDuoLyraCloud } from '../scripts/chat/duo.js';
 import { urlRestaurada } from '../../../components/shared/llm-sesiones.js';
 import { chats, chatActualId, cargarChats, crearChat, eliminarChat, autoGuardar, fmtFecha, exportarChat } from '../scripts/chat/historial.js';
@@ -30,9 +30,12 @@ import { HERRAMIENTAS_SISTEMA, promptParaHerramienta } from '../scripts/chat/her
 import { sendToLyra, fetchModels, connectLyra, cancelarMensaje, enviarSteer, onWidgetUpdate, cycleModel, linkSession } from '../../../components/shared/lyra-ws.js';
 import { CanvasPanel } from '../../../components/lyra.views/canvas.js';
 import { nexusOnline } from '../../../store.js';
-import { getJSON, patchJSON } from '../../../components/shared/api.js';
+import { getJSON, postJSON, patchJSON } from '../../../components/shared/api.js';
+import { ToolVisualCard } from '../../../components/shared/cloud-tool-visual.js';
 import { ParamsPanel } from './params-panel.js';
 import { ComandoOverlay } from './comando-overlay.js';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
+import { usePersistedState } from '../../../components/shared/persisted-state.js';
 
 const Toast = () => globalThis.Toast || { show() {}, setStatus() {} };
 
@@ -137,12 +140,78 @@ export function Local() {
   const [cloudVisible, setCloudVisible]             = useState(false);
   const [cloudExpanded, setCloudExpanded]           = useState(false);
   const [cloudHidden, setCloudHidden]               = useState(false);
-  const [cloudUrl, setCloudUrl]                     = useState(AI_URLS.gemini);
-  const [cloudAiId, setCloudAiId]                   = useState('gemini');
+  // El proveedor Cloud es una preferencia, no estado efímero de la vista.
+  // Antes cada hard reload volvía silenciosamente a Gemini aunque el usuario
+  // estuviera trabajando con ChatGPT.
+  const [cloudUrl, setCloudUrl]                     = usePersistedState('lyra_cloud_url', AI_URLS.gemini);
+  const [cloudAiId, setCloudAiId]                   = usePersistedState('lyra_cloud_ai', 'gemini');
+  // En extensión el iframe del LLM se monta a nivel de extensión (login OK),
+  // no inline. Reactivo: el caps de la extensión llega async (HELLO).
+  const [usaExtPane, setUsaExtPane]                 = useState(() => (globalThis.__aurora_extContext?.value?.caps || []).includes('llmPanes'));
+  useEffect(() => {
+    const sig = globalThis.__aurora_extContext;
+    const upd = () => setUsaExtPane((sig?.value?.caps || []).includes('llmPanes'));
+    upd();
+    return sig ? sig.subscribe(upd) : undefined;
+  }, []);
+
+  useEffect(() => registerAIView({
+    id: 'canvas',
+    description: 'Canvas visual de Lyra para mostrar, editar y previsualizar código o texto.',
+    actions: {
+      status: {
+        description: 'Devuelve visibilidad, lenguaje, pestaña y tamaño del documento.',
+        readOnly: true,
+        run: () => ({
+          visible: !!canvasVisible.value,
+          lang: canvasLang,
+          tab: canvasTab,
+          chars: String(canvasDoc.value || '').length,
+        }),
+      },
+      open: {
+        description: 'Abre Canvas; opcionalmente establece contenido, lenguaje y pestaña.',
+        input: {
+          code: { type: 'string', required: false },
+          lang: { type: 'string', required: false },
+          tab: { type: 'string', enum: ['codigo', 'preview'], required: false },
+        },
+        run: ({ code, lang, tab } = {}) => {
+          if (code != null) canvasWrite(String(code));
+          if (lang) setCanvasLang(String(lang));
+          if (tab === 'codigo' || tab === 'preview') setCanvasTab(tab);
+          canvasVisible.value = true;
+          return { visible: true, chars: String(code ?? canvasDoc.value ?? '').length };
+        },
+      },
+      write: {
+        description: 'Reemplaza el contenido de Canvas y lo abre por defecto.',
+        input: {
+          code: { type: 'string', required: true, maxLength: 200000 },
+          lang: { type: 'string', required: false },
+          open: { type: 'boolean', required: false },
+        },
+        run: ({ code, lang, open = true } = {}) => {
+          const value = String(code ?? '');
+          if (value.length > 200000) throw new Error('code excede 200000 caracteres');
+          canvasWrite(value);
+          if (lang) setCanvasLang(String(lang));
+          if (open) canvasVisible.value = true;
+          return { visible: !!canvasVisible.value, chars: value.length, lang: lang || canvasLang };
+        },
+      },
+      close: {
+        description: 'Oculta Canvas sin borrar su contenido.',
+        run: () => { canvasVisible.value = false; return { visible: false }; },
+      },
+    },
+  }), [canvasLang, canvasTab]);
   const [duoActivo, setDuoActivo]                   = useState(false);
   const duoRef                                      = useRef(null);
   const [cloudMenu, setCloudMenu]                   = useState(null);
   const [plusOpen, setPlusOpen]                     = useState(null);
+  const [pendingFiles, setPendingFiles]             = useState([]);
+  const [cloudStatus, setCloudStatus]               = useState({ fase: 'idle', ts: Date.now() });
   const [nexusPendiente, setNexusPendiente]         = useState(null);
   const [avatar, setAvatar]                         = useState(null);
   const [asistenteEnVivo, setAsistenteEnVivo]       = useState({ blocks: [] });
@@ -159,6 +228,17 @@ export function Local() {
 
   const cloudAiLabel = AI_LABELS[cloudAiId] || cloudAiId || 'Cloud';
   const offline = !lyraOnline;
+  const CLOUD_FASES = {
+    idle: ['idle', 'En espera'], ready: ['ready', 'Conectado'], ask_received: ['working', 'Preparando'],
+    ask_queued: ['queued', 'En cola'], ask_dequeued: ['working', 'Retomando'], composer_ready: ['working', 'Composer listo'],
+    attachments_start: ['uploading', 'Subiendo adjunto'], attachments_ready: ['working', 'Adjunto listo'],
+    submitted: ['thinking', 'Pensando'], answer: [cloudStatus.ok === false ? 'error' : 'ready', cloudStatus.ok === false ? 'Sin respuesta' : 'Listo'],
+    stop: ['warning', 'Cancelando'], resetting: ['warning', 'Reconectando'],
+  };
+  const [cloudStatusTone, cloudStatusLabel] = CLOUD_FASES[cloudStatus.fase] || ['idle', cloudStatus.fase || 'En espera'];
+  const cloudStatusTiming = cloudStatus.fase === 'answer' && cloudStatus.generaMs != null
+    ? `${(cloudStatus.generaMs / 1000).toFixed(1)}s`
+    : cloudStatus.queue ? `${cloudStatus.queue} pendiente${cloudStatus.queue === 1 ? '' : 's'}` : '';
 
   useEffect(() => {
     cargarInstruccion();
@@ -177,14 +257,32 @@ export function Local() {
       if (d?.valor) try { setAvatar(JSON.parse(d.valor)); } catch {}
     }).catch(() => {});
 
-    const onCanvasEvent = e => {
-      const { code, lang } = e.detail || {};
-      canvasWrite(code || '');
+    const onCanvasEvent = async e => {
+      const { code, path, lang, tab } = e.detail || {};
+      let value = code;
+      if (value == null && path) {
+        try {
+          const r = await postJSON('/pi/cloud-tool', { tool: 'read', args: { path } });
+          if (!r?.ok || r?.is_error) throw new Error(r?.output || r?.error || 'No se pudo leer el artefacto');
+          value = r.output || '';
+        } catch (err) {
+          Toast().show(`No se pudo abrir ${path}: ${err?.message || err}`, 'error');
+          return;
+        }
+      }
+      canvasWrite(value || '');
       if (lang) setCanvasLang(lang);
-      setCanvasTab('codigo');
+      setCanvasTab(tab === 'preview' ? 'preview' : 'codigo');
+      canvasVisible.value = true;
     };
     document.addEventListener('lyra:canvas', onCanvasEvent);
     return () => document.removeEventListener('lyra:canvas', onCanvasEvent);
+  }, []);
+
+  useEffect(() => {
+    const onCloudStatus = e => setCloudStatus(e.detail || { fase: 'idle', ts: Date.now() });
+    window.addEventListener('aurora:cloud-status', onCloudStatus);
+    return () => window.removeEventListener('aurora:cloud-status', onCloudStatus);
   }, []);
 
   useEffect(() => {
@@ -207,16 +305,26 @@ export function Local() {
 
   const enviarMensaje = useCallback(async (textoDirecto) => {
     const opciones = textoDirecto && typeof textoDirecto === 'object' ? textoDirecto : {};
-    const texto = (typeof textoDirecto === 'string' ? textoDirecto : opciones.message ?? mensaje).trim();
+    let texto = (typeof textoDirecto === 'string' ? textoDirecto : opciones.message ?? mensaje).trim();
     const imagenDataUrl = opciones.skipUserAppend ? null : pendingImageDataUrl.value;
-    if (!texto && !imagenDataUrl) return;
+    if (!texto && !imagenDataUrl && !(cloudVisible && pendingFiles.length)) return;
+    if (!texto && cloudVisible && (imagenDataUrl || pendingFiles.length)) texto = 'Analiza los archivos adjuntos.';
 
     // Cloud activo: el mensaje va al LLM de la nube (iframe), NO a pi.
     // Comandos "/" siguen siendo de Lyra. Respuesta marcada _via:'direct-ai',
     // memoria propia en cloud_mensajes — la sesión de pi ni se entera.
     if (cloudVisible && !texto.startsWith('/') && !opciones.skipUserAppend) {
+      // Guard de concurrencia: un solo turno de nube a la vez. Dos enviarACloud
+      // en paralelo compiten por el mismo iframe (inyección + captura) → caos.
+      if (cloudGenerando.value) { Toast().show('⏳ Esperá a que la nube termine', 'warning', 2000); return; }
       setMensaje('');
-      await enviarACloud({ iframe: iframeRef.current, texto, aiId: cloudAiId, url: cloudUrl });
+      // Reusa el adjunto de imagen de Lyra: la nube lo recibe como data URL y
+      // el relay lo pega al composer del LLM (drag&drop) antes de enviar.
+      const imgs = imagenDataUrl ? [imagenDataUrl] : undefined;
+      if (imagenDataUrl) clearPendingImage();
+      const files = pendingFiles.length ? pendingFiles : undefined;
+      setPendingFiles([]);
+      await enviarACloud({ iframe: iframeRef.current, texto, aiId: cloudAiId, url: cloudUrl, images: imgs, files });
       return;
     }
 
@@ -441,7 +549,7 @@ export function Local() {
       setAsistenteEnVivo({ blocks: [] });
       setColaMensajes({ steering: [], followUp: [] });
     }
-  }, [mensaje]);
+  }, [mensaje, cloudVisible, cloudAiId, cloudUrl, pendingFiles]);
 
   const regenerarRespuesta = useCallback(async (msg) => {
     if (!msg || cargando.value) return;
@@ -547,6 +655,25 @@ export function Local() {
     reader.readAsDataURL(blob);
   }, []);
 
+  const cargarArchivoCloud = useCallback((file) => {
+    const MAX_BYTES = 8 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      Toast().show('⚠ Archivo demasiado grande (máx 8 MB)', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      setPendingFiles(prev => [...prev, {
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        content: ev.target.result,
+      }]);
+      Toast().show(`📎 ${file.name} listo para Cloud`, 'success');
+    };
+    // Data URL conserva PDFs y otros binarios sin corrupción UTF-8.
+    reader.readAsDataURL(file);
+  }, []);
+
   const handlePaste = useCallback(e => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -571,23 +698,29 @@ export function Local() {
         return;
       }
     }
-    const texto = Array.from(files).find(f =>
-      f.type.startsWith('text/') || /\.(txt|md|csv|json|js|py|sh|html|css)$/i.test(f.name));
-    if (texto) {
+    const archivo = Array.from(files).find(f => !f.type.startsWith('image/'));
+    if (archivo && cloudVisible) {
+      cargarArchivoCloud(archivo);
+    } else if (archivo) {
       const reader = new FileReader();
       reader.onload = ev => {
         const t = ev.target.result;
         setMensaje(prev => `${prev}${prev ? '\n' : ''}\`\`\`\n${t.slice(0, 4000)}${t.length > 4000 ? '\n…(truncado)' : ''}\n\`\`\`\n`);
-        Toast().show(`📄 ${texto.name} cargado`, 'success');
+        Toast().show(`📄 ${archivo.name} cargado`, 'success');
       };
-      reader.readAsText(texto);
+      reader.readAsText(archivo);
     }
-  }, [cargarImagen]);
+  }, [cargarImagen, cloudVisible, cargarArchivoCloud]);
 
   const recargarCloudIframe = useCallback((url) => {
     const target = url || cloudUrl;
     const iframe = iframeRef.current;
-    if (!target || !iframe) return;
+    invalidarCloudRelay(iframe);
+    if (!target) return;
+    if (!iframe) {
+      window.parent.postMessage({ type: 'AURORA_LLM_RELOAD', id: 'cloud', url: target }, '*');
+      return;
+    }
     iframe.src = 'about:blank';
     setTimeout(() => { iframe.src = target; }, 50);
   }, [cloudUrl]);
@@ -613,7 +746,8 @@ export function Local() {
   // Duo Lyra ↔ Nube: pi y el LLM externo conversan por turnos en el hilo.
   const toggleDuo = useCallback(() => {
     if (duoActivo) { duoRef.current?.detener(); setDuoActivo(false); return; }
-    if (!cloudVisible || !iframeRef.current) { Toast().show('Abrí ☁ Cloud primero', 'warning', 2500); return; }
+    if (!cloudVisible || (!usaExtPane && !iframeRef.current)) { Toast().show('Abrí ☁ Cloud primero', 'warning', 2500); return; }
+    if (!lyraOnline) { Toast().show('Lyra local está offline — Duo necesita ambos agentes', 'warning', 3000); return; }
     if (cargando.value) { Toast().show('Esperá a que Lyra termine', 'warning', 2000); return; }
     const duo = crearDuoLyraCloud();
     duoRef.current = duo;
@@ -624,7 +758,7 @@ export function Local() {
       { onEstado: e => { if (['fin', 'cancelado', 'error'].includes(e)) setDuoActivo(false); },
         onError: m => Toast().show('Duo: ' + m, 'error', 3000) },
     );
-  }, [duoActivo, cloudVisible, cloudAiId]);
+  }, [duoActivo, cloudVisible, cloudAiId, usaExtPane, lyraOnline]);
 
   const cycleCloudPanel = useCallback(() => {
     if (cloudExpanded) {
@@ -639,9 +773,84 @@ export function Local() {
   }, [cloudExpanded, cloudHidden]);
 
   const closeCloud = useCallback(() => {
+    invalidarCloudRelay(iframeRef.current);
     setCloudVisible(false);
     setCloudExpanded(false);
     setCloudHidden(false);
+  }, []);
+
+  // AURORA CONTROLA al iframe de la extensión (no al revés): reporta el rect
+  // del placeholder y la extensión dibuja el iframe EXACTAMENTE ahí. Debe
+  // seguir el layout de Aurora al pixel — modos (mini/expandido) que animan,
+  // scroll, resize. Por eso: ResizeObserver (sigue el tamaño, incluido durante
+  // transiciones), scroll (sigue la posición) y un loop rAF corto tras cada
+  // cambio de modo (cubre la animación CSS mientras el rect va cambiando).
+  useEffect(() => {
+    if (!usaExtPane) return;
+    let ultimo = '';
+    let lastRect = null;   // último rect visible — reusado en modo oculto (el wrap es display:none, sin rect)
+    const report = () => {
+      // Cerrado: sacar el iframe de la extensión.
+      if (!cloudVisible) {
+        if (ultimo !== 'vacio') { window.parent.postMessage({ type: 'AURORA_LLM_PANES', panes: [], hidden: true }, '*'); ultimo = 'vacio'; }
+        return;
+      }
+      // Oculto: el .cloud-panel-iframe-wrap es display:none → el placeholder no
+      // tiene rect. Igual hay que avisar hidden:true (si no, el iframe queda
+      // visible). Mantener montado (sesión viva) con el último rect conocido.
+      if (cloudHidden) {
+        const clave = `hidden,${cloudUrl}`;
+        if (clave === ultimo) return;
+        ultimo = clave;
+        window.parent.postMessage({
+          type: 'AURORA_LLM_PANES',
+          panes: [{ id: 'cloud', url: cloudUrl, rect: lastRect || { left: 0, top: 0, width: 1, height: 1 } }],
+          hidden: true,
+        }, '*');
+        return;
+      }
+      const el = document.querySelector('[data-llm-pane="cloud"]');
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return;  // sin layout aún
+      // Clamp al panel: en mini el wrap mide 72px dentro de un panel de 72px
+      // con header → el placeholder rebalsa por debajo y el iframe de extensión
+      // taparía el composer (botón ocultar). Recortá al alto visible del panel.
+      const panel = el.closest('.cloud-panel');
+      let bottom = r.top + r.height;
+      if (panel) { const pr = panel.getBoundingClientRect(); bottom = Math.min(bottom, pr.top + pr.height); }
+      lastRect = { left: r.left, top: r.top, width: r.width, height: Math.max(2, bottom - r.top) };
+      // Dedupe: no floodear postMessages con el mismo rect.
+      const clave = `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)},${cloudUrl}`;
+      if (clave === ultimo) return;
+      ultimo = clave;
+      window.parent.postMessage({
+        type: 'AURORA_LLM_PANES',
+        panes: [{ id: 'cloud', url: cloudUrl, rect: lastRect }],
+        hidden: false,
+      }, '*');
+    };
+    const el = document.querySelector('[data-llm-pane="cloud"]');
+    const ro = new ResizeObserver(report);
+    if (el) ro.observe(el);
+    window.addEventListener('resize', report);
+    window.addEventListener('scroll', report, true);
+    // Loop rAF ~600ms: cubre la transición CSS del cambio de modo (el rect
+    // va cambiando frame a frame; el iframe de la extensión lo sigue suave).
+    const t0 = Date.now();
+    let raf;
+    const loop = () => { report(); if (Date.now() - t0 < 600) raf = requestAnimationFrame(loop); };
+    raf = requestAnimationFrame(loop);
+    // Interval con dedupe (barato: solo postea si el rect cambió): garantiza
+    // que el report dispare apenas el placeholder está en el DOM y con layout,
+    // aunque el effect corra antes de que React lo pinte.
+    const iv = setInterval(report, 300);
+    return () => { ro.disconnect(); window.removeEventListener('resize', report); window.removeEventListener('scroll', report, true); cancelAnimationFrame(raf); clearInterval(iv); };
+  }, [usaExtPane, cloudVisible, cloudExpanded, cloudHidden, cloudUrl]);
+
+  // Al desmontar la vista, sacar el iframe de la extensión (no dejar huérfano).
+  useEffect(() => () => {
+    try { window.parent.postMessage({ type: 'AURORA_LLM_PANES', panes: [] }, '*'); } catch (_) {}
   }, []);
 
   const elegirCloudAi = useCallback((aiId, urlOverride) => {
@@ -838,7 +1047,7 @@ export function Local() {
           const rolLabel = msg.role === 'user'
             ? '👤 Tú'
             : esPiTool
-              ? '🔧 pi tool'
+              ? `🔧 pi tool${msg._toolIter ? ` · ${msg._toolIter}/${msg._toolMax || 6}` : ''}`
               : esExterno
                 ? `${AI_ICONOS[cloudAiId] || '☁'} ${AI_LABELS[cloudAiId] || 'AI ext'}`
                 : '🦙 Lyra';
@@ -846,7 +1055,7 @@ export function Local() {
           if (msg.role === 'assistant') {
             const parsed = combinarPartesRicas(parsearMensajeRico(msg.content));
             return html`
-              <div key=${idx} class=${'message assistant' + (esExterno ? ' direct-ai' : '') + (esPiTool ? ' pi-tool' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
+              <div key=${idx} class=${'message assistant' + (esExterno ? ' direct-ai' : '') + (esPiTool ? ' pi-tool' : '') + (esPiTool && msg._toolError ? ' is-error' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
                 <div class="message-header">
                   <span class="role">${rolLabel}</span>
                   <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
@@ -863,7 +1072,9 @@ export function Local() {
                     title="Releer mensaje"
                   >🔊</button>
                 </div>
-                ${parsed.length ? parsed.map((p, i) => {
+                ${msg._toolVisual || msg._toolDraft
+                  ? html`<${ToolVisualCard} visual=${msg._toolVisual || msg._toolDraft} />`
+                  : parsed.length ? parsed.map((p, i) => {
                   if (p.tipo === 'thinking') {
                     const key = `${idx}_${i}`;
                     return html`
@@ -915,17 +1126,20 @@ export function Local() {
                     dangerouslySetInnerHTML=${{ __html: renderizarContenido(msg.content) }}
                   ></div>
                 `}
+                ${msg._imagen && html`
+                  <img src=${msg._imagen} alt="Imagen leída por la tool" class="mt-2 max-w-full max-h-72 rounded-lg border border-white/10 object-contain bg-black/10" />
+                `}
                 ${msg._timing && html`
                   <div class="text-[10px] text-aurora-text-muted font-mono mt-1 opacity-70">
                     ⏱ responde ${(msg._timing.responde / 1000).toFixed(1)}s · genera ${(msg._timing.genera / 1000).toFixed(1)}s
                   </div>
                 `}
-                <div class=${quickActionsClass}>
-                  <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles">📋 Copiar</button>
-                  <button class=${actionChipClass} onClick=${() => añadirANotas(msg.content)} title="Añadir a notas">✎ A notas</button>
-                  <button class=${actionChipClass} onClick=${() => reformularRespuesta(regenerarRespuesta, msg)} title="Regenerar respuesta">↻ Regenerar</button>
-                  <button class=${actionChipClass} onClick=${() => leerMensaje(msg.content)} title="Leer mensaje">🔊 Leer</button>
-                </div>
+                ${!esPiTool && html`<div class=${quickActionsClass}>
+                    <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles">📋 Copiar</button>
+                    <button class=${actionChipClass} onClick=${() => añadirANotas(msg.content)} title="Añadir a notas">✎ A notas</button>
+                    <button class=${actionChipClass} onClick=${() => reformularRespuesta(regenerarRespuesta, msg)} title="Regenerar respuesta">↻ Regenerar</button>
+                    <button class=${actionChipClass} onClick=${() => leerMensaje(msg.content)} title="Leer mensaje">🔊 Leer</button>
+                  </div>`}
               </div>
             `;
           }
@@ -1026,8 +1240,13 @@ export function Local() {
           </div>
         `}
         ${cloudGenerandoVal && html`
-          <div class="message assistant loading direct-ai">
-            <div class="message-content"><span class="typing-indicator">☁ generando…</span></div>
+          <div class=${'cloud-activity cloud-activity--' + cloudStatusTone}>
+            <span class="cloud-activity-orbit"><i></i><i></i><i></i></span>
+            <span class="cloud-activity-copy">
+              <strong>${cloudAiLabel}</strong>
+              <small>${cloudStatusLabel}${cloudStatusTiming ? ' · ' + cloudStatusTiming : ''}</small>
+            </span>
+            <span class="cloud-activity-pulse"></span>
           </div>
         `}
         </div>
@@ -1077,31 +1296,54 @@ export function Local() {
         </div>
       `}
 
+      ${pendingFiles.length > 0 && html`
+        <div class="image-preview-bar flex items-center shrink-0 gap-2 px-3 py-1.5 bg-black bg-opacity-30 border-t border-aurora-border">
+          ${pendingFiles.map((file, i) => html`
+            <span key=${file.name + i} class="cloud-file-chip" title=${file.name}>
+              <span class="cloud-file-chip-icon">${file.type?.includes('pdf') ? 'PDF' : file.type?.startsWith('text/') ? 'TXT' : 'FILE'}</span>
+              <span class="cloud-file-chip-name">${file.name}</span>
+            </span>
+            <button onClick=${() => setPendingFiles(prev => prev.filter((_, n) => n !== i))}
+              class="img-preview-close px-1.5 py-0.5 bg-transparent border-0 text-aurora-text-dim text-sm cursor-pointer"
+              title="Quitar archivo">✕</button>
+          `)}
+        </div>
+      `}
+
       <div class=${'cloud-panel ' + (cloudExpanded ? 'expanded' : cloudHidden ? 'hidden-mode' : 'mini') + (cloudVisible ? '' : ' cloud-panel-hidden')}>
-        ${!cloudExpanded && cloudVisible && html`
+        ${cloudVisible && html`
           <div class="cloud-mini-header">
-            <span class="cloud-mini-label">☁ ${cloudAiLabel}</span>
+            <div class="cloud-identity">
+              <span class="cloud-provider-mark">${AI_ICONOS[cloudAiId] || '☁'}</span>
+              <span class="cloud-mini-label">${cloudAiLabel}</span>
+              <span class=${'cloud-live-status cloud-live-status--' + cloudStatusTone}>
+                <span class="cloud-live-dot"></span>${cloudStatusLabel}
+              </span>
+              ${cloudStatusTiming && html`<span class="cloud-live-timing">${cloudStatusTiming}</span>`}
+            </div>
             <div class="cloud-mini-actions">
-              <button class="cloud-mini-btn" title="Expandir" onClick=${() => setCloudExpanded(true)}>⛶</button>
+              <button class="cloud-mini-btn" title=${cloudExpanded ? 'Contraer a mini' : 'Expandir'} onClick=${() => { setCloudExpanded(v => !v); setCloudHidden(false); }}>${cloudExpanded ? '▾' : '⛶'}</button>
               <button class="cloud-mini-btn" title="Recargar" onClick=${() => recargarCloudIframe(cloudUrl)}>↺</button>
               <button class="cloud-mini-btn cloud-mini-btn--close" title="Cerrar" onClick=${closeCloud}>✕</button>
             </div>
           </div>
         `}
         <div class="cloud-panel-iframe-wrap" style="position:relative;">
-          <iframe
-            data-pane="cloud"
-            src="about:blank"
-            ref=${iframeRef}
-            allow="clipboard-read; clipboard-write; microphone"
-            title="Cloud Backend"
-            tabIndex="-1"
-          ></iframe>
+          ${usaExtPane
+            ? html`<div data-llm-pane="cloud" style="width:100%;height:100%;"></div>`
+            : html`<iframe
+                data-pane="cloud"
+                src="about:blank"
+                ref=${iframeRef}
+                allow="clipboard-read; clipboard-write; microphone"
+                title="Cloud Backend"
+                tabIndex="-1"
+              ></iframe>`}
           ${!cloudExpanded && html`
             <div
               class="cloud-panel-shield"
-              onClick=${e => e.stopPropagation()}
-              title="Cloud Backend en miniatura"
+              onClick=${e => { e.stopPropagation(); setCloudExpanded(true); setCloudHidden(false); }}
+              title="Abrir ${cloudAiLabel}"
             ></div>
           `}
         </div>
@@ -1307,8 +1549,8 @@ export function Local() {
                         if (!file) return;
                         if (file.type.startsWith('image/')) {
                           cargarImagen(file);
-                        } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-                          Toast().show('📄 PDF recibido — próximamente extracción de texto', 'info', 3000);
+                        } else if (cloudVisible) {
+                          cargarArchivoCloud(file);
                         } else {
                           const reader = new FileReader();
                           reader.onload = ev => {
@@ -1342,7 +1584,7 @@ export function Local() {
                 : html`<button
                     class="composer-send-btn"
                     onClick=${() => enviarMensaje()}
-                    disabled=${(!mensaje.trim() && !pendingImageDataUrlVal) || offline}
+                    disabled=${(!mensaje.trim() && !pendingImageDataUrlVal && pendingFiles.length === 0) || (offline && !cloudVisible)}
                   >↑</button>`
               }
             </div>
