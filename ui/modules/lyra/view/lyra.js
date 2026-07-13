@@ -1291,7 +1291,7 @@ export function Local() {
         `}
         ${cloudGenerandoVal && html`
           <div class=${'cloud-activity cloud-activity--' + cloudStatusTone}>
-            <span class="cloud-activity-orbit"><i></i><i></i><i></i></span>
+            <span class="cloud-activity-chibi" aria-hidden="true"></span>
             <span class="cloud-activity-copy">
               <strong>${cloudAiLabel}</strong>
               <small key=${cloudStatusDisplay}>${cloudStatusDisplay}${cloudStatusTiming ? ' · ' + cloudStatusTiming : ''}</small>
