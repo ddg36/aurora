@@ -207,7 +207,8 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files }) 
       thr.flush();
       adjImgs = undefined; adjFiles = undefined;   // consumidos
       const final = res.text || '';
-      if (!res.ok || !final || final === '(sin respuesta detectada)') {
+      // Respuesta SOLO-imagen (generada, sin texto) es válida: no descartarla.
+      if ((!res.ok || !final || final === '(sin respuesta detectada)') && !res.images?.length) {
         actualizarUltimo({
           content: final || `Error: no se detectó respuesta de ${aiId || 'Cloud'}.`,
           _toolError: true,

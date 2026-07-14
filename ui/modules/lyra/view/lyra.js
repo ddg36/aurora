@@ -140,6 +140,28 @@ export function Local() {
   const [cloudVisible, setCloudVisible]             = useState(false);
   const [cloudExpanded, setCloudExpanded]           = useState(false);
   const [cloudHidden, setCloudHidden]               = useState(false);
+  // Altura custom del panel cloud (px) cuando el usuario lo redimensiona a mano.
+  const [cloudHeight, setCloudHeight] = useState(() => {
+    const v = parseInt(localStorage.getItem('aurora_cloud_height') || '', 10);
+    return Number.isFinite(v) && v > 120 ? v : null;
+  });
+  const iniciarResizeCloud = useCallback((e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = document.querySelector('.cloud-panel')?.getBoundingClientRect().height || 420;
+    const onMove = (ev) => {
+      const h = Math.max(140, Math.min(window.innerHeight * 0.9, startH + (startY - ev.clientY)));
+      setCloudHeight(h);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      const h = document.querySelector('.cloud-panel')?.getBoundingClientRect().height;
+      if (h) localStorage.setItem('aurora_cloud_height', String(Math.round(h)));
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }, []);
   // El proveedor Cloud es una preferencia, no estado efímero de la vista.
   // Antes cada hard reload volvía silenciosamente a Gemini aunque el usuario
   // estuviera trabajando con ChatGPT.
@@ -1206,6 +1228,9 @@ export function Local() {
               <div class="message-header">
                 <span class="role">${rolLabelFinal}</span>
                 <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
+                ${(msg.content || '').trim() && html`
+                  <button class="msg-pin-btn" onClick=${() => copiarMensaje(msg.content)} title="Copiar mensaje">📋</button>
+                `}
                 ${msg.id && html`
                   <button
                     class=${'msg-pin-btn' + (estaFijado(msg) ? ' fijado' : '')}
@@ -1368,7 +1393,11 @@ export function Local() {
         </div>
       `}
 
-      <div class=${'cloud-panel ' + (cloudExpanded ? 'expanded' : cloudHidden ? 'hidden-mode' : 'mini') + (cloudVisible ? '' : ' cloud-panel-hidden')}>
+      <div class=${'cloud-panel ' + (cloudExpanded ? 'expanded' : cloudHidden ? 'hidden-mode' : 'mini') + (cloudVisible ? '' : ' cloud-panel-hidden')}
+        style=${cloudVisible && cloudExpanded && cloudHeight ? `height:${cloudHeight}px` : ''}>
+        ${cloudVisible && cloudExpanded && html`
+          <div class="cloud-resize-handle" title="Arrastrá para ajustar el alto" onPointerdown=${iniciarResizeCloud}></div>
+        `}
         ${cloudVisible && html`
           <div class="cloud-mini-header">
             <div class="cloud-identity">

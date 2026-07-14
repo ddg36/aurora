@@ -78,6 +78,19 @@
   const getSend  = () => SEND_SELECTORS.map(s => document.querySelector(s)).find(b => b && b.offsetParent !== null) || null;
   const getStop  = () => STOP_SELECTORS.map(s => document.querySelector(s)).find(b => b && b.offsetParent !== null) || null;
 
+  // Imágenes GENERADAS por el proveedor (ej. DALL·E). NO viven dentro del turno
+  // assistant sino en su propio contenedor (ChatGPT: [class*=imagegen]). Las
+  // buscamos globalmente; las grandes y ya cargadas son las generadas.
+  const imgsGeneradas = () => [...document.querySelectorAll('[class*="imagegen"] img, [data-testid*="image"] img, .group\\/imagegen-image img')]
+    .filter(i => (i.naturalWidth || i.width || 0) > 200 && i.complete)
+    .map(i => i.src).filter(s => s && !s.startsWith('data:'));
+
+  // ChatGPT está GENERANDO una imagen: existe un contenedor imagegen pero la
+  // imagen final todavía no está lista (preview/render en curso). No cerrar el
+  // turno hasta que termine, o capturaríamos solo el texto preámbulo (bug).
+  const imagenPendiente = () =>
+    !!document.querySelector('[class*="imagegen"], [class*="image-gen"]') && imgsGeneradas().length === 0;
+
   // Sentinel de "trabajando": mientras el LLM piensa/busca y aún no hay
   // respuesta real, emitimos este marcador; Aurora lo reemplaza por un
   // indicador animado bonito (no mostramos el status crudo del proveedor).
@@ -394,22 +407,25 @@
         const esPlaceholder = /^(thinking|reasoning|pensando|razonando|json|code)\.?$/i.test(lastText);
         // domToMarkdown UNA sola vez (fiel: bloques de código, listas, etc.).
         lastMd = domToMarkdown(nodoTexto(current));
+        // Imágenes de la respuesta: las del turno (raras) + las generadas
+        // (DALL·E, fuera del turno). Sus src → el ASK las baja a data URL.
+        const imgSrcs = [...new Set([
+          ...[...current.querySelectorAll('img')]
+            .filter(i => (i.naturalWidth || i.width || 0) > 200 && !/avatar|icon|emoji/i.test(i.className || ''))
+            .map(i => i.src),
+          ...imgsGeneradas(),
+        ])].filter(s => s && !s.startsWith('data:'));
         resolve({
           // Una cancelación nunca es una respuesta exitosa, aunque ya exista
-          // texto parcial. Antes `reason:cancelled` podía viajar con `ok:true`
-          // si el usuario detenía después de los primeros tokens.
-          ok: reason !== 'cancelled' && reason !== 'timeout' && !!lastText && !esPlaceholder,
-          text: esPlaceholder
+          // texto parcial. Una respuesta SOLO-imagen (sin texto) igual es válida.
+          ok: reason !== 'cancelled' && reason !== 'timeout' && ((!!lastText && !esPlaceholder) || imgSrcs.length > 0),
+          text: esPlaceholder && !imgSrcs.length
             ? `Error: ${lastText} no produjo una respuesta antes del timeout.`
-            : (lastMd || lastText || '(sin respuesta detectada)'),
+            : (lastMd || lastText || (imgSrcs.length ? '' : '(sin respuesta detectada)')),
           reason,
           respondeMs: respondeMs ?? (Date.now() - submitAt),
           generaMs: ultimaCaptura - submitAt,
-          // Imágenes GENERADAS en la respuesta (ej. DALL·E). Guardamos sus src
-          // para que el ASK las baje a data URL y Aurora las muestre en el chat.
-          imgSrcs: [...current.querySelectorAll('img')]
-            .filter(i => (i.naturalWidth || i.width || 0) > 200 && !/avatar|icon|emoji/i.test(i.className || ''))
-            .map(i => i.src).filter(s => s && !s.startsWith('data:')),
+          imgSrcs,
         });
       };
 
@@ -430,7 +446,16 @@
       // streamea de forma continua y conserva el cierre rápido.
       const FIN_IDLE = esChatGPT ? 8000 : 8000;
       const chequearFin = () => {
-        if (!capturando || !lastText) return;
+        if (!capturando) return;
+        // Generando imagen: esperar a que la imagen esté lista (no cerrar sobre
+        // el texto preámbulo/stale mientras ChatGPT todavía la renderiza).
+        if (esChatGPT && imagenPendiente()) return;
+        // Respuesta SOLO-imagen (generada, sin texto): si el Stop ya no está y
+        // hay una imagen generada cargada, cerrar (si no, esperaría el timeout).
+        if (esChatGPT && !getStop() && !lastText && Date.now() - submitAt > 6000 && imgsGeneradas().length) {
+          return terminar('site_image');
+        }
+        if (!lastText) return;
         // Algunos proveedores detienen el render de tokens al ocultarse. Un
         // fragmento congelado no es una respuesta estable: esperar a que el
         // documento vuelva a estar visible o al timeout explícito.
@@ -472,8 +497,10 @@
           // `BACKGROUND` mientras el sitio aún completaba `_RELAY_OK`. En
           // background sólo la estabilidad textual puede cerrar el turno.
           if (ocultoSinShim()) return;
-          if (vioGenerando && lastText && !/^(thinking|reasoning|pensando|razonando)\.?$/i.test(lastText)) {
-            terminar('site_complete');
+          if (imagenPendiente()) return;   // generando imagen: seguir esperando
+          const textoOk = lastText && !/^(thinking|reasoning|pensando|razonando)\.?$/i.test(lastText);
+          if (vioGenerando && (textoOk || imgsGeneradas().length)) {
+            terminar(textoOk ? 'site_complete' : 'site_image');
           }
         });
         siteObs.observe(document.body, { childList: true, subtree: true, attributes: true });
@@ -486,7 +513,7 @@
         leer();
         // Si el target apareció ya completo después de un razonamiento largo,
         // no habrá transición Stop ni otra mutación que despierte al observer.
-        if (esChatGPT && !getStop()) {
+        if (esChatGPT && !getStop() && !imagenPendiente()) {
           const vacio = !lastText || /^(json|code)$/i.test(lastText);
           terminar(vacio ? 'site_empty' : 'site_complete');
         }
