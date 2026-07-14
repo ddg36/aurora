@@ -1395,8 +1395,8 @@ export function Local() {
       `}
 
       <div class=${'cloud-panel ' + (cloudExpanded ? 'expanded' : cloudHidden ? 'hidden-mode' : 'mini') + (cloudVisible ? '' : ' cloud-panel-hidden')}
-        style=${cloudVisible && cloudExpanded && cloudHeight ? `height:${cloudHeight}px` : ''}>
-        ${cloudVisible && cloudExpanded && html`
+        style=${cloudVisible && !cloudHidden && cloudHeight ? `height:${cloudHeight}px` : ''}>
+        ${cloudVisible && !cloudHidden && html`
           <div class="cloud-resize-handle" title="Arrastrá para ajustar el alto" onPointerdown=${iniciarResizeCloud}></div>
         `}
         ${cloudVisible && html`

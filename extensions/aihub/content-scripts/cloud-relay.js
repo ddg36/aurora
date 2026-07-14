@@ -423,12 +423,14 @@
         // domToMarkdown UNA sola vez (fiel: bloques de código, listas, etc.).
         lastMd = domToMarkdown(nodoTexto(current));
         // Imágenes de la respuesta: las del turno (raras) + las generadas
-        // (DALL·E, fuera del turno). Sus src → el ASK las baja a data URL.
+        // NUEVAS este turno (DALL·E). CLAVE: filtrar las generadas contra el
+        // baseline (imgBase) — si no, un turno de texto (ej. redflag "no puedo")
+        // adjuntaba TODAS las imágenes viejas del hilo.
         const imgSrcs = [...new Set([
           ...[...current.querySelectorAll('img')]
             .filter(i => (i.naturalWidth || i.width || 0) > 200 && !/avatar|icon|emoji/i.test(i.className || ''))
             .map(i => i.src),
-          ...imgsGeneradas(),
+          ...imgsGeneradas().filter(s => !base?.imgBase?.has(s)),
         ])].filter(s => s && !s.startsWith('data:'));
         resolve({
           // Una cancelación nunca es una respuesta exitosa, aunque ya exista
@@ -461,16 +463,7 @@
       // streamea de forma continua y conserva el cierre rápido.
       const FIN_IDLE = esChatGPT ? 8000 : 8000;
       const chequearFin = () => {
-        if (!capturando) return;
-        // Generando imagen: esperar a que la imagen esté lista (no cerrar sobre
-        // el texto preámbulo/stale mientras ChatGPT todavía la renderiza).
-        if (esChatGPT && imagenPendiente()) return;
-        // Respuesta SOLO-imagen (generada, sin texto): si el Stop ya no está y
-        // hay una imagen generada cargada, cerrar (si no, esperaría el timeout).
-        if (esChatGPT && !getStop() && !lastText && Date.now() - submitAt > 6000 && imgsGeneradas().length) {
-          return terminar('site_image');
-        }
-        if (!lastText) return;
+        if (!capturando || !lastText) return;
         // Algunos proveedores detienen el render de tokens al ocultarse. Un
         // fragmento congelado no es una respuesta estable: esperar a que el
         // documento vuelva a estar visible o al timeout explícito.
@@ -512,11 +505,8 @@
           // `BACKGROUND` mientras el sitio aún completaba `_RELAY_OK`. En
           // background sólo la estabilidad textual puede cerrar el turno.
           if (ocultoSinShim()) return;
-          if (imagenPendiente()) return;   // generando imagen: seguir esperando
           const textoOk = lastText && !/^(thinking|reasoning|pensando|razonando)\.?$/i.test(lastText);
-          if (vioGenerando && (textoOk || imgsGeneradas().length)) {
-            terminar(textoOk ? 'site_complete' : 'site_image');
-          }
+          if (vioGenerando && textoOk) terminar('site_complete');
         });
         siteObs.observe(document.body, { childList: true, subtree: true, attributes: true });
         vioGenerando = !!getStop();
@@ -528,7 +518,7 @@
         leer();
         // Si el target apareció ya completo después de un razonamiento largo,
         // no habrá transición Stop ni otra mutación que despierte al observer.
-        if (esChatGPT && !getStop() && !imagenPendiente()) {
+        if (esChatGPT && !getStop()) {
           const vacio = !lastText || /^(json|code)$/i.test(lastText);
           terminar(vacio ? 'site_empty' : 'site_complete');
         }
