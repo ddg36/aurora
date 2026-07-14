@@ -405,6 +405,11 @@
           reason,
           respondeMs: respondeMs ?? (Date.now() - submitAt),
           generaMs: ultimaCaptura - submitAt,
+          // Imágenes GENERADAS en la respuesta (ej. DALL·E). Guardamos sus src
+          // para que el ASK las baje a data URL y Aurora las muestre en el chat.
+          imgSrcs: [...current.querySelectorAll('img')]
+            .filter(i => (i.naturalWidth || i.width || 0) > 200 && !/avatar|icon|emoji/i.test(i.className || ''))
+            .map(i => i.src).filter(s => s && !s.startsWith('data:')),
         });
       };
 
@@ -578,10 +583,16 @@
       });
       if (chunkTimer) clearTimeout(chunkTimer);
       borrarAskPendiente(pending.requestId);
-      trace('answer_resumed', { requestId: pending.requestId, ok: res.ok, reason: res.reason });
+      // Bajar imágenes generadas en la respuesta a data URL (máx 4).
+      let imagenes;
+      if (res.imgSrcs?.length) {
+        imagenes = (await Promise.all(res.imgSrcs.slice(0, 4).map(urlADataURL))).filter(Boolean);
+      }
+      trace('answer_resumed', { requestId: pending.requestId, ok: res.ok, reason: res.reason, imgs: imagenes?.length || 0 });
       post({ type: 'AURORA_CLOUD_ANSWER', requestId: pending.requestId, ok: res.ok,
         text: res.reason === 'cancelled' ? 'Cancelado por el usuario.' : (res.text || '(sin respuesta detectada)'),
-        reason: res.reason, respondeMs: res.respondeMs, generaMs: res.generaMs });
+        reason: res.reason, respondeMs: res.respondeMs, generaMs: res.generaMs,
+        images: imagenes?.length ? imagenes : undefined });
     } catch (error) {
       borrarAskPendiente(pending.requestId);
       post({ type: 'AURORA_CLOUD_ANSWER', requestId: pending.requestId, ok: false,
@@ -735,6 +746,26 @@
     const url = dataUrl.startsWith('data:') ? dataUrl : `data:${typeFallback};base64,${dataUrl}`;
     const blob = await (await fetch(url)).blob();
     return new File([blob], name, { type: blob.type || typeFallback });
+  }
+
+  // URL de una imagen (ej. generada por DALL·E dentro del iframe del proveedor)
+  // → data URL, para mandarla a Aurora y mostrarla en el chat. fetch primero
+  // (mismo origen/CORS en el iframe); fallback a canvas si la imagen ya está
+  // cargada y no está tainted.
+  async function urlADataURL(url) {
+    try {
+      const blob = await (await fetch(url)).blob();
+      return await new Promise((ok, err) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = err; r.readAsDataURL(blob); });
+    } catch (_) {}
+    try {
+      const img = [...document.querySelectorAll('img')].find(i => i.src === url);
+      if (img?.complete && img.naturalWidth) {
+        const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        return c.toDataURL('image/png');
+      }
+    } catch (_) {}
+    return null;
   }
   async function soltarEnComposer(files) {
     const input = getInput();

@@ -215,6 +215,7 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files }) 
         break;
       }
       actualizarUltimo({ content: final, _toolDraft: detectarToolDraft(final) || undefined,
+        _imagenes: res.images?.length ? res.images : undefined,
         _timing: { responde: res.respondeMs, genera: res.generaMs, rt: Date.now() - t0 } });
       await persistir(convId, 'assistant', final);
 

@@ -225,6 +225,7 @@ export function Local() {
 
   const chatRef   = useRef(null);
   const [enFondo, setEnFondo]   = useState(true);
+  const [lightbox, setLightbox] = useState(null);   // imagen expandida (click en thumbnail)
   const iframeRef = useRef(null);
 
   const cloudAiLabel = AI_LABELS[cloudAiId] || cloudAiId || 'Cloud';
@@ -1170,7 +1171,14 @@ export function Local() {
                   ></div>
                 `}
                 ${msg._imagen && html`
-                  <img src=${msg._imagen} alt="Imagen leída por la tool" class="mt-2 max-w-full max-h-72 rounded-lg border border-white/10 object-contain bg-black/10" />
+                  <img src=${msg._imagen} alt="Imagen leída por la tool" class="mt-2 max-w-full max-h-72 rounded-lg border border-white/10 object-contain bg-black/10 cursor-zoom-in" onClick=${() => setLightbox(msg._imagen)} />
+                `}
+                ${msg._imagenes?.length && html`
+                  <div class="flex flex-wrap gap-2 mt-2">
+                    ${msg._imagenes.map((src, i) => html`
+                      <img key=${i} src=${src} alt="Imagen generada" class="max-w-full max-h-80 rounded-lg border border-white/10 object-contain bg-black/10 cursor-zoom-in" onClick=${() => setLightbox(src)} />
+                    `)}
+                  </div>
                 `}
                 ${msg._timing && html`
                   <div class="text-[10px] text-aurora-text-muted font-mono mt-1 opacity-70">
@@ -1212,7 +1220,7 @@ export function Local() {
               ${msg._imagenes?.length && html`
                 <div class="flex flex-wrap gap-2 mt-2">
                   ${msg._imagenes.map((src, i) => html`
-                    <img key=${i} src=${src} alt="Imagen adjunta" class="max-w-[160px] max-h-40 rounded-lg border border-white/10 object-contain bg-black/10" />
+                    <img key=${i} src=${src} alt="Imagen adjunta" class="max-w-[160px] max-h-40 rounded-lg border border-white/10 object-contain bg-black/10 cursor-zoom-in" onClick=${() => setLightbox(src)} />
                   `)}
                 </div>
               `}
@@ -1665,6 +1673,13 @@ export function Local() {
           onClose=${() => setComandoOverlay(null)}
           onAction=${manejarAccionOverlay}
         />
+      `}
+
+      ${lightbox && html`
+        <div class="img-lightbox" onClick=${() => setLightbox(null)}>
+          <img src=${lightbox} onClick=${e => e.stopPropagation()} />
+          <button class="img-lightbox-close" onClick=${() => setLightbox(null)} title="Cerrar">✕</button>
+        </div>
       `}
 
     </div>

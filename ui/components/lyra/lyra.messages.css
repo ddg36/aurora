@@ -246,6 +246,26 @@
 .cloud-activity-copy small { animation: cloud-activity-fade .5s ease; }
 @keyframes cloud-activity-fade { from { opacity: .25; } to { opacity: 1; } }
 
+/* Lightbox: expandir imagen del chat (thumbnail → pantalla completa). */
+.img-lightbox {
+  position: fixed; inset: 0; z-index: 2147483000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.82); backdrop-filter: blur(6px);
+  cursor: zoom-out; animation: img-lightbox-in .18s ease;
+}
+.img-lightbox img {
+  max-width: 92vw; max-height: 92vh; border-radius: 12px;
+  box-shadow: 0 20px 70px rgba(0,0,0,.6); cursor: default; object-fit: contain;
+}
+.img-lightbox-close {
+  position: absolute; top: 18px; right: 22px; width: 40px; height: 40px;
+  border-radius: 50%; border: 1px solid rgba(255,255,255,.2);
+  background: rgba(0,0,0,.5); color: #fff; font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: background .15s;
+}
+.img-lightbox-close:hover { background: rgba(255,255,255,.15); }
+@keyframes img-lightbox-in { from { opacity: 0; } to { opacity: 1; } }
+
 /* Chibi de Lyra animado por frames (sprite) como indicador de "trabajando".
    Reemplaza al spin de puntos. 5 frames de 78x72 en una tira de 390x72. */
 .cloud-activity-chibi {

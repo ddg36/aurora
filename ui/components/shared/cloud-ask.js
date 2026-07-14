@@ -166,7 +166,7 @@ export async function askCloud(iframe, prompt, { onChunk, timeoutMs = 240000, im
       if (d.type === 'AURORA_CLOUD_CHUNK') { onChunk?.(d.text || ''); return; }
       if (d.type === 'AURORA_CLOUD_ANSWER') {
         if (d.reason === 'timeout') detenerCloud(iframe, paneId);
-        finish({ ok: !!d.ok && d.reason !== 'timeout', text: d.text || '', respondeMs: d.respondeMs, generaMs: d.generaMs, reason: d.reason, paneId: d.__llmPane || paneId });
+        finish({ ok: !!d.ok && d.reason !== 'timeout', text: d.text || '', images: d.images, respondeMs: d.respondeMs, generaMs: d.generaMs, reason: d.reason, paneId: d.__llmPane || paneId });
       }
     };
     window.addEventListener('message', onMsg);
