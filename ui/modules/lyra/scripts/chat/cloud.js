@@ -83,7 +83,7 @@ function parsearToolCalls(texto) {
   return { calls, errors };
 }
 
-const MAX_ITER = 6;
+const MAX_ITER = 30;
 const MAX_TOOL_FEEDBACK = 8 * 1024;
 
 const PRIMER =
