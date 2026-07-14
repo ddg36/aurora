@@ -81,8 +81,14 @@
   // Imágenes GENERADAS por el proveedor (ej. DALL·E). NO viven dentro del turno
   // assistant sino en su propio contenedor (ChatGPT: [class*=imagegen]). Las
   // buscamos globalmente; las grandes y ya cargadas son las generadas.
-  const imgsGeneradas = () => [...document.querySelectorAll('[class*="imagegen"] img, [data-testid*="image"] img, .group\\/imagegen-image img')]
+  const SEL_IMGGEN = '[class*="imagegen"] img, [data-testid*="image"] img, .group\\/imagegen-image img';
+  // srcs de imágenes generadas ya listas (completas, grandes).
+  const imgsGeneradas = () => [...document.querySelectorAll(SEL_IMGGEN)]
     .filter(i => (i.naturalWidth || i.width || 0) > 200 && i.complete)
+    .map(i => i.src).filter(s => s && !s.startsWith('data:'));
+  // TODOS los srcs de imagegen presentes (completos o no) — para snapshot del
+  // baseline y así detectar cuáles son NUEVAS este turno.
+  const imgSrcsPresentes = () => [...document.querySelectorAll(SEL_IMGGEN)]
     .map(i => i.src).filter(s => s && !s.startsWith('data:'));
 
   // ChatGPT está GENERANDO una imagen: existe un contenedor imagegen pero la
@@ -261,8 +267,17 @@
   // haría enganchar el mensaje VIEJO (el nuevo turno tarda ~4.5s en existir).
   // Ese era el bug de "captura el anterior".
   async function esperarTarget(base, deadline, cancelToken) {
+    const inicioEspera = Date.now();
     while (Date.now() < deadline) {
       if (cancelToken?.cancelled) return null;
+      // Respuesta SOLO-imagen: ChatGPT NO crea contenedor de turno de texto para
+      // una imagen generada — solo el contenedor imagegen. Si aparece una imagen
+      // NUEVA (no en el baseline), está lista y ya no genera (sin Stop), la
+      // devolvemos como respuesta de imagen. (Verificado: turnos=0 en image-gen.)
+      if (/chatgpt\.com|chat\.openai\.com/.test(location.hostname) && !getStop() && Date.now() - inicioEspera > 3000) {
+        const nuevas = imgsGeneradas().filter(s => !base.imgBase?.has(s));
+        if (nuevas.length) return { imageOnly: true, imgSrcs: nuevas };
+      }
       const cs = contenedores();
       // ChatGPT: anclar la respuesta al mensaje de USUARIO que acabamos de
       // enviar. La virtualización puede insertar asistentes viejos con IDs
@@ -535,6 +550,11 @@
     // Algunos modelos tardan >30s antes de crear el contenedor. Esperar todo el
     // presupuesto evita declarar never_started y provocar reenvíos duplicados.
     const target = await esperarTarget(base, deadline, cancelToken);
+    // Respuesta SOLO-imagen (sin contenedor de texto): devolver las imágenes.
+    if (target?.imageOnly) {
+      return { ok: true, text: '', reason: 'image_only', imgSrcs: target.imgSrcs,
+               respondeMs: Date.now() - (submitAt || Date.now()), generaMs: Date.now() - (submitAt || Date.now()) };
+    }
     if (!target) return { ok: false, text: '', reason: cancelToken?.cancelled ? 'cancelled' : 'never_started', respondeMs: null, generaMs: null };
     return seguirTarget(target, { base, onChunk, cancelToken, timeoutMs: deadline - Date.now(), submitAt: submitAt || Date.now() });
   }
@@ -961,6 +981,7 @@
         count: base0.length,
         lastEl: base0[base0.length - 1] || null,
         lastText: base0.length ? norm(textOf(base0[base0.length - 1])) : '',
+        imgBase: new Set(imgSrcsPresentes()),   // imágenes ya presentes (para detectar las NUEVAS)
       };
       const submitAt = Date.now();   // t0 real: apenas se envía el prompt
       guardarAskPendiente({
@@ -997,11 +1018,17 @@
       // “Detener respuesta” activo indefinidamente. Liberar la captura no
       // basta: cancelar el sitio y resetear el pane para que sea reutilizable.
       if (res.reason === 'timeout') detenerNube('timeout');
-      trace('answer', { requestId, ok: res.ok, reason: res.reason, respondeMs: res.respondeMs, generaMs: res.generaMs });
+      // Bajar imágenes de la respuesta (generadas / solo-imagen) a data URL.
+      let imagenes;
+      if (res.imgSrcs?.length) {
+        imagenes = (await Promise.all(res.imgSrcs.slice(0, 4).map(urlADataURL))).filter(Boolean);
+      }
+      trace('answer', { requestId, ok: res.ok, reason: res.reason, respondeMs: res.respondeMs, generaMs: res.generaMs, imgs: imagenes?.length || 0 });
       if (chunkTimer) { clearTimeout(chunkTimer); chunkTimer = null; }
       post({ type: 'AURORA_CLOUD_ANSWER', requestId, ok: res.ok,
-             text: res.reason === 'cancelled' ? 'Cancelado por el usuario.' : (res.text || '(sin respuesta detectada)'),
-             reason: res.reason, respondeMs: res.respondeMs, generaMs: res.generaMs });
+             text: res.reason === 'cancelled' ? 'Cancelado por el usuario.' : (res.text || (imagenes?.length ? '' : '(sin respuesta detectada)')),
+             reason: res.reason, respondeMs: res.respondeMs, generaMs: res.generaMs,
+             images: imagenes?.length ? imagenes : undefined });
       ultimoTurnoTerminado = Date.now();
       ultimoFueTool = /\{\s*"tool"\s*:/.test(res.text || '');
     } catch (err) {
