@@ -10,7 +10,7 @@
   if (window.top === window) return;
   const padre = location.ancestorOrigins?.[0] || '';
   if (!/^chrome-extension:|^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(padre)) return;
-  const RELAY_BUILD = '2026-07-13.18';
+  const RELAY_BUILD = '2026-07-15.1-chatgpt-stop-gate';
   if (globalThis.__auroraCloudRelayActive) return;
   globalThis.__auroraCloudRelayActive = RELAY_BUILD;
 
@@ -67,16 +67,31 @@
   // Señal de "terminó" propia del sitio (mucho más fiable que heurística):
   // Gemini marca .response-footer.complete al cerrar el turno.
   const COMPLETO_SELECTORS = '.response-footer.complete, footer.complete, [class*="footer"].complete';
-  const STOP_SELECTORS = [
+  const STOP_BUTTON_SELECTOR = [
     'button[aria-label*="Stop" i]',
     'button[aria-label*="Detener" i]',
     'button[data-testid*="stop" i]',
-    '.animate-pulse', '.loading-indicator', '.loading-dot',
-  ];
+  ].join(', ');
+  const STOP_ACTIVITY_SELECTORS = ['.animate-pulse', '.loading-indicator', '.loading-dot'];
+  const esChatGPTHost = /chatgpt\.com|chat\.openai\.com/.test(location.hostname);
 
   const getInput = () => INPUT_SELECTORS.map(s => document.querySelector(s)).find(Boolean) || null;
   const getSend  = () => SEND_SELECTORS.map(s => document.querySelector(s)).find(b => b && b.offsetParent !== null) || null;
-  const getStop  = () => STOP_SELECTORS.map(s => document.querySelector(s)).find(b => b && b.offsetParent !== null) || null;
+  const getStopButton = (root = document) => {
+    const b = root?.querySelector?.(STOP_BUTTON_SELECTOR) || null;
+    if (!b || !b.isConnected || b.hidden || b.getAttribute?.('aria-hidden') === 'true') return null;
+    // offsetParent puede ser null en el iframe en segundo plano: el selector del
+    // botón real es suficientemente específico para conservar la señal Stop.
+    return b;
+  };
+  const getStop = () => {
+    const boton = getStopButton();
+    // En ChatGPT no aceptar pulsos/loading genéricos: pueden pertenecer a otros
+    // componentes y mantener falsamente el turno en estado "generando".
+    if (boton || esChatGPTHost) return boton;
+    return STOP_ACTIVITY_SELECTORS.map(s => document.querySelector(s))
+      .find(b => b && b.offsetParent !== null) || null;
+  };
 
   // Imágenes GENERADAS por el proveedor (ej. DALL·E). NO viven dentro del turno
   // assistant sino en su propio contenedor (ChatGPT: [class*=imagegen]). Las
@@ -129,7 +144,7 @@
   const esBotonStop = b => {
     if (!b) return false;
     const marca = `${b.getAttribute?.('aria-label') || ''} ${b.getAttribute?.('data-testid') || ''} ${b.title || ''}`;
-    return /stop|detener/i.test(marca) || STOP_SELECTORS.some(s => { try { return b.matches?.(s); } catch { return false; } });
+    return /stop|detener/i.test(marca) || STOP_BUTTON_SELECTOR.split(',').some(s => { try { return b.matches?.(s.trim()); } catch { return false; } });
   };
   const getSendAny = () => SEND_SELECTORS.map(s => document.querySelector(s))
     .find(b => b && !b.disabled && !esBotonStop(b)) || null;
@@ -151,11 +166,12 @@
     const userCount = () => /gemini\.google\.com/.test(location.hostname)
       ? document.querySelectorAll('user-query').length
       : document.querySelectorAll('[data-message-author-role="user"]').length;
-    const inputVacio = () => textoInput(getInput()).length < Math.min(15, largoPrompt);
-    // Gemini conserva un Stop fantasma y a veces limpia temporalmente el
-    // editor sin crear el turno. Exigir un user-query nuevo evita declarar
-    // `submitted` cuando el proveedor en realidad descartó el mensaje.
-    const enviado = () => inputVacio() && (esChatGPT || userCount() > userCountBefore);
+    // Señal FIABLE de "enviado": apareció un turno de usuario nuevo. inputVacio()
+    // no sirve (ChatGPT no siempre limpia el composer al instante) y llevaba al
+    // retry a reintentar/`Enter` MIENTRAS ChatGPT ya respondía → cancelaba o
+    // reenviaba el turno ("la respuesta se dibuja y desaparece"). Con getStop
+    // como respaldo (ChatGPT ya generando = aceptado).
+    const enviado = () => userCount() > userCountBefore || (esChatGPT && getStop());
     const esperarCambio = (ms = 500) => new Promise(resolve => {
       let done = false;
       const finish = () => { if (done) return; done = true; obs.disconnect(); clearTimeout(to); resolve(); };
@@ -184,6 +200,10 @@
       if (intento > 0 && (enviado() || (esChatGPT && getStop()))) return true;
       const input = getInput() || el;
       try { input.focus(); } catch (_) {}
+      // GUARD DURO: si ya se envió (turno de usuario nuevo) o ChatGPT ya está
+      // generando, NUNCA re-clickear ni re-`Enter` — un segundo disparo durante
+      // la generación cancela/reenvía y borra la respuesta a medio dibujar.
+      if (enviado() || (esChatGPT && getStop())) return true;
       const btn = getSendAny();
       if (btn) btn.click(); else dispararEnter(input);
       await esperarCambio(intento++ === 0 ? 180 : 500);
@@ -221,7 +241,20 @@
         out.push('\n'); const ordered = tag === 'ol'; let i = 1;
         for (const li of node.children) {
           if (li.tagName?.toLowerCase() !== 'li') continue;
-          out.push(ordered ? `${i}. ` : '- '); li.childNodes.forEach(walk); out.push('\n'); i++;
+          out.push(ordered ? `${i}. ` : '- ');
+          // ChatGPT envuelve cada item como <li>\n<p>texto</p>\n</li>.
+          // Recorrer el <p> con la regla genérica agrega saltos antes del texto y
+          // produce markdown roto (`-\ntexto`), que Lyra interpreta como párrafos
+          // separados. Ignorar whitespace estructural y desenvolver p/div mantiene
+          // el marcador y su contenido en la misma línea: `- texto`.
+          for (const child of li.childNodes) {
+            if (child.nodeType === Node.TEXT_NODE && !child.textContent?.trim()) continue;
+            const childTag = child.nodeType === Node.ELEMENT_NODE
+              ? child.tagName.toLowerCase() : '';
+            if (childTag === 'p' || childTag === 'div') child.childNodes.forEach(walk);
+            else walk(child);
+          }
+          out.push('\n'); i++;
         }
         out.push('\n'); return;
       }
@@ -346,8 +379,21 @@
       let respondeMs = null, ultimaCaptura = submitAt;
       let siteObs = null, vioGenerando = false;
       let ultimoMd = 0;
+      const perfAudit = {
+        leerCalls: 0, targetScans: 0, siteObsCallbacks: 0, stopTransitions: 0,
+        markdownCalls: 0, markdownMs: 0, markdownMaxMs: 0,
+      };
+      const markdownMedido = root => {
+        const inicio = performance.now();
+        const md = domToMarkdown(root);
+        const costo = performance.now() - inicio;
+        perfAudit.markdownCalls++;
+        perfAudit.markdownMs += costo;
+        perfAudit.markdownMaxMs = Math.max(perfAudit.markdownMaxMs, costo);
+        return md;
+      };
       const MD_MS = 350;   // throttle del armado de markdown durante el stream
-      const esChatGPT = /chatgpt\.com|chat\.openai\.com/.test(location.hostname);
+      const esChatGPT = esChatGPTHost;
       const ocultoSinShim = () => document.hidden &&
         document.documentElement.dataset.auroraVisibilityShim !== 'active';
 
@@ -359,9 +405,12 @@
       // terminar.
       const leer = () => {
         if (!capturando) return;   // todavía en el head-start
+        perfAudit.leerCalls++;
         let t = norm(textOf(current));
         const placeholder = /^(thinking|reasoning|pensando|razonando)\.?$/i.test(t);
-        const latest = contenedores().at(-1);
+        perfAudit.targetScans++;
+        const containers = contenedores();
+        const latest = containers.at(-1);
         const latestId = idContainer(latest);
         const currentId = idContainer(current);
         // ChatGPT puede insertar primero el turno anterior virtualizado y
@@ -373,7 +422,7 @@
         // model-response parcial y luego otro definitivo; si el conteo supera
         // el baseline, el último contenedor es siempre el turno más reciente.
         const hayTurnoMasNuevoSinId = latest && latest !== current && !latestId &&
-          contenedores().length > (base?.count || 0);
+          containers.length > (base?.count || 0);
         // ChatGPT reemplaza el contenedor provisional "Thinking" por otro nodo
         // con el mensaje final. Seguir el último turno y mover el observer.
         if (!current?.isConnected || placeholder || hayTurnoMasNuevo || hayTurnoMasNuevoSinId) {
@@ -409,7 +458,7 @@
         const ahora = Date.now();
         if (ahora - ultimoMd >= MD_MS) {
           ultimoMd = ahora;
-          const md = domToMarkdown(nodoTexto(current));
+          const md = markdownMedido(nodoTexto(current));
           onChunk?.(md || t);
         }
       };
@@ -421,7 +470,7 @@
         capturando = true; leer();   // lectura final de texto
         const esPlaceholder = /^(thinking|reasoning|pensando|razonando|json|code)\.?$/i.test(lastText);
         // domToMarkdown UNA sola vez (fiel: bloques de código, listas, etc.).
-        lastMd = domToMarkdown(nodoTexto(current));
+        lastMd = markdownMedido(nodoTexto(current));
         // Imágenes de la respuesta: las del turno (raras) + las generadas
         // NUEVAS este turno (DALL·E). CLAVE: filtrar las generadas contra el
         // baseline (imgBase) — si no, un turno de texto (ej. redflag "no puedo")
@@ -432,6 +481,17 @@
             .map(i => i.src),
           ...imgsGeneradas().filter(s => !base?.imgBase?.has(s)),
         ])].filter(s => s && !s.startsWith('data:'));
+        trace('perf_summary', {
+          reason,
+          elapsedMs: Date.now() - start,
+          leerCalls: perfAudit.leerCalls,
+          targetScans: perfAudit.targetScans,
+          siteObsCallbacks: perfAudit.siteObsCallbacks,
+          stopTransitions: perfAudit.stopTransitions,
+          markdownCalls: perfAudit.markdownCalls,
+          markdownMs: Math.round(perfAudit.markdownMs * 10) / 10,
+          markdownMaxMs: Math.round(perfAudit.markdownMaxMs * 10) / 10,
+        });
         resolve({
           // Una cancelación nunca es una respuesta exitosa, aunque ya exista
           // texto parcial. Una respuesta SOLO-imagen (sin texto) igual es válida.
@@ -485,31 +545,139 @@
         if (Date.now() - lastChange > FIN_IDLE) return terminar('estable');
       };
 
+      // Stop sigue siendo la señal principal de cierre de ChatGPT, pero su
+      // desaparición ocurre un poco antes de que CodeMirror termine de montar
+      // algunos bloques de código. Cerrar en esa misma mutación capturaba DOM
+      // transitorio (`router._y_`, `rou_er_`, llaves ausentes). Exigimos que el
+      // texto Y el markdown permanezcan iguales durante una ventana corta.
+      // Mutaciones globales sin cambio de contenido no reinician la ventana.
+      const CHATGPT_SETTLE_MS = 650;
+      let settleFirma = '';
+      const cancelarSettleChatGPT = () => {
+        clearTimeout(settle);
+        settle = null;
+        settleFirma = '';
+      };
+      const programarCierreChatGPT = (reason = 'site_complete') => {
+        if (hecho || !esChatGPT) return;
+        if (getStop()) { cancelarSettleChatGPT(); return; }
+        if (ocultoSinShim()) return;
+
+        // No cerrar sólo porque apareció el primer token y todavía no vemos
+        // el botón Stop. ChatGPT crea a veces el contenedor con una sílaba
+        // (por ejemplo "La") antes de montar el control de generación. El
+        // microtask de abajo interpretaba ese estado transitorio como respuesta
+        // completa, esperaba apenas CHATGPT_SETTLE_MS y devolvía el fragmento;
+        // el resto de la respuesta —incluido el JSON de la siguiente tool— se
+        // quedaba en el iframe fuera de la request ya resuelta.
+        //
+        // El cierre rápido queda habilitado únicamente después de haber visto
+        // Stop al menos una vez (`vioGenerando`) y observar su desaparición.
+        // Si el proveedor nunca expone Stop, `chequearFin()` conserva el
+        // fallback por estabilidad larga (mínimo + FIN_IDLE), más lento pero
+        // seguro y sin truncar el turno.
+        if (!vioGenerando) {
+          trace('stop_settle_deferred', { reason, cause: 'stop_not_seen' });
+          return;
+        }
+
+        capturando = true;
+        leer();
+        const texto = norm(textOf(current));
+        if (!texto || /^(thinking|reasoning|pensando|razonando|json|code)\.?$/i.test(texto)) return;
+        const md = markdownMedido(nodoTexto(current));
+        const firma = `${texto}\u0000${md}`;
+        if (settle && firma === settleFirma) return;
+
+        clearTimeout(settle);
+        settleFirma = firma;
+        trace('stop_settle_start', {
+          reason, waitMs: CHATGPT_SETTLE_MS, textLen: texto.length, mdLen: md.length,
+        });
+        settle = setTimeout(() => {
+          settle = null;
+          if (hecho || getStop() || ocultoSinShim()) return;
+
+          leer();
+          const textoFinal = norm(textOf(current));
+          const mdFinal = markdownMedido(nodoTexto(current));
+          const firmaFinal = `${textoFinal}\u0000${mdFinal}`;
+          if (!textoFinal || /^(thinking|reasoning|pensando|razonando|json|code)\.?$/i.test(textoFinal)) return;
+          if (firmaFinal !== settleFirma) {
+            trace('stop_settle_changed', {
+              reason, textLen: textoFinal.length, mdLen: mdFinal.length,
+            });
+            settleFirma = '';
+            programarCierreChatGPT(reason);
+            return;
+          }
+          trace('stop_settle_done', {
+            reason, textLen: textoFinal.length, mdLen: mdFinal.length,
+          });
+          terminar(reason);
+        }, CHATGPT_SETTLE_MS);
+      };
+
       const obs = new MutationObserver(() => { leer(); chequearFin(); });
       obs.observe(target, { childList: true, subtree: true, characterData: true });
       const onVisibility = () => {
-        if (!document.hidden) { leer(); chequearFin(); }
+        if (!document.hidden) {
+          leer();
+          chequearFin();
+          if (esChatGPT && !getStop() && lastText) programarCierreChatGPT();
+        }
       };
       document.addEventListener('visibilitychange', onVisibility);
 
       // En background, Chromium puede convertir el poll de 350ms en uno de
       // 60s. ChatGPT sí tiene una señal de cierre útil: el botón Stop aparece
       // durante la generación y su desaparición muta el DOM global. Observar
-      // body permite terminar al instante sin depender de timers ocultos.
+      // body conserva esa señal rápida, pero ahora pasa por estabilización.
       if (esChatGPT) {
-        siteObs = new MutationObserver(() => {
-          leer();
-          if (getStop()) { vioGenerando = true; return; }
-          // En una pestaña oculta ChatGPT puede retirar Stop antes de que el
-          // último lote de texto llegue al DOM. La señal produjo cierres como
-          // `BACKGROUND` mientras el sitio aún completaba `_RELAY_OK`. En
-          // background sólo la estabilidad textual puede cerrar el turno.
-          if (ocultoSinShim()) return;
-          const textoOk = lastText && !/^(thinking|reasoning|pensando|razonando)\.?$/i.test(lastText);
-          if (vioGenerando && textoOk) terminar('site_complete');
+        // El observer global sólo vigila la transición del control Stop. Antes
+        // llamaba leer() por CADA mutación de body (incluido el montaje de código),
+        // duplicando el trabajo del observer del turno y provocando stutters.
+        // El botón Send/Stop vive dentro del compositor. Observar su padre
+        // inmediato permite detectar reemplazos del <form> sin recorrer las
+        // respuestas, sidebar, bloques de código ni el resto del documento.
+        const composer = getInput()?.closest?.('form[data-type="unified-composer"], form') ||
+          document.querySelector('form[data-type="unified-composer"]');
+        const siteRoot = composer?.parentElement || composer || document.body;
+        let stopPresente = !!getStopButton(siteRoot);
+        vioGenerando = stopPresente;
+        trace('stop_observer_root', {
+          tag: siteRoot?.tagName || '',
+          composerScoped: siteRoot !== document.body,
         });
-        siteObs.observe(document.body, { childList: true, subtree: true, attributes: true });
-        vioGenerando = !!getStop();
+        siteObs = new MutationObserver(() => {
+          perfAudit.siteObsCallbacks++;
+          const stopAhora = !!getStopButton(siteRoot);
+          if (stopAhora === stopPresente) return;
+          stopPresente = stopAhora;
+          perfAudit.stopTransitions++;
+
+          if (stopAhora) {
+            vioGenerando = true;
+            cancelarSettleChatGPT();
+            trace('stop_state', { present: true });
+            return;
+          }
+
+          trace('stop_state', { present: false, vioGenerando });
+          // La lectura pesada sólo ocurre una vez, al desaparecer Stop. El
+          // observer específico del turno continúa capturando el texto durante
+          // toda la generación.
+          if (ocultoSinShim()) return;
+          leer();
+          const textoOk = lastText && !/^(thinking|reasoning|pensando|razonando)\.?$/i.test(lastText);
+          if (vioGenerando && textoOk) programarCierreChatGPT('stop_to_send');
+        });
+        siteObs.observe(siteRoot, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['aria-label', 'data-testid', 'hidden', 'aria-hidden'],
+        });
       }
 
       queueMicrotask(() => {
@@ -517,11 +685,10 @@
         capturando = true;
         leer();
         // Si el target apareció ya completo después de un razonamiento largo,
-        // no habrá transición Stop ni otra mutación que despierte al observer.
-        if (esChatGPT && !getStop()) {
-          const vacio = !lastText || /^(json|code)$/i.test(lastText);
-          terminar(vacio ? 'site_empty' : 'site_complete');
-        }
+        // quizá no haya transición Stop. Aplicar la misma estabilización; si el
+        // nodo todavía está vacío/placeholder, sus próximas mutaciones lo
+        // despertarán en vez de cerrarlo prematuramente como `site_empty`.
+        if (esChatGPT && !getStop() && lastText) programarCierreChatGPT();
       });
 
       // Respaldo por sondeo (por si la última mutación fue la que quitó el
@@ -805,8 +972,20 @@
     return null;
   }
   async function soltarEnComposer(files) {
+    if (!files.length) return false;
+    const esChatGPT = /chatgpt\.com|chat\.openai\.com/.test(location.hostname);
+    // ChatGPT suele consumir sólo el primer File cuando varios llegan dentro
+    // del mismo ClipboardEvent. Un paste por archivo conserva todos los
+    // adjuntos; cada iteración espera su preview antes de continuar.
+    if (esChatGPT && files.length > 1) {
+      for (const file of files) {
+        if (!await soltarEnComposer([file])) return false;
+      }
+      return true;
+    }
+
     const input = getInput();
-    if (!input || !files.length) return false;
+    if (!input) return false;
     // Verificado por CDP en Gemini actual: el PASTE puro (ClipboardEvent con
     // DataTransfer) SÍ adjunta (aparece .file-preview-container); el drag&drop
     // legacy ya NO — Gemini cambió su dropzone.
@@ -820,7 +999,6 @@
       p.querySelector('[role="progressbar"], mat-progress-spinner, .mat-mdc-progress-spinner, mat-progress-bar, [class*="uploading" i], [class*="spinner" i]'));
     const antes = nPrev();
     const pasteAt = Date.now();
-    const esChatGPT = /chatgpt\.com|chat\.openai\.com/.test(location.hostname);
     const dt = new DataTransfer();
     files.forEach(f => dt.items.add(f));
     try { input.focus(); } catch (_) {}
@@ -853,7 +1031,8 @@
           // archivo ("OR" de "ORQUIDEA_..."). Exigir 5s desde el paste y una
           // ventana final estable evita declarar listo un preview meramente
           // visual. Gemini sí expone mutaciones/spinner fiables.
-          const minimoRestante = esChatGPT ? Math.max(0, 5000 - (Date.now() - pasteAt)) : 0;
+          const esperaChatGPT = files.every(f => f.type?.startsWith('image/')) ? 3000 : 5000;
+          const minimoRestante = esChatGPT ? Math.max(0, esperaChatGPT - (Date.now() - pasteAt)) : 0;
           estable = setTimeout(() => finish(true), Math.max(800, minimoRestante));
         }
       };
@@ -1027,6 +1206,8 @@
       borrarAskPendiente(requestId);
       if (reqActual === requestId) {
         ocupado = false;
+        cancelActual = null;
+        reqActual = null;
         const siguiente = colaAsks.shift();
         if (siguiente) {
           trace('ask_dequeued', { requestId: siguiente.requestId, queue: colaAsks.length });
