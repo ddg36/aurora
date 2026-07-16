@@ -1112,7 +1112,11 @@
       if (cooldown > 0) await new Promise(r => setTimeout(r, cooldown));
       if (cancel.cancelled) { post({ type: 'AURORA_CLOUD_ANSWER', requestId, ok: false, text: '' }); return; }
       trace('composer_ready', { requestId });
-      try { window.focus(); } catch (_) {}
+      // window.focus() en el iframe ROBA el foco de la ventana (en side-panel el
+      // composer de Lyra pierde lo que el usuario escribe). Solo agarrarlo en el
+      // turno inicial del usuario; en las re-inyecciones de tool-feedback (que
+      // corren mientras el usuario escribe) NO robar el foco.
+      if (!ultimoFueTool) { try { window.focus(); } catch (_) {} }
       // Adjuntos primero (imágenes/archivos): se pegan al composer y luego va el
       // texto encima, así el envío lleva ambos. Puede tardar (espera la subida).
       if ((images && images.length) || (files && files.length)) {
