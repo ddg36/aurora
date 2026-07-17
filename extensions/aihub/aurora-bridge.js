@@ -194,7 +194,9 @@ function initAuroraBridge(frame, opts) {
   // El relay del proveedor produce una respuesta una sola vez. Guardarla ANTES
   // de entregarla a Aurora evita perderla si el iframe de Aurora o la extensión
   // se recargan en esa ventana. Se elimina únicamente con ACK explícito.
-  const CLOUD_ANSWER_OUTBOX_KEY = 'aurora:cloud_answer_outbox_v1';
+  // Persistido en la DB del server (ajuste por usuario), no en chrome.storage.local:
+  // la base de datos es el único store de datos; el browser storage solo replicaba.
+  const CLOUD_OUTBOX_CLAVE = 'cloud_answer_outbox_v1';
   let _cloudOutboxQueue = Promise.resolve();
 
   const cloudOutboxId = (requestId, paneId = 'cloud') => `${paneId}:${requestId}`;
@@ -206,9 +208,28 @@ function initAuroraBridge(frame, opts) {
   }
 
   async function leerCloudOutbox() {
-    const result = await chrome.storage.local.get([CLOUD_ANSWER_OUTBOX_KEY]);
-    const value = result?.[CLOUD_ANSWER_OUTBOX_KEY];
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    if (!_auroraToken) return {};
+    const res = await fetch(`${AURORA_URL}/db/ajustes/${CLOUD_OUTBOX_CLAVE}`, {
+      headers: { Authorization: `Bearer ${_auroraToken}` },
+    });
+    if (!res.ok) return {};
+    const body = await res.json().catch(() => null);
+    if (!body?.valor) return {};
+    try {
+      const value = JSON.parse(body.valor);
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  async function escribirCloudOutbox(outbox) {
+    if (!_auroraToken) return;
+    await fetch(`${AURORA_URL}/db/ajustes/${CLOUD_OUTBOX_CLAVE}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_auroraToken}` },
+      body: JSON.stringify({ valor: JSON.stringify(outbox) }),
+    });
   }
 
   function guardarCloudAnswer(message) {
@@ -216,11 +237,11 @@ function initAuroraBridge(frame, opts) {
       const outbox = await leerCloudOutbox();
       const paneId = message.__llmPane || 'cloud';
       const id = cloudOutboxId(message.requestId, paneId);
-      // NO persistir las imágenes base64 (1-3MB c/u): chrome.storage.local cap a
-      // ~10MB y guardar el objeto entero en cada answer lo bloatea/enlentece y
-      // roza la cuota. La entrega EN VIVO sí lleva las imágenes; el outbox es
-      // solo respaldo de reintento del texto. (Si se reenvía por outbox, va sin
-      // imágenes — aceptable para un caso de recuperación raro.)
+      // NO persistir las imágenes base64 (1-3MB c/u): el outbox se guarda como
+      // JSON en un ajuste; incrustar imágenes en cada answer lo bloatea. La
+      // entrega EN VIVO sí lleva las imágenes; el outbox es solo respaldo de
+      // reintento del texto. (Si se reenvía por outbox, va sin imágenes —
+      // aceptable para un caso de recuperación raro.)
       const liviano = { ...message, __llmPane: paneId };
       if (liviano.images) delete liviano.images;
       outbox[id] = {
@@ -228,7 +249,7 @@ function initAuroraBridge(frame, opts) {
         savedAt: outbox[id]?.savedAt || Date.now(),
         updatedAt: Date.now(),
       };
-      await chrome.storage.local.set({ [CLOUD_ANSWER_OUTBOX_KEY]: outbox });
+      await escribirCloudOutbox(outbox);
       _log('cloud_answer_stored', { requestId: message.requestId, paneId, imgs: message.images?.length || 0 });
       return liviano;
     });
@@ -241,7 +262,7 @@ function initAuroraBridge(frame, opts) {
       const id = cloudOutboxId(requestId, paneId);
       if (!outbox[id]) return false;
       delete outbox[id];
-      await chrome.storage.local.set({ [CLOUD_ANSWER_OUTBOX_KEY]: outbox });
+      await escribirCloudOutbox(outbox);
       _log('cloud_answer_acked', { requestId, paneId });
       return true;
     });
