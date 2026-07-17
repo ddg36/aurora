@@ -503,9 +503,21 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
       ? (turnoPrevio.nextPrompt || turnoPrevio.prompt || texto)
       : (turnoPrevio.prompt || texto);
   } else {
-    const convKey = (() => { try { return new URL(url).host; } catch { return aiId || 'cloud'; } })();
-    prompt = yaCebado(convKey) ? texto : `${PRIMER}\n\n${texto}`;
-    marcarCebado(convKey);
+    // Cebar por HILO de ChatGPT, no por host. Antes la key era el host
+    // (chatgpt.com): tras un chat nuevo el flag seguía puesto y el hilo fresco
+    // NO recibía el primer → ChatGPT no sabía que tenía tools y alucinaba la
+    // ejecución (o razonaba sin emitir el bloque JSON). El id de hilo vive en
+    // la url (/c/<id>). Sin id todavía (chat recién abierto, url base) es un
+    // hilo fresco → cebar siempre. Repetir el primer es ruido; omitirlo rompe.
+    const convKey = (() => {
+      try {
+        const u = new URL(url);
+        const m = u.pathname.match(/\/(?:c|g|share)\/([\w-]+)/);
+        return m ? `${u.host}:${m[1]}` : null;
+      } catch { return null; }
+    })();
+    prompt = (convKey && yaCebado(convKey)) ? texto : `${PRIMER}\n\n${texto}`;
+    if (convKey) marcarCebado(convKey);
     await guardarTurnoCloud(turnId, {
       convId, aiId, url, status: 'prepared', iteration: 0, prompt,
       state: { originalText: texto, adjImgs: images, adjFiles: files },
