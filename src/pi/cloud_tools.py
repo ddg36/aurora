@@ -11,11 +11,16 @@
 import asyncio
 import base64
 import mimetypes
+import os
 import pathlib
+import shutil
+import subprocess
 
 from . import config
 
 MAX_OUT = 50 * 1024   # igual que pi: trunca a 50KB
+BASH_TIMEOUT_DEFAULT = 600   # 10min: una tool larga la limita la PC, no Aurora
+BASH_TIMEOUT_MAX = 600       # tope duro para cortar comandos colgados infinito
 MAX_IMG = 4 * 1024 * 1024   # 4MB: tope para adjuntar una imagen al LLM nube
 IMG_EXT = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}
 BASE = pathlib.Path(config.CWD)
@@ -57,7 +62,7 @@ async def ejecutar_tool(tool: str, args: dict) -> dict:
             # Imagen: no leer como texto — devolver la imagen misma (data URL) para
             # que la nube la VEA (se adjunta a su próximo mensaje), no una descripción.
             if p.suffix.lower() in IMG_EXT:
-                data = p.read_bytes()
+                data = await asyncio.to_thread(p.read_bytes)
                 if len(data) > MAX_IMG:
                     return _err(f'Error: imagen {path} muy grande ({len(data)//1024}KB, máx 4MB).')
                 mime = mimetypes.guess_type(str(p))[0] or 'image/png'
@@ -65,7 +70,7 @@ async def ejecutar_tool(tool: str, args: dict) -> dict:
                 return {'ok': True, 'is_error': False, 'is_image': True,
                         'image': f'data:{mime};base64,{b64}',
                         'output': f'[Imagen adjuntada: {path} ({len(data)//1024}KB)]'}
-            txt = p.read_text(encoding='utf-8', errors='replace')
+            txt = await asyncio.to_thread(p.read_text, encoding='utf-8', errors='replace')
             out = txt[:MAX_OUT] + ('\n…(truncado a 50KB)' if len(txt) > MAX_OUT else '')
             return {'ok': True, 'output': out, 'is_error': False}
 
@@ -74,12 +79,47 @@ async def ejecutar_tool(tool: str, args: dict) -> dict:
             if not cmd:
                 return _err('Error: bash requiere el argumento "cmd" con un comando no vacío. '
                             'Ejemplo: {"tool":"bash","args":{"cmd":"ls -la"}}')
-            proc = await asyncio.create_subprocess_shell(
-                cmd, cwd=str(BASE),
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-            salida, _ = await asyncio.wait_for(proc.communicate(), 60)
+
+            try:
+                bash_timeout = int(args.get('timeout') or BASH_TIMEOUT_DEFAULT)
+            except (TypeError, ValueError):
+                bash_timeout = BASH_TIMEOUT_DEFAULT
+            bash_timeout = max(1, min(BASH_TIMEOUT_MAX, bash_timeout))
+
+            # No usar asyncio.create_subprocess_* aquí. En Windows, Uvicorn o
+            # su reloader pueden ejecutar Aurora con SelectorEventLoop, que no
+            # implementa subprocesses y lanza NotImplementedError sin mensaje
+            # (la UI terminaba mostrando sólo "Error:"). subprocess.run dentro
+            # de un thread funciona con cualquier event loop.
+            def _run_shell() -> subprocess.CompletedProcess:
+                if os.name == 'nt':
+                    shell = shutil.which('pwsh.exe') or shutil.which('powershell.exe') or 'powershell.exe'
+                    # Fuerza UTF-8 para que la salida capturada se decodifique
+                    # igual en Windows PowerShell 5 y PowerShell 7.
+                    ps_cmd = (
+                        '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); '
+                        '$OutputEncoding = [Console]::OutputEncoding; '
+                        + cmd
+                    )
+                    argv = [shell, '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', ps_cmd]
+                    creationflags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+                else:
+                    argv = ['bash', '-lc', cmd]
+                    creationflags = 0
+                return subprocess.run(
+                    argv,
+                    cwd=str(BASE),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=bash_timeout,
+                    creationflags=creationflags,
+                    check=False,
+                )
+
+            completed = await asyncio.to_thread(_run_shell)
+            salida = completed.stdout or b''
             txt = salida.decode('utf-8', 'replace')
-            rc = proc.returncode
+            rc = completed.returncode
             out = txt[:MAX_OUT] if txt else (f'(sin salida, exit {rc})' if rc == 0 else f'(sin salida) exit {rc}')
             return {'ok': True, 'output': out, 'is_error': rc != 0}
 
@@ -115,7 +155,9 @@ async def ejecutar_tool(tool: str, args: dict) -> dict:
         return _err(f'Error: tool no soportada: "{tool}". Válidas: read, bash, edit, write.')
     except FileNotFoundError:
         return _err(f'Error: no such file: {_arg(args, "path", "file_path", "filename")}')
-    except asyncio.TimeoutError:
-        return _err('Error: bash timeout (60s)')
+    except (asyncio.TimeoutError, subprocess.TimeoutExpired):
+        return _err(f'Error: bash timeout (máx {BASH_TIMEOUT_MAX}s). Para un comando '
+                    'más largo pasá {"timeout": <segundos>} en args, o corré en background.')
     except Exception as e:
-        return _err(f'Error: {e}')
+        detalle = str(e).strip()
+        return _err(f'Error: {type(e).__name__}: {detalle}' if detalle else f'Error: {type(e).__name__}')
