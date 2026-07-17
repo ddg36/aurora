@@ -10,7 +10,7 @@
 
 import { historial, cargando, cloudGenerando, agregarMensajeRico } from './mensajes.js';
 import { askCloud, confirmarCloudAnswer } from '../../../../components/shared/cloud-ask.js';
-import { postJSON } from '../../../../components/shared/api.js';
+import { postJSON, getJSON, putJSON } from '../../../../components/shared/api.js';
 import { detectarToolDraft, toolVisual, emitirToolVisual } from '../../../../components/shared/cloud-tool-visual.js';
 import { submitForge } from '../../../../components/shared/forge-submit.js';
 
@@ -303,16 +303,34 @@ const PRIMER = [
   '• Tareas largas: andá paso a paso con tools reales, sin apuro; no describas todo como si ya estuviera hecho. Tenés tiempo.',
 ].join('\n');
 
-// Prime UNA sola vez por conversación de la nube (persiste en sessionStorage
-// para no repetirlo en cada mensaje ni en recargas de Aurora). El LLM lo
-// recuerda; repetirlo es ruido.
+// Prime UNA sola vez por HILO de la nube. Antes vivía en sessionStorage, que se
+// borra en cada reload/reinicio de Aurora: al reabrir Aurora y seguir el MISMO
+// hilo de ChatGPT, el flag estaba vacío y se re-inyectaba el primer en medio de
+// la conversación (repetía el prompt de inicio). Ahora es durable: DB (ajuste,
+// autoridad + cross-surface) + espejo en localStorage (lectura sync que
+// sobrevive el reload) + Set en memoria. El hilo persiste server-side; su marca
+// de cebado también debe persistir.
+const PRIMED_LS = 'aurora_cloud_primed_v1';
+const PRIMED_CLAVE = 'cloud_primed_threads_v1';
+const _primedThreads = new Set();
+try {
+  const raw = localStorage.getItem(PRIMED_LS);
+  if (raw) JSON.parse(raw).forEach(k => _primedThreads.add(k));
+} catch (_) {}
+getJSON(`/db/ajustes/${PRIMED_CLAVE}`)
+  .then(r => { try { (JSON.parse(r?.valor || '[]') || []).forEach(k => _primedThreads.add(k)); } catch (_) {} })
+  .catch(() => {});
+
 function yaCebado(convKey) {
-  try { return sessionStorage.getItem('cloud_primed_json_v3_' + convKey) === '1'; } catch { return _primed; }
+  return !!convKey && _primedThreads.has(convKey);
 }
 function marcarCebado(convKey) {
-  try { sessionStorage.setItem('cloud_primed_json_v3_' + convKey, '1'); } catch { _primed = true; }
+  if (!convKey || _primedThreads.has(convKey)) return;
+  _primedThreads.add(convKey);
+  const arr = [..._primedThreads].slice(-200);   // acotar: hilos viejos caen
+  try { localStorage.setItem(PRIMED_LS, JSON.stringify(arr)); } catch (_) {}
+  putJSON(`/db/ajustes/${PRIMED_CLAVE}`, { valor: JSON.stringify(arr) }).catch(() => {});
 }
-let _primed = false;
 
 // Cuando una respuesta contiene explicación + tool, la UI reemplaza el bloque
 // ejecutable por ToolVisualCard. Conservar explícitamente el texto anterior al
