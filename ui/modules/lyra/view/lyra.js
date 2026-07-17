@@ -251,6 +251,7 @@ export function Local({ active = true } = {}) {
   const [lightbox, setLightbox] = useState(null);   // imagen expandida (click en thumbnail)
   const iframeRef = useRef(null);
   const cloudRecoveryRef = useRef(false);
+  const ultimaEscrituraRef = useRef(0);
 
   const cloudAiLabel = AI_LABELS[cloudAiId] || cloudAiId || 'Cloud';
   const offline = !lyraOnline;
@@ -1608,6 +1609,7 @@ export function Local({ active = true } = {}) {
               value=${mensaje}
               onInput=${e => {
                 const v = e.target.value;
+                ultimaEscrituraRef.current = Date.now();
                 setMensaje(v);
                 if (v.startsWith('/') && !v.includes('\n')) {
                   cargarComandos();
@@ -1639,6 +1641,25 @@ export function Local({ active = true } = {}) {
                     }
                   });
                 }
+              }}
+              onBlur=${e => {
+                // El relay inyecta tool-results en el iframe del LLM haciendo
+                // focus() en su composer → roba el foco de este textarea
+                // (cross-origin: relatedTarget queda null). Si el usuario está
+                // escribiendo mientras corre el loop Cloud, se lo devolvemos:
+                // así lo que teclea nunca se filtra al chat del iframe. Un clic
+                // legítimo dentro de Aurora trae relatedTarget != null y no se
+                // toca; un clic deliberado al iframe sin escritura reciente
+                // tampoco (guard por ultimaEscritura < 3s).
+                if (e.relatedTarget) return;
+                if (!cloudGenerando.value) return;
+                if (Date.now() - ultimaEscrituraRef.current > 3000) return;
+                const el = e.target;
+                const ini = el.selectionStart, fin = el.selectionEnd;
+                requestAnimationFrame(() => {
+                  if (document.activeElement === el) return;
+                  try { el.focus(); el.setSelectionRange(ini, fin); } catch (_) {}
+                });
               }}
               onPaste=${handlePaste}
               onDrop=${handleDrop}
