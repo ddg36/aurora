@@ -20,6 +20,47 @@ function initAuroraBridge(frame, opts) {
   const ACTIVE_EXTENSIONS = ['aihub'];
   let _auroraToken = null;
 
+  // ── Workspace/superficie durable ──────────────────────────────
+  // Cada shell que contiene Aurora anuncia qué superficie representa. El
+  // background persiste este estado en chrome.storage.local + SQLite y puede
+  // reconstruir la última configuración después de reiniciar navegador o
+  // extensión. sessionStorage conserva el mismo id durante un hard reload.
+  const _surfaceInstanceId = (() => {
+    const key = 'aurora_surface_instance_id_v1';
+    try {
+      let id = sessionStorage.getItem(key);
+      if (!id) {
+        id = globalThis.crypto?.randomUUID?.() || `surface-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        sessionStorage.setItem(key, id);
+      }
+      return id;
+    } catch (_) {
+      return globalThis.crypto?.randomUUID?.() || `surface-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+  })();
+
+  function reportarSuperficie(phase) {
+    const payload = {
+      type: 'AURORA_SURFACE_STATE',
+      surface,
+      instanceId: _surfaceInstanceId,
+      phase: phase || 'state',
+      visible: document.visibilityState !== 'hidden',
+      focused: document.hasFocus(),
+      ts: Date.now(),
+    };
+    try {
+      const pending = chrome.runtime.sendMessage(payload);
+      pending?.catch?.(() => {});
+    } catch (_) {}
+  }
+
+  queueMicrotask(() => reportarSuperficie('init'));
+  window.addEventListener('focus', () => reportarSuperficie('focus'), true);
+  window.addEventListener('blur', () => reportarSuperficie('blur'), true);
+  document.addEventListener('visibilitychange', () => reportarSuperficie('visibility'));
+  window.addEventListener('pagehide', () => reportarSuperficie('pagehide'));
+
   // ── Keep-alive anti-throttle ──────────────────────────────────
   // Chrome estrangula los timers (setTimeout/Interval) de una TAB en segundo
   // plano; con ellos se frena el iframe del LLM cloud → generación y detección
@@ -125,6 +166,10 @@ function initAuroraBridge(frame, opts) {
     clearLlmFrames();
     closeLlmMenu();
     setTimeout(startHelloLoop, 300);
+    // Dar tiempo a que el módulo cloud-ask instale su listener en el documento
+    // nuevo; luego reentregar cualquier respuesta todavía no confirmada.
+    setTimeout(() => reenviarCloudOutbox('aurora_frame_load'), 700);
+    setTimeout(() => reenviarCloudOutbox('aurora_frame_load_retry'), 2200);
   });
 
   // ── LLM cloud: iframes gestionados a nivel de extensión ───────
@@ -144,6 +189,82 @@ function initAuroraBridge(frame, opts) {
   _llmLayer.style.cssText = 'position:fixed;inset:0;pointer-events:none;';
   document.body.appendChild(_llmLayer);
   const _llmFrames = new Map(); // id -> iframe
+
+  // ── Outbox durable de respuestas Cloud ────────────────────────
+  // El relay del proveedor produce una respuesta una sola vez. Guardarla ANTES
+  // de entregarla a Aurora evita perderla si el iframe de Aurora o la extensión
+  // se recargan en esa ventana. Se elimina únicamente con ACK explícito.
+  const CLOUD_ANSWER_OUTBOX_KEY = 'aurora:cloud_answer_outbox_v1';
+  let _cloudOutboxQueue = Promise.resolve();
+
+  const cloudOutboxId = (requestId, paneId = 'cloud') => `${paneId}:${requestId}`;
+
+  function conCloudOutbox(task) {
+    const run = () => Promise.resolve().then(task);
+    _cloudOutboxQueue = _cloudOutboxQueue.then(run, run);
+    return _cloudOutboxQueue;
+  }
+
+  async function leerCloudOutbox() {
+    const result = await chrome.storage.local.get([CLOUD_ANSWER_OUTBOX_KEY]);
+    const value = result?.[CLOUD_ANSWER_OUTBOX_KEY];
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  }
+
+  function guardarCloudAnswer(message) {
+    return conCloudOutbox(async () => {
+      const outbox = await leerCloudOutbox();
+      const paneId = message.__llmPane || 'cloud';
+      const id = cloudOutboxId(message.requestId, paneId);
+      // NO persistir las imágenes base64 (1-3MB c/u): chrome.storage.local cap a
+      // ~10MB y guardar el objeto entero en cada answer lo bloatea/enlentece y
+      // roza la cuota. La entrega EN VIVO sí lleva las imágenes; el outbox es
+      // solo respaldo de reintento del texto. (Si se reenvía por outbox, va sin
+      // imágenes — aceptable para un caso de recuperación raro.)
+      const liviano = { ...message, __llmPane: paneId };
+      if (liviano.images) delete liviano.images;
+      outbox[id] = {
+        message: liviano,
+        savedAt: outbox[id]?.savedAt || Date.now(),
+        updatedAt: Date.now(),
+      };
+      await chrome.storage.local.set({ [CLOUD_ANSWER_OUTBOX_KEY]: outbox });
+      _log('cloud_answer_stored', { requestId: message.requestId, paneId, imgs: message.images?.length || 0 });
+      return liviano;
+    });
+  }
+
+  function confirmarCloudAnswer(requestId, paneId = 'cloud') {
+    if (!requestId) return Promise.resolve(false);
+    return conCloudOutbox(async () => {
+      const outbox = await leerCloudOutbox();
+      const id = cloudOutboxId(requestId, paneId);
+      if (!outbox[id]) return false;
+      delete outbox[id];
+      await chrome.storage.local.set({ [CLOUD_ANSWER_OUTBOX_KEY]: outbox });
+      _log('cloud_answer_acked', { requestId, paneId });
+      return true;
+    });
+  }
+
+  async function reenviarCloudOutbox(reason = 'sync') {
+    try {
+      const outbox = await leerCloudOutbox();
+      const entries = Object.values(outbox).sort((a, b) => Number(a.savedAt || 0) - Number(b.savedAt || 0));
+      for (const entry of entries) {
+        if (!entry?.message?.requestId) continue;
+        frame.contentWindow?.postMessage({
+          ...entry.message,
+          __auroraOutboxReplay: true,
+        }, AURORA_URL);
+      }
+      if (entries.length) _log('cloud_outbox_replay', { reason, count: entries.length });
+      return entries.length;
+    } catch (error) {
+      _log('cloud_outbox_error', { reason, error: error?.message || String(error) });
+      return 0;
+    }
+  }
 
   // Aurora vive dentro de #auroraFrame y reporta rects relativos a SU
   // viewport. Convertirlos al viewport de la página extensión; antes faltaba
@@ -276,7 +397,18 @@ function initAuroraBridge(frame, opts) {
     const t = e.data?.type;
     if (t === 'AURORA_CLOUD_CHUNK' || t === 'AURORA_CLOUD_ANSWER' || t === 'AURORA_CLOUD_NEW_CHAT_ANSWER' || t === 'AURORA_CLOUD_READY' || t === 'AURORA_CLOUD_STATUS' || t === 'AURORA_CLOUD_RESETTING') {
       const paneId = [..._llmFrames].find(([, iframe]) => iframe.contentWindow === e.source)?.[0] || e.data.__llmPane || 'cloud';
-      frame.contentWindow?.postMessage({ ...e.data, __llmPane: paneId }, AURORA_URL);
+      const forwarded = { ...e.data, __llmPane: paneId };
+      if (t === 'AURORA_CLOUD_ANSWER' && e.data.requestId) {
+        // Persistir primero; recién después entregar. Si storage falla, entregar
+        // igualmente para no bloquear el turno vivo, pero dejar traza explícita.
+        // Entregar SIEMPRE el mensaje completo (con imágenes); el outbox guarda
+        // una versión liviana sin base64 solo para reintento.
+        guardarCloudAnswer(forwarded)
+          .catch(error => _log('cloud_answer_store_failed', { requestId: e.data.requestId, error: error?.message || String(error) }))
+          .finally(() => frame.contentWindow?.postMessage(forwarded, AURORA_URL));
+      } else {
+        frame.contentWindow?.postMessage(forwarded, AURORA_URL);
+      }
       return;
     }
     // ASK/STOP/NEW_CHAT de Aurora → iframe del LLM que gestionamos.
@@ -286,6 +418,15 @@ function initAuroraBridge(frame, opts) {
     }
 
     if (e.origin !== AURORA_URL) return;
+
+    if (e.data?.type === 'AURORA_CLOUD_ACK') {
+      confirmarCloudAnswer(e.data.requestId, e.data.__llmPane || 'cloud').catch(() => {});
+      return;
+    }
+    if (e.data?.type === 'AURORA_CLOUD_OUTBOX_SYNC') {
+      reenviarCloudOutbox('aurora_requested');
+      return;
+    }
 
     if (e.data?.type === 'AURORA_LLM_PANES') { syncLlmPanes(e.data.panes, e.data.hidden); return; }
     if (e.data?.type === 'AURORA_LLM_RELOAD') {
@@ -307,7 +448,12 @@ function initAuroraBridge(frame, opts) {
     if (e.data?.type === 'AURORA_LLM_MENU_OPEN') { openLlmMenu(e.data.anchor, e.data.options, e.data.activeIds || []); return; }
     if (e.data?.type === 'AURORA_LLM_MENU_CLOSE') { closeLlmMenu(); return; }
 
-    if (e.data?.type === 'AURORA_EXT_ACK') { _log('ack', {}); stopHelloLoop(); return; }
+    if (e.data?.type === 'AURORA_EXT_ACK') {
+      _log('ack', {});
+      stopHelloLoop();
+      reenviarCloudOutbox('extension_handshake');
+      return;
+    }
 
     if (e.data?.type === 'AURORA_BG_REQUEST') {
       const { id, payload } = e.data;

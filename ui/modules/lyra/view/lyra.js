@@ -6,14 +6,14 @@ import {
   cargarMensajes, guardarMensaje, agregarMensajeLocal, agregarMensajeRico, limpiarHistorial,
   limpiarStream, borrarMensaje, parsearMensajeRico, combinarPartesRicas,
 } from '../scripts/chat/mensajes.js';
-import { enviarACloud } from '../scripts/chat/cloud.js';
+import { enviarACloud, recuperarCloudPendiente } from '../scripts/chat/cloud.js';
 import { detenerCloud, invalidarCloudRelay } from '../../../components/shared/cloud-ask.js';
 import { crearDuoLyraCloud } from '../scripts/chat/duo.js';
 import { urlRestaurada } from '../../../components/shared/llm-sesiones.js';
 import { chats, chatActualId, cargarChats, crearChat, eliminarChat, autoGuardar, fmtFecha, exportarChat } from '../scripts/chat/historial.js';
 import { modeloSeleccionado, cargarModelo, guardarModelo } from '../scripts/chat/parametros.js';
 import { instruccion, cargarInstruccion } from '../scripts/chat/instrucciones.js';
-import { pendingImage, pendingImageDataUrl, setPendingImage, clearPendingImage } from '../scripts/chat/vision.js';
+import { pendingImages, setPendingImage, removePendingImage, clearPendingImage, MAX_PENDING_IMAGES } from '../scripts/chat/vision.js';
 import {
   grabando, transcribiendo, autoVoz, vozSeleccionada, voces,
   cargarVoces, setVoz, toggleAutoVoz, iniciarGrabacion, detenerGrabacion, hablar, detenerVoz,
@@ -93,7 +93,7 @@ function useSig(sig) {
   return val;
 }
 
-export function Local() {
+export function Local({ active = true } = {}) {
   const [mensaje, setMensaje]              = useState('');
   const [previewMd, setPreviewMd]          = useState(false);
   const [slashSel, setSlashSel]            = useState(-1);
@@ -115,7 +115,7 @@ export function Local() {
   const chatIdVal                          = useSig(chatActualId);
   const modeloVal                          = useSig(modeloSeleccionado);
   const instruccionVal                     = useSig(instruccion);
-  const pendingImageDataUrlVal             = useSig(pendingImageDataUrl);
+  const pendingImagesVal                  = useSig(pendingImages);
   const grabandoVal                        = useSig(grabando);
   const transcVal                          = useSig(transcribiendo);
   const ttsEnabled                         = useSig(autoVoz);
@@ -137,31 +137,32 @@ export function Local() {
   const [fijados, setFijados]                        = useState({});
   const [canvasLang, setCanvasLang]                 = useState('text');
   const [canvasTab, setCanvasTab]                   = useState('codigo');
-  const [cloudVisible, setCloudVisible]             = useState(false);
+  const [cloudVisible, setCloudVisible]             = usePersistedState('lyra_cloud_visible', false);
   const [cloudExpanded, setCloudExpanded]           = useState(false);
   const [cloudHidden, setCloudHidden]               = useState(false);
-  // Altura custom del panel cloud (px) cuando el usuario lo redimensiona a mano.
-  const [cloudHeight, setCloudHeight] = useState(() => {
-    const v = parseInt(localStorage.getItem('aurora_cloud_height') || '', 10);
-    return Number.isFinite(v) && v > 120 ? v : null;
-  });
+  // Altura custom del panel cloud (px). Persistida en la DB (/db/ajustes) vía
+  // usePersistedState — NO localStorage — y sincronizada entre superficies por
+  // el bus /eventos. Durante el drag se aplica imperativo (sin persistir) para
+  // no escribir a la DB en cada frame; se guarda UNA sola vez al soltar.
+  const [cloudHeight, setCloudHeight] = usePersistedState('lyra_cloud_height', null);
   const iniciarResizeCloud = useCallback((e) => {
     e.preventDefault();
+    const panel = document.querySelector('.cloud-panel');
     const startY = e.clientY;
-    const startH = document.querySelector('.cloud-panel')?.getBoundingClientRect().height || 420;
+    const startH = panel?.getBoundingClientRect().height || 420;
+    let finalH = startH;
     const onMove = (ev) => {
-      const h = Math.max(140, Math.min(window.innerHeight * 0.9, startH + (startY - ev.clientY)));
-      setCloudHeight(h);
+      finalH = Math.max(140, Math.min(window.innerHeight * 0.9, startH + (startY - ev.clientY)));
+      if (panel) panel.style.height = finalH + 'px';   // imperativo: liso y sin tocar la DB
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      const h = document.querySelector('.cloud-panel')?.getBoundingClientRect().height;
-      if (h) localStorage.setItem('aurora_cloud_height', String(Math.round(h)));
+      setCloudHeight(Math.round(finalH));   // persistir a DB una sola vez
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, []);
+  }, [setCloudHeight]);
   // El proveedor Cloud es una preferencia, no estado efímero de la vista.
   // Antes cada hard reload volvía silenciosamente a Gemini aunque el usuario
   // estuviera trabajando con ChatGPT.
@@ -249,6 +250,7 @@ export function Local() {
   const [enFondo, setEnFondo]   = useState(true);
   const [lightbox, setLightbox] = useState(null);   // imagen expandida (click en thumbnail)
   const iframeRef = useRef(null);
+  const cloudRecoveryRef = useRef(false);
 
   const cloudAiLabel = AI_LABELS[cloudAiId] || cloudAiId || 'Cloud';
   const offline = !lyraOnline;
@@ -331,6 +333,28 @@ export function Local() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      if (cloudRecoveryRef.current) return;
+      cloudRecoveryRef.current = true;
+      try {
+        const r = await recuperarCloudPendiente({ iframe: iframeRef.current });
+        if (cancelled || !r?.resumed) return;
+        setCloudVisible(true);
+        if (r.aiId) setCloudAiId(r.aiId);
+        if (r.url) setCloudUrl(r.url);
+        Toast().show('↻ Turno Cloud retomado', 'info', 2500);
+      } catch (err) {
+        console.warn('[Lyra] no se pudo recuperar turno Cloud:', err);
+      }
+    }, 900);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
     if (chatIdVal) cargarMensajes(chatIdVal);
   }, [chatIdVal]);
 
@@ -351,9 +375,11 @@ export function Local() {
   const enviarMensaje = useCallback(async (textoDirecto) => {
     const opciones = textoDirecto && typeof textoDirecto === 'object' ? textoDirecto : {};
     let texto = (typeof textoDirecto === 'string' ? textoDirecto : opciones.message ?? mensaje).trim();
-    const imagenDataUrl = opciones.skipUserAppend ? null : pendingImageDataUrl.value;
-    if (!texto && !imagenDataUrl && !(cloudVisible && pendingFiles.length)) return;
-    if (!texto && cloudVisible && (imagenDataUrl || pendingFiles.length)) texto = 'Analiza los archivos adjuntos.';
+    const imagenesDataUrl = opciones.skipUserAppend
+      ? []
+      : (pendingImages.value || []).map(item => item?.dataUrl).filter(Boolean);
+    if (!texto && !imagenesDataUrl.length && !(cloudVisible && pendingFiles.length)) return;
+    if (!texto && cloudVisible && (imagenesDataUrl.length || pendingFiles.length)) texto = 'Analiza los archivos adjuntos.';
 
     // Cloud activo: el mensaje va al LLM de la nube (iframe), NO a pi.
     // Comandos "/" siguen siendo de Lyra. Respuesta marcada _via:'direct-ai',
@@ -365,8 +391,8 @@ export function Local() {
       setMensaje('');
       // Reusa el adjunto de imagen de Lyra: la nube lo recibe como data URL y
       // el relay lo pega al composer del LLM (drag&drop) antes de enviar.
-      const imgs = imagenDataUrl ? [imagenDataUrl] : undefined;
-      if (imagenDataUrl) clearPendingImage();
+      const imgs = imagenesDataUrl.length ? imagenesDataUrl : undefined;
+      if (imagenesDataUrl.length) clearPendingImage();
       const files = pendingFiles.length ? pendingFiles : undefined;
       setPendingFiles([]);
       await enviarACloud({ iframe: iframeRef.current, texto, aiId: cloudAiId, url: cloudUrl, images: imgs, files });
@@ -378,17 +404,17 @@ export function Local() {
     if (cargando.value) {
       if (texto.startsWith('/')) return; // comandos mid-stream: fuera de alcance por ahora
       if (!opciones.skipUserAppend) {
-        agregarMensajeRico({ role: 'user', content: texto, image: imagenDataUrl ? imagenDataUrl.split(',')[1] : null });
+        agregarMensajeRico({ role: 'user', content: texto, _imagenes: imagenesDataUrl.length ? imagenesDataUrl : undefined });
         clearPendingImage();
       }
       setMensaje('');
-      enviarSteer(texto, chatActualId.value);
+      enviarSteer(texto, chatActualId.value, imagenesDataUrl);
       return;
     }
     setMensaje('');
 
     if (!opciones.skipUserAppend) {
-      agregarMensajeRico({ role: 'user', content: texto, image: imagenDataUrl ? imagenDataUrl.split(',')[1] : null });
+      agregarMensajeRico({ role: 'user', content: texto, _imagenes: imagenesDataUrl.length ? imagenesDataUrl : undefined });
       clearPendingImage();
     }
 
@@ -422,6 +448,7 @@ export function Local() {
     try {
       await sendToLyra({
         message: texto,
+        images:  imagenesDataUrl,
         model:   modeloSeleccionado.value,
         system:  instruccion.value,
         history: (opciones.history || historial.value.slice(-20, -1)).map(m => ({ role: m.role, content: m.content })),
@@ -692,10 +719,16 @@ export function Local() {
       Toast().show('⚠ Imagen demasiado grande (máx 5 MB)', 'error');
       return;
     }
+    if ((pendingImages.value || []).length >= MAX_PENDING_IMAGES) {
+      Toast().show(`⚠ Máximo ${MAX_PENDING_IMAGES} imágenes por mensaje`, 'warning');
+      return;
+    }
     const reader = new FileReader();
     reader.onload = ev => {
-      setPendingImage(blob, ev.target.result);
-      Toast().show('◉ Imagen lista para enviar', 'success');
+      const agregada = setPendingImage(blob, ev.target.result);
+      const cantidad = (pendingImages.value || []).length;
+      if (agregada) Toast().show(`◉ Imagen ${cantidad}/${MAX_PENDING_IMAGES} lista para enviar`, 'success');
+      else Toast().show(`⚠ Máximo ${MAX_PENDING_IMAGES} imágenes por mensaje`, 'warning');
     };
     reader.readAsDataURL(blob);
   }, []);
@@ -720,33 +753,28 @@ export function Local() {
   }, []);
 
   const handlePaste = useCallback(e => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        const blob = item.getAsFile();
-        if (blob) cargarImagen(blob);
-        return;
-      }
-    }
+    const items = [...(e.clipboardData?.items || [])];
+    const imagenes = items
+      .filter(item => item.type.startsWith('image/'))
+      .map(item => item.getAsFile())
+      .filter(Boolean);
+    if (!imagenes.length) return;
+    e.preventDefault();
+    imagenes.forEach(cargarImagen);
   }, [cargarImagen]);
 
   const handleDrop = useCallback(e => {
     e.preventDefault();
     e.stopPropagation();
-    const files = e.dataTransfer?.files;
-    if (!files?.length) return;
-    for (const file of files) {
-      if (file.type.startsWith('image/')) {
-        cargarImagen(file);
-        return;
-      }
-    }
-    const archivo = Array.from(files).find(f => !f.type.startsWith('image/'));
-    if (archivo && cloudVisible) {
-      cargarArchivoCloud(archivo);
-    } else if (archivo) {
+    const files = [...(e.dataTransfer?.files || [])];
+    if (!files.length) return;
+
+    files.filter(file => file.type.startsWith('image/')).forEach(cargarImagen);
+    const otros = files.filter(file => !file.type.startsWith('image/'));
+    if (cloudVisible) {
+      otros.forEach(cargarArchivoCloud);
+    } else if (otros[0]) {
+      const archivo = otros[0];
       const reader = new FileReader();
       reader.onload = ev => {
         const t = ev.target.result;
@@ -840,11 +868,11 @@ export function Local() {
         if (ultimo !== 'vacio') { window.parent.postMessage({ type: 'AURORA_LLM_PANES', panes: [], hidden: true }, '*'); ultimo = 'vacio'; }
         return;
       }
-      // Oculto: el .cloud-panel-iframe-wrap es display:none → el placeholder no
-      // tiene rect. Igual hay que avisar hidden:true (si no, el iframe queda
-      // visible). Mantener montado (sesión viva) con el último rect conocido.
-      if (cloudHidden) {
-        const clave = `hidden,${cloudUrl}`;
+      // Oculto manualmente o detrás de otra vista: el placeholder no tiene un
+      // rect útil. Avisar hidden:true para que el iframe externo no tape Home,
+      // pero conservar el pane montado y con su sesión autenticada viva.
+      if (!active || cloudHidden) {
+        const clave = `hidden,${active ? 'panel' : 'view'},${cloudUrl}`;
         if (clave === ultimo) return;
         ultimo = clave;
         window.parent.postMessage({
@@ -891,7 +919,7 @@ export function Local() {
     // aunque el effect corra antes de que React lo pinte.
     const iv = setInterval(report, 300);
     return () => { ro.disconnect(); window.removeEventListener('resize', report); window.removeEventListener('scroll', report, true); cancelAnimationFrame(raf); clearInterval(iv); };
-  }, [usaExtPane, cloudVisible, cloudExpanded, cloudHidden, cloudUrl]);
+  }, [usaExtPane, cloudVisible, cloudExpanded, cloudHidden, cloudUrl, active]);
 
   // Al desmontar la vista, sacar el iframe de la extensión (no dejar huérfano).
   useEffect(() => () => {
@@ -1109,6 +1137,8 @@ export function Local() {
 
         ${visibleMessages.map((msg, idx) => {
           if (msg.role === 'system') return null;
+          const msgKey = msg._uiId
+            || (msg.id != null ? `db:${msg.id}` : `legacy:${msg.role}:${msg.ts || msg.timestamp || 'sin-ts'}:${idx}`);
           const esExterno = msg._via === 'direct-ai' || msg._via === 'duo-external';
           const esPiTool = msg._via === 'pi-tool';
           const rolLabel = msg.role === 'user'
@@ -1122,7 +1152,7 @@ export function Local() {
           if (msg.role === 'assistant') {
             const parsed = combinarPartesRicas(parsearMensajeRico(msg.content));
             return html`
-              <div key=${idx} class=${'message assistant' + (esExterno ? ' direct-ai' : '') + (esPiTool ? ' pi-tool' : '') + (esPiTool && msg._toolError ? ' is-error' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
+              <div key=${msgKey} class=${'message assistant' + (esExterno ? ' direct-ai' : '') + (esPiTool ? ' pi-tool' : '') + (esPiTool && msg._toolError ? ' is-error' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
                 <div class="message-header">
                   <span class="role">${rolLabel}</span>
                   <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
@@ -1139,11 +1169,20 @@ export function Local() {
                     title="Releer mensaje"
                   >🔊</button>
                 </div>
-                ${msg._toolVisual || msg._toolDraft
-                  ? html`<${ToolVisualCard} visual=${msg._toolVisual || msg._toolDraft} />`
-                  : parsed.length ? parsed.map((p, i) => {
+                ${msg._toolVisual
+                  ? html`<${ToolVisualCard} visual=${msg._toolVisual} />`
+                  : msg._toolDraft
+                    ? html`
+                        ${msg._toolText && html`
+                          <div class="message-content"
+                            dangerouslySetInnerHTML=${{ __html: renderizarContenido(msg._toolText) }}
+                          ></div>
+                        `}
+                        <${ToolVisualCard} visual=${msg._toolDraft} />
+                      `
+                    : parsed.length ? parsed.map((p, i) => {
                   if (p.tipo === 'thinking') {
-                    const key = `${idx}_${i}`;
+                    const key = `${msgKey}:thinking:${i}`;
                     return html`
                       <div key=${key} class="message-thinking">
                         <button
@@ -1158,13 +1197,13 @@ export function Local() {
                   }
                   if (p.tipo === 'text') {
                     return html`
-                      <div key=${idx + '_' + i} class="message-content"
+                      <div key=${`${msgKey}:text:${i}`} class="message-content"
                         dangerouslySetInnerHTML=${{ __html: renderizarContenido(p.contenido) }}
                       ></div>
                     `;
                   }
                   if (p.tipo === 'tool') {
-                    const key = `${idx}_${i}`;
+                    const key = `${msgKey}:tool:${i}`;
                     const abierto = expandedTools[key] ?? true;
                     return html`
                       <div key=${key} class=${'message tool-execution ' + (p.isError ? 'tool-error' : 'tool-success')}>
@@ -1199,7 +1238,7 @@ export function Local() {
                 ${msg._imagenes?.length && html`
                   <div class="flex flex-wrap gap-2 mt-2">
                     ${msg._imagenes.map((src, i) => html`
-                      <img key=${i} src=${src} alt="Imagen generada" class="max-w-full max-h-80 rounded-lg border border-white/10 object-contain bg-black/10 cursor-zoom-in" onClick=${() => setLightbox(src)} />
+                      <img key=${`${msgKey}:image:${i}`} src=${src} alt="Imagen generada" class="max-w-full max-h-80 rounded-lg border border-white/10 object-contain bg-black/10 cursor-zoom-in" onClick=${() => setLightbox(src)} />
                     `)}
                   </div>
                 `}
@@ -1225,7 +1264,7 @@ export function Local() {
               ? `${AI_ICONOS[cloudAiId] || '☁'} ${AI_LABELS[cloudAiId] || 'AI ext'}`
               : '🦙 Lyra';
           return html`
-            <div key=${idx} class=${'message ' + msg.role + (esExternoFinal ? ' direct-ai' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
+            <div key=${msgKey} class=${'message ' + msg.role + (esExternoFinal ? ' direct-ai' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
               <div class="message-header">
                 <span class="role">${rolLabelFinal}</span>
                 <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
@@ -1246,7 +1285,7 @@ export function Local() {
               ${msg._imagenes?.length && html`
                 <div class="flex flex-wrap gap-2 mt-2">
                   ${msg._imagenes.map((src, i) => html`
-                    <img key=${i} src=${src} alt="Imagen adjunta" class="max-w-[160px] max-h-40 rounded-lg border border-white/10 object-contain bg-black/10 cursor-zoom-in" onClick=${() => setLightbox(src)} />
+                    <img key=${`${msgKey}:image:${i}`} src=${src} alt="Imagen adjunta" class="max-w-[160px] max-h-40 rounded-lg border border-white/10 object-contain bg-black/10 cursor-zoom-in" onClick=${() => setLightbox(src)} />
                   `)}
                 </div>
               `}
@@ -1266,9 +1305,10 @@ export function Local() {
               <span class="streaming-dot">●</span>
             </div>
             ${asistenteEnVivo.blocks.map((b, i) => {
+              const blockKey = b.id || `live:${b.tipo}:${i}`;
               if (b.tipo === 'thinking') {
                 return html`
-                  <div key=${'b' + i} class="message-thinking">
+                  <div key=${blockKey} class="message-thinking">
                     <button
                       class="thinking-toggle-inline"
                       onClick=${() => setExpandedThinking(prev => ({ ...prev, _live: !prev._live }))}
@@ -1281,7 +1321,7 @@ export function Local() {
               }
               if (b.tipo === 'text') {
                 return html`
-                  <div key=${'b' + i} class="message-content"
+                  <div key=${blockKey} class="message-content"
                     dangerouslySetInnerHTML=${{ __html: renderizarContenido(b.contenido) }}
                   ></div>
                 `;
@@ -1289,7 +1329,7 @@ export function Local() {
               if (b.tipo === 'tool') {
                 const abierto = expandedTools[b.id] ?? true;
                 return html`
-                  <div key=${'b' + i} class=${'message tool-execution ' + (b.status === 'error' ? 'tool-error' : b.status === 'running' ? 'tool-running' : 'tool-success')}>
+                  <div key=${blockKey} class=${'message tool-execution ' + (b.status === 'error' ? 'tool-error' : b.status === 'running' ? 'tool-running' : 'tool-success')}>
                     <div class="tool-execution-header" onClick=${() => toggleTool(b.id)}>
                       <span class="tool-toggle-chevron">${abierto ? '▼' : '▶'}</span>
                       <span class="tool-execution-icon">${b.status === 'running' ? '⟳' : b.status === 'error' ? '✗' : '✓'}</span>
@@ -1373,10 +1413,24 @@ export function Local() {
         </div>
       `}
 
-      ${pendingImageDataUrlVal && html`
-        <div class="image-preview-bar flex items-center shrink-0 gap-2 px-3 py-1.5 bg-black bg-opacity-30 border-t border-aurora-border">
-          <img src=${pendingImageDataUrlVal} class="img-preview-thumb h-11 rounded" />
-          <button onClick=${clearPendingImage} class="img-preview-close px-1.5 py-0.5 bg-transparent border-0 text-aurora-text-dim text-sm cursor-pointer">✕</button>
+      ${pendingImagesVal.length > 0 && html`
+        <div class="image-preview-bar flex items-center shrink-0 gap-2 px-3 py-1.5 bg-black bg-opacity-30 border-t border-aurora-border overflow-x-auto">
+          ${pendingImagesVal.map((item, i) => html`
+            <div key=${item.id} class="relative shrink-0" title=${item.name || `Imagen ${i + 1}`}>
+              <img src=${item.dataUrl} alt=${item.name || `Imagen ${i + 1}`} class="img-preview-thumb h-11 rounded" />
+              <button
+                onClick=${() => removePendingImage(item.id)}
+                class="img-preview-close absolute -top-1 -right-1 w-5 h-5 p-0 rounded-full bg-black/80 border border-white/20 text-white text-xs cursor-pointer"
+                title="Quitar imagen"
+              >✕</button>
+            </div>
+          `)}
+          <span class="text-[10px] text-aurora-text-dim whitespace-nowrap">${pendingImagesVal.length}/${MAX_PENDING_IMAGES}</span>
+          ${pendingImagesVal.length > 1 && html`
+            <button onClick=${clearPendingImage}
+              class="img-preview-close px-1.5 py-0.5 bg-transparent border-0 text-aurora-text-dim text-xs cursor-pointer whitespace-nowrap"
+              title="Quitar todas las imágenes">Quitar todas</button>
+          `}
         </div>
       `}
 
@@ -1542,7 +1596,7 @@ export function Local() {
               `)}
             </div>
           `}
-          <div class=${'composer-box' + (mensaje.trim() || pendingImageDataUrlVal ? ' composer-box--expanded' : '')}>
+          <div class=${'composer-box' + (mensaje.trim() || pendingImagesVal.length ? ' composer-box--expanded' : '')}>
 
             ${previewMd && mensaje.trim() && html`
               <div class="px-2 py-1.5 mb-1 max-h-40 overflow-y-auto text-sm border-b border-aurora-border/50 prose-chat"
@@ -1631,15 +1685,20 @@ export function Local() {
                 >
                   <label class="composer-plus-item" onClick=${() => setPlusOpen(null)}>
                     <span>📎</span><span>Adjuntar archivo</span>
-                    <input type="file" accept=".pdf,image/*,.txt,.md,.csv,.json" style="display:none"
+                    <input type="file" multiple accept=".pdf,image/*,.txt,.md,.csv,.json" style="display:none"
                       onChange=${e => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        if (file.type.startsWith('image/')) {
-                          cargarImagen(file);
-                        } else if (cloudVisible) {
-                          cargarArchivoCloud(file);
-                        } else {
+                        const seleccionados = [...(e.target.files || [])];
+                        if (!seleccionados.length) return;
+
+                        seleccionados
+                          .filter(file => file.type.startsWith('image/'))
+                          .forEach(cargarImagen);
+
+                        const otros = seleccionados.filter(file => !file.type.startsWith('image/'));
+                        if (cloudVisible) {
+                          otros.forEach(cargarArchivoCloud);
+                        } else if (otros[0]) {
+                          const file = otros[0];
                           const reader = new FileReader();
                           reader.onload = ev => {
                             const texto = ev.target.result;
@@ -1672,7 +1731,7 @@ export function Local() {
                 : html`<button
                     class="composer-send-btn"
                     onClick=${() => enviarMensaje()}
-                    disabled=${(!mensaje.trim() && !pendingImageDataUrlVal && pendingFiles.length === 0) || (offline && !cloudVisible)}
+                    disabled=${(!mensaje.trim() && pendingImagesVal.length === 0 && pendingFiles.length === 0) || (offline && !cloudVisible)}
                   >↑</button>`
               }
             </div>
