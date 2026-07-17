@@ -702,7 +702,7 @@
     });
   }
 
-  async function esperarRespuesta({ base, onChunk, cancelToken, timeoutMs = 240000, submitAt }) {
+  async function esperarRespuesta({ base, onChunk, cancelToken, timeoutMs = 600000, submitAt }) {
     const deadline = Date.now() + timeoutMs;
     // Algunos modelos tardan >30s antes de crear el contenedor. Esperar todo el
     // presupuesto evita declarar never_started y provocar reenvíos duplicados.
@@ -1159,7 +1159,7 @@
       const submitAt = Date.now();   // t0 real: apenas se envía el prompt
       guardarAskPendiente({
         requestId, submitAt,
-        deadline: submitAt + (Number.isFinite(captureTimeoutMs) ? Math.max(1000, Math.min(240000, captureTimeoutMs)) : 240000),
+        deadline: submitAt + (Number.isFinite(captureTimeoutMs) ? Math.max(1000, Math.min(900000, captureTimeoutMs)) : 600000),
         baseCount: base.count, ids: [...base.ids], userIds: [...base.userIds], lastText: base.lastText,
       });
       const seEnvio = await enviarVerificado(input, prompt.length, cancel, userCountBefore);
@@ -1181,10 +1181,12 @@
       const res = await esperarRespuesta({
         base, cancelToken: cancel, submitAt,
         // Los modelos de razonamiento de ChatGPT pueden permanecer en
-        // "Thinking" más de 90s antes de materializar la respuesta. El límite
-        // anterior declaraba error aunque el sitio siguiera generando. El
+        // "Thinking" varios minutos (tareas complejas) antes de materializar la
+        // respuesta o emitir un bloque de tool. El límite anterior (240s)
+        // declaraba error aunque el sitio siguiera razonando — cortaba tareas
+        // largas legítimas. Techo 900s: lo limita el modelo/PC, no Aurora. El
         // padre conserva un watchdog finito y Stop sigue disponible.
-        timeoutMs: Number.isFinite(captureTimeoutMs) ? Math.max(1000, Math.min(240000, captureTimeoutMs)) : 240000,
+        timeoutMs: Number.isFinite(captureTimeoutMs) ? Math.max(1000, Math.min(900000, captureTimeoutMs)) : 600000,
         onChunk: (text) => { chunkPend = text; const d = Date.now() - ultimoPost; if (d >= CHUNK_MS) postChunk(); else if (!chunkTimer) chunkTimer = setTimeout(postChunk, CHUNK_MS - d); },
       });
       // Un timeout real deja algunos proveedores (especialmente Gemini) con

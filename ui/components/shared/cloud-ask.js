@@ -12,9 +12,43 @@ const _readyWindows = new WeakSet();
 const _extPanesReady = new Set();
 const _readyWaiters = new Set();
 const _paneReloadWaiters = new Map();
+const _pendingAnswers = new Map();
+const answerKey = (requestId, paneId = 'cloud') => `${paneId}:${requestId}`;
 globalThis.__auroraCloudTrace = globalThis.__auroraCloudTrace || [];
+
+export function confirmarCloudAnswer(requestId, paneId = 'cloud') {
+  if (!requestId) return false;
+  _pendingAnswers.delete(answerKey(requestId, paneId));
+  try {
+    window.parent.postMessage({
+      type: 'AURORA_CLOUD_ACK', requestId, __llmPane: paneId, ts: Date.now(),
+    }, '*');
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+export function respuestasCloudPendientes() {
+  return [..._pendingAnswers.values()].map(value => ({ ...value }));
+}
+
+function solicitarCloudOutbox() {
+  try { window.parent.postMessage({ type: 'AURORA_CLOUD_OUTBOX_SYNC' }, '*'); } catch (_) {}
+}
+
+// Cubrir tanto una importación temprana como el bridge que termina de montar
+// unos frames después. La respuesta permanece en el outbox hasta el ACK.
+for (const delay of [0, 700, 2200]) setTimeout(solicitarCloudOutbox, delay);
 const emitirEstado = entry => window.dispatchEvent(new CustomEvent('aurora:cloud-status', { detail: entry }));
 window.addEventListener('message', (e) => {
+  if (e.data?.type === 'AURORA_CLOUD_ANSWER' && e.data.requestId) {
+    const paneId = e.data.__llmPane || 'cloud';
+    const answer = { ...e.data, __llmPane: paneId };
+    _pendingAnswers.set(answerKey(e.data.requestId, paneId), answer);
+    window.dispatchEvent(new CustomEvent('aurora:cloud-answer-pending', { detail: answer }));
+    return;
+  }
   if (e.data?.type === 'AURORA_CLOUD_RESETTING') {
     const paneId = e.data.__llmPane || 'cloud';
     if (e.source === window.parent) _extPanesReady.delete(paneId);
@@ -121,18 +155,32 @@ export async function nuevaConversacionCloud(iframe, paneId = 'cloud', timeoutMs
 // iframe null/sin contentWindow → modo extPane (ruteo por el bridge).
 // images: array de data URLs / base64 (se pegan al composer del LLM).
 // files: array de {name, content, type} (adjuntos de texto).
-export async function askCloud(iframe, prompt, { onChunk, timeoutMs = 240000, images, files, paneId = 'cloud' } = {}) {
+export async function askCloud(iframe, prompt, {
+  onChunk, timeoutMs = 600000, images, files, paneId = 'cloud',
+  requestId: providedRequestId, manualAck = false, resumeOnly = false,
+} = {}) {
 
-  if (!await esperarRelay(iframe, paneId)) {
-    return { ok: false, text: `Error: el relay Cloud (${paneId}) no quedó listo en 20s. Recargá el panel o verificá que la extensión AI Hub esté activa.`, reason: 'relay_not_ready', paneId };
+  const requestId = providedRequestId || `cloud-${Date.now()}-${++_seq}`;
+  const cached = _pendingAnswers.get(answerKey(requestId, paneId));
+  if (cached) {
+    const result = {
+      ok: !!cached.ok && cached.reason !== 'timeout', text: cached.text || '',
+      images: cached.images, respondeMs: cached.respondeMs, generaMs: cached.generaMs,
+      reason: cached.reason, paneId, requestId, replayed: true,
+    };
+    if (!manualAck) confirmarCloudAnswer(requestId, paneId);
+    return result;
   }
 
-  const requestId = `cloud-${Date.now()}-${++_seq}`;
+  if (!await esperarRelay(iframe, paneId)) {
+    return { ok: false, text: `Error: el relay Cloud (${paneId}) no quedó listo en 20s. Recargá el panel o verificá que la extensión AI Hub esté activa.`, reason: 'relay_not_ready', paneId, requestId };
+  }
 
   return new Promise((resolve) => {
     let done = false;
     let onPaneReload = null;
     let needsResume = false;
+    let resumeTid = null;
     const request = {
       type: 'AURORA_CLOUD_ASK', prompt, requestId, images, files,
       captureTimeoutMs: Math.max(1000, timeoutMs - 1500), __llmPane: paneId,
@@ -147,6 +195,7 @@ export async function askCloud(iframe, prompt, { onChunk, timeoutMs = 240000, im
         if (!waiters?.size) _paneReloadWaiters.delete(paneId);
       }
       clearTimeout(tid);
+      if (resumeTid) clearTimeout(resumeTid);
       resolve(r);
     };
 
@@ -166,7 +215,13 @@ export async function askCloud(iframe, prompt, { onChunk, timeoutMs = 240000, im
       if (d.type === 'AURORA_CLOUD_CHUNK') { onChunk?.(d.text || ''); return; }
       if (d.type === 'AURORA_CLOUD_ANSWER') {
         if (d.reason === 'timeout') detenerCloud(iframe, paneId);
-        finish({ ok: !!d.ok && d.reason !== 'timeout', text: d.text || '', images: d.images, respondeMs: d.respondeMs, generaMs: d.generaMs, reason: d.reason, paneId: d.__llmPane || paneId });
+        const result = {
+          ok: !!d.ok && d.reason !== 'timeout', text: d.text || '', images: d.images,
+          respondeMs: d.respondeMs, generaMs: d.generaMs, reason: d.reason,
+          paneId: d.__llmPane || paneId, requestId, replayed: !!d.__auroraOutboxReplay,
+        };
+        if (!manualAck) confirmarCloudAnswer(requestId, result.paneId);
+        finish(result);
       }
     };
     window.addEventListener('message', onMsg);
@@ -194,6 +249,17 @@ export async function askCloud(iframe, prompt, { onChunk, timeoutMs = 240000, im
     // El relay debe cerrar ANTES que esta Promise. Si ambos usan 95s exactos,
     // el padre puede declarar timeout y perder el error específico que llega
     // milisegundos después (p. ej. ChatGPT atascado en Thinking).
-    postAlRelay(iframe, request);
+    if (resumeOnly) {
+      // Primero dar tiempo al bridge para reproducir una respuesta ya capturada.
+      // Si no existe todavía, reenviar el MISMO requestId cubre también el caso
+      // en que Aurora cayó justo antes de que el ASK llegara al relay. El relay
+      // deduplica el requestId cuando la generación original sigue en curso.
+      solicitarCloudOutbox();
+      resumeTid = setTimeout(() => {
+        if (!done) postAlRelay(iframe, request);
+      }, 1400);
+    } else {
+      postAlRelay(iframe, request);
+    }
   });
 }
