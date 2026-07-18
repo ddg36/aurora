@@ -369,14 +369,15 @@ export function Local({ active = true } = {}) {
 
   useEffect(() => {
     if (chatIdVal) cargarMensajes(chatIdVal);
+    setEnFondo(true);   // chat nuevo: arranca siguiendo el final, como el primer load
   }, [chatIdVal]);
 
   useEffect(() => {
-    const enVuelo = cargandoVal || streamingVal || thinkingVal;
-    if (enVuelo || enFondo) {
-      scrollAlFondo(chatRef.current);
-      if (enVuelo) setEnFondo(true);
-    }
+    // Antes: mientras había streaming (enVuelo) se forzaba scrollAlFondo en
+    // CADA chunk sin mirar si el usuario había subido a leer — "secuestraba"
+    // el scroll. Ahora solo sigue el fondo si el usuario YA estaba ahí
+    // (enFondo real, actualizado por onChatScroll); si subió, se queda quieto.
+    if (enFondo) scrollAlFondo(chatRef.current);
     inicializarEventosCodigo(chatRef.current, {
       onNotas: añadirANotas,
       onRun: code => {
@@ -1438,6 +1439,12 @@ export function Local({ active = true } = {}) {
             </span>
             <span class="cloud-activity-pulse"></span>
           </div>
+        `}
+        ${!enFondo && html`
+          <button class="scroll-to-bottom-btn" title="Ir al final"
+            onClick=${() => { scrollAlFondo(chatRef.current); setEnFondo(true); }}>
+            ↓ Ir al final${(streamingVal || cloudGenerandoVal) ? ' · nuevo contenido' : ''}
+          </button>
         `}
         </div>
         ${avatar?.position === 'right' && html`<${AvatarSlot} avatar=${avatar} side="right" />`}
