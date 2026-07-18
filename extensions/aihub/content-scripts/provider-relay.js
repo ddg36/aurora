@@ -13,12 +13,30 @@
   let lastFingerprint = '', stableCandidate = null, pending = null, lastSnapshot = null;
   let endpointHeartbeatTimer = null, domObserver = null, disposed = false;
 
+  // Log temporal con timestamp + visibilidad, para diagnosticar cuelgues
+  // reportados al perder foco/minimizar/cambiar de tab durante una
+  // generación. En sessionStorage (no window.*) porque el content script
+  // corre en ISOLATED world: window.* ahí es invisible para Runtime.evaluate
+  // en el MAIN world (lo que usan las herramientas de debug de CDP);
+  // sessionStorage sí es compartido entre ambos en el mismo origin.
+  const RELAY_LOG_KEY = 'aurora_relay_log_v1';
+  function relayLog(phase, detail = '') {
+    let arr;
+    try { arr = JSON.parse(sessionStorage.getItem(RELAY_LOG_KEY) || '[]'); } catch (_) { arr = []; }
+    arr.push({ t: Date.now(), phase, detail: String(detail || '').slice(0, 240), hidden: document.hidden, hasFocus: document.hasFocus() });
+    if (arr.length > 300) arr = arr.slice(-300);
+    try { sessionStorage.setItem(RELAY_LOG_KEY, JSON.stringify(arr)); } catch (_) {}
+  }
   const mark = (phase, detail = '') => {
     const root = document.documentElement;
+    relayLog(phase, detail);
     if (!root) return;
     root.dataset.auroraProviderRelay = phase;
     root.dataset.auroraProviderRelayDetail = String(detail || '').slice(0, 240);
   };
+  document.addEventListener('visibilitychange', () => relayLog('visibilitychange', document.hidden ? 'hidden' : 'visible'));
+  window.addEventListener('focus', () => relayLog('window_focus'));
+  window.addEventListener('blur', () => relayLog('window_blur'));
   const isTransientRuntimeError = message => /(?:message channel closed before a response was received|message port closed before a response was received|extension context invalidated|receiving end does not exist)/i.test(String(message || ''));
 
   const runtimeErrorResult = message => {
@@ -197,7 +215,18 @@
     if (disposed) return;
     clearTimeout(timer);
     const wait = Number.isFinite(delay) ? Math.max(0, delay) : (lastSnapshot?.generating ? 1600 : 700);
-    timer = setTimeout(inspect, wait);
+    const scheduledAt = Date.now();
+    timer = setTimeout(() => {
+      const actualDelay = Date.now() - scheduledAt;
+      // Delay real vs pedido: si la tab está oculta, Chrome throttlea setTimeout
+      // (mínimo 1000ms, más agresivo con "Intensive throttling" tras minutos
+      // ocultos). Si actualDelay >> wait, confirma throttling como causa del
+      // cuelgue percibido al perder foco/minimizar.
+      if (actualDelay > wait + 500) {
+        relayLog('timer_throttled', `pedido=${wait}ms real=${actualDelay}ms`);
+      }
+      inspect();
+    }, wait);
   }
   const onRuntimeMessage = (message, _sender, sendResponse) => {
     if (message?.type === 'AURORA_PROVIDER_RELAY_PING') {

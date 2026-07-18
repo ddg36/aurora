@@ -54,7 +54,17 @@ async function saveJsonFamilyState(enabled) {
 }
 
 
+// Log temporal con timestamp: diagnosticar cuelgues reportados al perder
+// foco/minimizar durante una generación. Mide dónde se va el tiempo:
+// SW despierto -> fetch a Aurora -> respuesta -> entrega al frame.
+self.__auroraRelayBgLog = self.__auroraRelayBgLog || [];
+function _bgMark(phase, detail = '') {
+  self.__auroraRelayBgLog.push({ t: Date.now(), phase, detail: String(detail || '').slice(0, 240) });
+  if (self.__auroraRelayBgLog.length > 300) self.__auroraRelayBgLog.shift();
+}
+
 async function processRelayCapture(msg) {
+  _bgMark('process_start', msg.requestId);
   await _ensureToken();
   const response = await fetch(`${AURORA}/json-family/process`, {
     method: 'POST',
@@ -67,6 +77,7 @@ async function processRelayCapture(msg) {
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || `JSON Family HTTP ${response.status}`);
+  _bgMark('process_done', msg.requestId);
   return result;
 }
 
