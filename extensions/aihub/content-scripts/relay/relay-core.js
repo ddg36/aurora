@@ -167,6 +167,23 @@ function startAuroraRelayCore(injectedAdapter) {
     return false;
   }
 
+  // Etiqueta visible del bloque de código (ChatGPT: "Python", "JavaScript", ...)
+  // → identificador corto que highlightCode (renderizar.js, KW_POR_LENGUAJE)
+  // reconoce. Solo los lenguajes con resaltado dedicado importan acá; el resto
+  // cae al KW_DEFAULT de renderizar.js con un fence vacío, como antes.
+  const LANG_LABELS = new Map([
+    ['python', 'python'], ['py', 'python'],
+    ['javascript', 'js'], ['js', 'js'],
+    ['typescript', 'ts'], ['ts', 'ts'],
+    ['go', 'go'], ['golang', 'go'],
+    ['rust', 'rust'], ['rs', 'rust'],
+    ['json', 'json'],
+    ['bash', 'bash'], ['shell', 'bash'], ['sh', 'bash'],
+    ['java', 'java'], ['c++', 'cpp'], ['c#', 'csharp'], ['c', 'c'],
+    ['html', 'html'], ['css', 'css'], ['sql', 'sql'], ['ruby', 'ruby'],
+    ['php', 'php'], ['kotlin', 'kotlin'], ['swift', 'swift'],
+  ]);
+
   // ── DOM → markdown (port fiel del orquestador legacy) ───
   function domToMarkdown(root) {
     if (!root) return '';
@@ -179,8 +196,20 @@ function startAuroraRelayCore(injectedAdapter) {
       if (tag === 'pre') {
         const code = node.querySelector('code'); const target = code || node;
         const m = (target.className || '').match(/language-([\w+#-]+)/i);
+        // ChatGPT no siempre expone el lenguaje como clase language-*: la etiqueta
+        // visible ("Python", "JavaScript") vive en un <div> de texto plano dentro
+        // del header del bloque, sin selector estable. Sin lenguaje en el fence,
+        // highlightCode() (renderizar.js) no resalta nada — el código sale plano
+        // aunque el bloque tenga fondo temizado. Buscar esa etiqueta de texto como
+        // respaldo cuando falta la clase.
+        let lang = m ? m[1] : '';
+        if (!lang) {
+          const etiqueta = [...node.querySelectorAll('div, span')]
+            .find(el => el.children.length === 0 && LANG_LABELS.has((el.textContent || '').trim().toLowerCase()));
+          if (etiqueta) lang = LANG_LABELS.get(etiqueta.textContent.trim().toLowerCase());
+        }
         const txt = (target.innerText || target.textContent || '').replace(/\n+$/, '');
-        out.push('\n\n```' + (m ? m[1] : '') + '\n' + txt + '\n```\n\n'); return;
+        out.push('\n\n```' + lang + '\n' + txt + '\n```\n\n'); return;
       }
       if (tag === 'code') { out.push('`' + (node.innerText || node.textContent || '') + '`'); return; }
       const h = { h1: '\n\n# ', h2: '\n\n## ', h3: '\n\n### ', h4: '\n\n#### ', h5: '\n\n##### ', h6: '\n\n###### ' }[tag];
@@ -636,9 +665,10 @@ function startAuroraRelayCore(injectedAdapter) {
           // La lectura pesada sólo ocurre una vez, al desaparecer Stop. El
           // observer específico del turno continúa capturando el texto durante
           // toda la generación.
-          if (proveedorOculto()) return;
+          if (proveedorOculto()) { trace('stop_state_skip', { reason: 'oculto' }); return; }
           leer();
           const textoOk = lastText && !/^(thinking|reasoning|pensando|razonando)\.?$/i.test(lastText);
+          trace('stop_state_check', { vioGenerando, textoOk, lastTextLen: lastText?.length || 0 });
           if (vioGenerando && textoOk) programarCierreStop('stop_to_send');
         });
         siteObs.observe(siteRoot, {
