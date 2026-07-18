@@ -73,19 +73,28 @@ html[data-theme-mode="light"] .aurora-ui-shell .message.user {
   background-color: color-mix(in srgb, var(--aurora-accent) 10%, rgba(255,255,255,.9)) !important;
 }
 
-/* Código: en oscuro, blanco-transparente sobre --aurora-bg (siempre negro)
-   da contraste. En claro el fondo real es claro, así que ese mismo blanco
-   transparente queda casi invisible — el bloque de código (pre) y el código
-   inline (code) necesitan su propio fondo oscuro fijo en este modo, no
-   heredado de --aurora-bg (que no cambia con el tema). */
+/* Código: .message-content code usaba rgba(255,255,255,.07) fijo (pensado
+   sólo para fondo oscuro) — en modo claro quedaba casi invisible. El fondo
+   del bloque de código respeta el tema activo como el resto de la UI
+   (--aurora-surface3/--aurora-text, recalculados por tema en manager.js) en
+   vez de quedar oscuro fijo dentro de un tema claro — forzarlo oscuro rompía
+   la misma coherencia que el bug original, sólo invertido. La paleta de
+   sintaxis (.hl-kw/.hl-str/etc, markdown.css) es tipo VSCode oscuro: sobre
+   un fondo claro pierde contraste, así que acá recibe su propia variante
+   clara (mismos matices, más oscuros/saturados para leerse sobre claro). */
 html[data-theme-mode="light"] .message-content pre,
 html[data-theme-mode="light"] .message-content code {
-  background-color: rgba(15,23,42,.9) !important;
-  color: #e2e8f0 !important;
+  background-color: var(--aurora-surface3) !important;
+  color: var(--aurora-text) !important;
 }
 html[data-theme-mode="light"] .message-content pre code {
   background: none !important;
 }
+html[data-theme-mode="light"] .hl-kw  { color: #8a3fd1; }
+html[data-theme-mode="light"] .hl-str { color: #5a8a2e; }
+html[data-theme-mode="light"] .hl-num { color: #c65a1e; }
+html[data-theme-mode="light"] .hl-cm  { color: #6b7785; }
+html[data-theme-mode="light"] .hl-key { color: #2f5fc2; }
 html[data-theme-mode="dark"] .aurora-ui-shell :is(.message,.chat-input-area,.cloud-panel,.nav-rail) {
   backdrop-filter: blur(11px) saturate(.9);
   -webkit-backdrop-filter: blur(11px) saturate(.9);
