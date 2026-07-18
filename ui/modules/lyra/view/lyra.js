@@ -100,6 +100,12 @@ const ICON_DETENER = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none
 // SVG monocromo mantiene el mismo lenguaje visual sin el emoji.
 const ICON_NUBE = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 10.5h6a2.3 2.3 0 000-4.6 3.3 3.3 0 00-6.3-1 2.6 2.6 0 00-1.7 4.7"/></svg>';
 
+// Barra superior: ☰/⚙/🔧/＋ — mismo problema, mismo tratamiento.
+const ICON_HISTORIAL = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="4" x2="12" y2="4"/><line x1="2" y1="7" x2="12" y2="7"/><line x1="2" y1="10" x2="12" y2="10"/></svg>';
+const ICON_PARAMETROS = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="2"/><path d="M7 1.5v1.7M7 10.8v1.7M12.5 7h-1.7M3.2 7H1.5M10.6 3.4l-1.2 1.2M4.6 9.4L3.4 10.6M10.6 10.6L9.4 9.4M4.6 4.6L3.4 3.4"/></svg>';
+const ICON_HERRAMIENTAS = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.8 2.2a2.6 2.6 0 00-3.4 3.1L2 8.7l1.3 1.3 3.4-3.4a2.6 2.6 0 003.1-3.4l-1.5 1.5-1.4-.4-.4-1.4z"/></svg>';
+const ICON_NUEVO_CHAT = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="2" x2="7" y2="12"/><line x1="2" y1="7" x2="12" y2="7"/></svg>';
+
 // Header y acciones de cada mensaje: 📋/✎/↻/🔊/📌/📍/🔇 — mismo problema,
 // mismo tratamiento (SVG monocromo 14x14).
 const ICON_COPIAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="7" height="8" rx="1"/><path d="M2.5 9.5v-6a1 1 0 011-1h5"/></svg>';
@@ -1155,10 +1161,10 @@ export function Local({ active = true } = {}) {
     <div class="llama-view ${canvasVisibleVal ? 'canvas-open' : ''} ${cloudVisible && cloudExpanded ? 'cloud-expanded' : ''}">
 
       <div class=${'flex items-center gap-1 px-2 py-1.5 flex-wrap ' + panelTopClass}>
-        <button class=${mostrarHistorial ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarHistorial(v => !v)} title="Historial de chats">☰</button>
-        <button class=${mostrarParametros ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarParametros(v => !v)} title="Parámetros del modelo">⚙</button>
-        <button class=${mostrarToolbar ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarToolbar(v => !v)} title="Herramientas">🔧</button>
-        <button class=${controlBtnIdle} onClick=${nuevoChat} title="Nuevo chat">＋</button>
+        <button class=${mostrarHistorial ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarHistorial(v => !v)} title="Historial de chats" dangerouslySetInnerHTML=${{ __html: ICON_HISTORIAL }}></button>
+        <button class=${mostrarParametros ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarParametros(v => !v)} title="Parámetros del modelo" dangerouslySetInnerHTML=${{ __html: ICON_PARAMETROS }}></button>
+        <button class=${mostrarToolbar ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarToolbar(v => !v)} title="Herramientas" dangerouslySetInnerHTML=${{ __html: ICON_HERRAMIENTAS }}></button>
+        <button class=${controlBtnIdle} onClick=${nuevoChat} title="Nuevo chat" dangerouslySetInnerHTML=${{ __html: ICON_NUEVO_CHAT }}></button>
         <span class="flex-1"></span>
         ${modelosDisp.length > 0
           ? html`
