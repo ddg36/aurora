@@ -140,6 +140,9 @@
     },
     {
       "matches": [
+        "*://gemini.google.com/*",
+        "*://chat.openai.com/*",
+        "*://chatgpt.com/*",
         "*://claude.ai/*",
         "*://grok.com/*",
         "*://perplexity.ai/*",
