@@ -1263,12 +1263,6 @@ export function Local({ active = true } = {}) {
                       dangerouslySetInnerHTML=${{ __html: estaFijado(msg) ? ICON_FIJADO : ICON_FIJAR }}
                     ></button>
                   `}
-                  <button
-                    class="msg-speak-btn"
-                    onClick=${() => hablar(msg.content)}
-                    title="Releer mensaje"
-                    dangerouslySetInnerHTML=${{ __html: ICON_HABLAR }}
-                  ></button>
                 </div>
                 ${msg._toolVisual
                   ? html`<${ToolVisualCard} visual=${msg._toolVisual} />`
@@ -1369,9 +1363,6 @@ export function Local({ active = true } = {}) {
               <div class="message-header">
                 <span class="role">${rolLabelFinal}</span>
                 <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
-                ${(msg.content || '').trim() && html`
-                  <button class="msg-pin-btn" onClick=${() => copiarMensaje(msg.content)} title="Copiar mensaje" dangerouslySetInnerHTML=${{ __html: ICON_COPIAR }}></button>
-                `}
                 ${msg.id && html`
                   <button
                     class=${'msg-pin-btn' + (estaFijado(msg) ? ' fijado' : '')}
@@ -1394,6 +1385,11 @@ export function Local({ active = true } = {}) {
               ${msg._timing && html`
                 <div class="text-[10px] text-aurora-text-muted font-mono mt-1 opacity-70">
                   ⏱ responde ${(msg._timing.responde / 1000).toFixed(1)}s · genera ${(msg._timing.genera / 1000).toFixed(1)}s
+                </div>
+              `}
+              ${(msg.content || '').trim() && html`
+                <div class="flex flex-wrap gap-2 mt-2">
+                  <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles"><span dangerouslySetInnerHTML=${{ __html: ICON_COPIAR }}></span> Copiar</button>
                 </div>
               `}
             </div>
