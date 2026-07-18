@@ -7,13 +7,41 @@ const Toast = () => globalThis.Toast || { setStatus() {}, show() {} };
 const NOTAS_ROOT = 'nexus/workspaces/aihub/scratchpad';
 const NOTAS_CHAT = `${NOTAS_ROOT}/chat-notas.md`;
 
+// ChatGPT genera cada punto de una lista como un <ol> propio (uno por ítem,
+// separado por su párrafo de explicación) y usa el atributo HTML `start` para
+// que el navegador los numere en secuencia — invisible al extraer texto
+// plano. El markdown que realmente persiste Aurora trae "1." repetido en cada
+// punto. El render visual de Lyra ya lo corrige (numeración nativa del <ol>
+// fusionado), pero el texto copiado es crudo: sin esto, pegar en otro lado
+// (sin ese renderer) muestra "1. 1. 1." en vez de "1. 2. 3.".
+const RE_ITEM_NUMERADO = /^(\s*)(\d+)\.(\s+)/;
+function renumerarListasMarkdown(texto) {
+  const lineas = texto.split('\n');
+  let contador = 0;
+  let dentroDeLista = false;
+  for (let i = 0; i < lineas.length; i++) {
+    const m = lineas[i].match(RE_ITEM_NUMERADO);
+    if (m) {
+      contador = dentroDeLista ? contador + 1 : 1;
+      dentroDeLista = true;
+      lineas[i] = lineas[i].replace(RE_ITEM_NUMERADO, `${m[1]}${contador}.${m[3]}`);
+      continue;
+    }
+    // Una línea vacía o de párrafo no rompe la lista (mismo criterio que el
+    // renderer); un heading, tabla o bullet sí la corta.
+    if (dentroDeLista && (/^\s*#{1,6}\s/.test(lineas[i]) || /^\s*[-*•]\s/.test(lineas[i]))) {
+      dentroDeLista = false;
+    }
+  }
+  return lineas.join('\n');
+}
+
 export async function copiarMensaje(texto) {
   if (!texto) return;
-  // Markdown original, sin transformar: código, negrita, listas y saltos de
-  // línea intactos — lo que el usuario ve renderizado es el mismo texto que
-  // se pega en otro lado. Antes se aplastaba a una sola línea de texto plano
-  // (\s+ -> ' '), lo que rompía bloques de código y fusionaba listas numeradas.
-  const ok = await copiarTexto(texto);
+  // Markdown original, sin aplastar (código, negrita y saltos de línea
+  // intactos) pero con las listas numeradas renumeradas: lo pegado en otro
+  // lado se ve como el usuario lo ve renderizado, no como ChatGPT lo mandó.
+  const ok = await copiarTexto(renumerarListasMarkdown(texto));
   Toast().setStatus(ok ? '◉ Copiado al portapapeles' : '⚠ Error al copiar');
 }
 
