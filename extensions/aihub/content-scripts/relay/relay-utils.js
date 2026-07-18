@@ -77,7 +77,10 @@
   // innerText pierde toda esa estructura: negrita sin asteriscos, código sin
   // fences, y listas numeradas SIN el número real (el navegador lo pinta por
   // CSS/list-style, invisible al texto plano).
-  function domToMarkdown(root) {
+  // detectLang(preEl) es un hook opcional por-proveedor (cada sitio marca el
+  // lenguaje de un modo distinto y a veces sin clase language-* estándar);
+  // domToMarkdown en sí no conoce el DOM de ningún proveedor en particular.
+  function domToMarkdown(root, { detectLang } = {}) {
     if (!root) return '';
     const out = [];
     function walk(node) {
@@ -88,8 +91,9 @@
       if (tag === 'pre') {
         const code = node.querySelector('code'); const target = code || node;
         const m = (target.className || '').match(/language-([\w+#-]+)/i);
+        const lang = m ? m[1] : (detectLang?.(node) || '');
         const txt = (target.innerText || target.textContent || '').replace(/\n+$/, '');
-        out.push('\n\n```' + (m ? m[1] : '') + '\n' + txt + '\n```\n\n'); return;
+        out.push('\n\n```' + lang + '\n' + txt + '\n```\n\n'); return;
       }
       if (tag === 'code') { out.push('`' + (node.innerText || node.textContent || '') + '`'); return; }
       const h = { h1: '\n\n# ', h2: '\n\n## ', h3: '\n\n### ', h4: '\n\n#### ', h5: '\n\n##### ', h6: '\n\n###### ' }[tag];

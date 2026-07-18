@@ -167,23 +167,6 @@ function startAuroraRelayCore(injectedAdapter) {
     return false;
   }
 
-  // Etiqueta visible del bloque de código (ChatGPT: "Python", "JavaScript", ...)
-  // → identificador corto que highlightCode (renderizar.js, KW_POR_LENGUAJE)
-  // reconoce. Solo los lenguajes con resaltado dedicado importan acá; el resto
-  // cae al KW_DEFAULT de renderizar.js con un fence vacío, como antes.
-  const LANG_LABELS = new Map([
-    ['python', 'python'], ['py', 'python'],
-    ['javascript', 'js'], ['js', 'js'],
-    ['typescript', 'ts'], ['ts', 'ts'],
-    ['go', 'go'], ['golang', 'go'],
-    ['rust', 'rust'], ['rs', 'rust'],
-    ['json', 'json'],
-    ['bash', 'bash'], ['shell', 'bash'], ['sh', 'bash'],
-    ['java', 'java'], ['c++', 'cpp'], ['c#', 'csharp'], ['c', 'c'],
-    ['html', 'html'], ['css', 'css'], ['sql', 'sql'], ['ruby', 'ruby'],
-    ['php', 'php'], ['kotlin', 'kotlin'], ['swift', 'swift'],
-  ]);
-
   // ── DOM → markdown (port fiel del orquestador legacy) ───
   function domToMarkdown(root) {
     if (!root) return '';
@@ -196,18 +179,13 @@ function startAuroraRelayCore(injectedAdapter) {
       if (tag === 'pre') {
         const code = node.querySelector('code'); const target = code || node;
         const m = (target.className || '').match(/language-([\w+#-]+)/i);
-        // ChatGPT no siempre expone el lenguaje como clase language-*: la etiqueta
-        // visible ("Python", "JavaScript") vive en un <div> de texto plano dentro
-        // del header del bloque, sin selector estable. Sin lenguaje en el fence,
-        // highlightCode() (renderizar.js) no resalta nada — el código sale plano
-        // aunque el bloque tenga fondo temizado. Buscar esa etiqueta de texto como
-        // respaldo cuando falta la clase.
-        let lang = m ? m[1] : '';
-        if (!lang) {
-          const etiqueta = [...node.querySelectorAll('div, span')]
-            .find(el => el.children.length === 0 && LANG_LABELS.has((el.textContent || '').trim().toLowerCase()));
-          if (etiqueta) lang = LANG_LABELS.get(etiqueta.textContent.trim().toLowerCase());
-        }
+        // No todo proveedor marca el lenguaje con la clase estándar language-*
+        // (ChatGPT: el <code> queda sin className, lo muestra como texto plano
+        // en el header). Sin lenguaje en el fence, highlightCode (renderizar.js)
+        // no tiene nada que resaltar — el código sale plano aunque el bloque
+        // tenga fondo temizado. domToMarkdown no conoce el DOM de ningún
+        // proveedor: delega en el driver activo si expone el hook.
+        const lang = m ? m[1] : (observe.detectCodeLang?.(node) || '');
         const txt = (target.innerText || target.textContent || '').replace(/\n+$/, '');
         out.push('\n\n```' + lang + '\n' + txt + '\n```\n\n'); return;
       }

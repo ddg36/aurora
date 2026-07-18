@@ -20,6 +20,31 @@
     const button = first(SELECTORS.stop, root);
     return button?.isConnected && !button.hidden && button.getAttribute('aria-hidden') !== 'true' ? button : null;
   };
+  // ChatGPT no marca el lenguaje de un bloque de código con la clase estándar
+  // language-* (el <code> queda sin className) — lo muestra como texto plano
+  // en el header del bloque ("Python", "JavaScript") sin selector ni
+  // data-attribute dedicado. Sin esto, domToMarkdown no captura el fence con
+  // lenguaje y el resaltado de sintaxis de Lyra (highlightCode) no tiene nada
+  // que resaltar: el código sale plano aunque ChatGPT lo pinte con colores.
+  // Heurística por posición, no por clase (frágil, cambia con cada rediseño
+  // de ChatGPT): el primer nodo de texto corto DENTRO del <pre>, antes del
+  // primer <button> del header (evita capturar contenido real del código).
+  const CHATGPT_LANG_LABELS = new Set([
+    'python', 'javascript', 'typescript', 'go', 'golang', 'rust', 'json',
+    'bash', 'shell', 'sh', 'java', 'c++', 'c#', 'c', 'html', 'css', 'sql',
+    'ruby', 'php', 'kotlin', 'swift', 'plaintext', 'text',
+  ]);
+  const chatgptLangLabel = preEl => {
+    const firstBtn = preEl.querySelector('button');
+    for (const el of preEl.querySelectorAll('div, span')) {
+      if (el.children.length !== 0) continue;
+      if (firstBtn && (el.compareDocumentPosition(firstBtn) & Node.DOCUMENT_POSITION_FOLLOWING) === 0) break;
+      const texto = (el.textContent || '').trim().toLowerCase();
+      if (CHATGPT_LANG_LABELS.has(texto)) return texto === 'golang' ? 'go' : texto;
+    }
+    return '';
+  };
+
   const bestTextNode = turn => {
     let best = turn || null;
     let length = -1;
@@ -55,7 +80,7 @@
     readAssistant: turn => {
       const node = bestTextNode(turn);
       const domToMarkdown = globalThis.__auroraRelayV2?.utils?.domToMarkdown;
-      return (domToMarkdown ? domToMarkdown(node) : (node?.innerText || '')).trim();
+      return (domToMarkdown ? domToMarkdown(node, { detectLang: chatgptLangLabel }) : (node?.innerText || '')).trim();
     },
     getTurnId: turn => turn?.getAttribute?.('data-message-id') || turn?.getAttribute?.('data-turn-id') || turn?.id || '',
     isGenerating: () => Boolean(visibleStop()),
@@ -69,6 +94,7 @@
     getGeneratedImages: () => generatedImages(),
     getGeneratedImageSources: () => generatedImages({ includePending: true }),
     isGeneratedImagePending: () => Boolean(first(SELECTORS.imageWork)) && generatedImages().length === 0,
+    detectCodeLang: chatgptLangLabel,
   });
 
   const act = Object.freeze({
