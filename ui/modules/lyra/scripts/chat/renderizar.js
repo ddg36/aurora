@@ -56,11 +56,19 @@ function highlightCode(raw, lang) {
   const kwRe = new RegExp(`\\b(${kwStr})\\b`, 'g');
   const esPython = l === 'py' || l === 'python';
 
+  // El marcador de stash debe ser imposible de confundir con código real: un
+  // \x01<dígitos>\x01 puro chocaba con el resaltado de números — \b(\d+)\b
+  // (línea de abajo) matcheaba el índice DENTRO del marcador (\x01 no es
+  // \w, así que \b cae justo ahí) y lo envolvía en <span class="hl-num">,
+  // dejando el placeholder final \x01(\d+)\x01 roto — nunca se reemplazaba
+  // y el índice numerado con su span quedaba visible como texto crudo.
+  // Con una letra no-dígito pegada al número, \b(\d+)\b ya no matchea el
+  // índice solo (el \b exige borde de palabra, y STASHn no lo tiene ahí).
   const stash = [];
   const guardar = (type, s) => {
     const i = stash.length;
     stash.push(wrap(type, escape(s)));
-    return `\x01${i}\x01`;
+    return `\x01STASH${i}\x01`;
   };
 
   let out = raw
@@ -80,7 +88,7 @@ function highlightCode(raw, lang) {
     .replace(kwRe, m => wrap('kw', m))
     .replace(/\b(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/g, m => wrap('num', m));
 
-  return out.replace(/\x01(\d+)\x01/g, (_, i) => stash[+i]);
+  return out.replace(/\x01STASH(\d+)\x01/g, (_, i) => stash[+i]);
 }
 
 export function renderMarkdownLight(text) {
