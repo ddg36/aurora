@@ -141,8 +141,11 @@ export function Local({ active = true } = {}) {
   const [canvasLang, setCanvasLang]                 = useState('text');
   const [canvasTab, setCanvasTab]                   = useState('codigo');
   const [cloudVisible, setCloudVisible]             = usePersistedState('lyra_cloud_visible', false);
-  const [cloudExpanded, setCloudExpanded]           = useState(false);
-  const [cloudHidden, setCloudHidden]               = useState(false);
+  // Antes useState: Aurora recordaba que el panel estaba activo (cloudVisible,
+  // sí persistido) pero olvidaba en qué modo — mini/oculto/expandido volvía
+  // siempre a mini al recargar, sin importar cómo lo había dejado el usuario.
+  const [cloudExpanded, setCloudExpanded]           = usePersistedState('lyra_cloud_expanded', false);
+  const [cloudHidden, setCloudHidden]               = usePersistedState('lyra_cloud_hidden', false);
   // Altura custom del panel cloud (px). Persistida en la DB (/db/ajustes) vía
   // usePersistedState — NO localStorage — y sincronizada entre superficies por
   // el bus /eventos. Durante el drag se aplica imperativo (sin persistir) para
