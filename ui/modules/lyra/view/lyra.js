@@ -116,6 +116,21 @@ const ICON_MUDO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" s
 const ICON_FIJAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h4l-.5 4.5L11 8H3l2.5-1.5z"/><line x1="7" y1="8" x2="7" y2="12.5"/></svg>';
 const ICON_FIJADO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h4l-.5 4.5L11 8H3l2.5-1.5z"/><line x1="7" y1="8" x2="7" y2="12.5"/></svg>';
 
+// Label de mensajes de proveedor externo (rolLabel/rolLabelFinal): mostraba
+// un glifo fijo (◇/◉/✶/⊕) igual que el header/selector del panel — mismo
+// favicon real acá, con su propio fallback local (el mensaje puede persistir
+// mucho después de que cambiaste de proveedor activo).
+function RolProveedor({ aiId, label }) {
+  const [fallo, setFallo] = useState(false);
+  const src = iconoUrlPara(aiId);
+  return html`
+    ${src && !fallo
+      ? html`<img class="cloud-provider-favicon-inline" src=${src} alt="" onError=${() => setFallo(true)} />`
+      : html`<span>${AI_ICONOS[aiId] || '☁'}</span>`}
+    ${label}
+  `;
+}
+
 function AvatarSlot({ avatar, side }) {
   if (!avatar) return null;
   const mood = avatar.mood ?? 'neutral';
@@ -1308,7 +1323,7 @@ export function Local({ active = true } = {}) {
             : esPiTool
               ? `🔧 pi tool${msg._toolIter ? ` · ${msg._toolIter}/${msg._toolMax || 6}` : ''}`
               : esExterno
-                ? `${AI_ICONOS[cloudAiId] || '☁'} ${AI_LABELS[cloudAiId] || 'AI ext'}`
+                ? html`<${RolProveedor} aiId=${cloudAiId} label=${AI_LABELS[cloudAiId] || 'AI ext'} />`
                 : '🦙 Lyra';
 
           if (msg.role === 'assistant') {
@@ -1419,7 +1434,7 @@ export function Local({ active = true } = {}) {
           const rolLabelFinal = msg.role === 'user'
             ? '👤 Tú'
             : esExternoFinal
-              ? `${AI_ICONOS[cloudAiId] || '☁'} ${AI_LABELS[cloudAiId] || 'AI ext'}`
+              ? html`<${RolProveedor} aiId=${cloudAiId} label=${AI_LABELS[cloudAiId] || 'AI ext'} />`
               : '🦙 Lyra';
           return html`
             <div key=${msgKey} class=${'message ' + msg.role + (esExternoFinal ? ' direct-ai' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>

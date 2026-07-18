@@ -355,6 +355,7 @@
   color: var(--text-muted);
   letter-spacing: 0.3px;
 }
+.message-header .role .cloud-provider-favicon-inline { vertical-align: -2px; margin-right: 2px; }
 .message-header .time { margin-left: auto; opacity: 0.5; }
 
 /* ── Contenido ────────────────────────────────────────── */
