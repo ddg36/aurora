@@ -80,6 +80,7 @@ function iconoUrlPara(aiId) {
 const ICON_OCULTAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c1.3-2.3 3.2-3.5 5-3.5s3.7 1.2 5 3.5c-1.3 2.3-3.2 3.5-5 3.5S3.3 9.3 2 7z"/><circle cx="7" cy="7" r="1.6"/><line x1="2" y1="12" x2="12" y2="2"/></svg>';
 const ICON_MOSTRAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c1.3-2.3 3.2-3.5 5-3.5s3.7 1.2 5 3.5c-1.3 2.3-3.2 3.5-5 3.5S3.3 9.3 2 7z"/><circle cx="7" cy="7" r="1.6"/></svg>';
 const ICON_COLAPSAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,5 7,9 11,5"/></svg>';
+const ICON_EXPANDIR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="1.5,5 1.5,1.5 5,1.5"/><polyline points="9,1.5 12.5,1.5 12.5,5"/><polyline points="12.5,9 12.5,12.5 9,12.5"/><polyline points="5,12.5 1.5,12.5 1.5,9"/></svg>';
 // Mover el panel a cabecera (arriba del chat) o de vuelta al pie (entre el
 // chat y el composer, default). Doble flecha vertical = "cambiar de lado".
 const ICON_A_CABECERA = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 7,2 11,6"/><line x1="7" y1="2" x2="7" y2="9"/><line x1="2.5" y1="12" x2="11.5" y2="12"/></svg>';
@@ -115,6 +116,13 @@ const ICON_HABLAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"
 const ICON_MUDO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.5h2.3L7.5 3v8L4.3 8.5H2z"/><line x1="9.5" y1="4.5" x2="12.5" y2="9.5"/><line x1="12.5" y1="4.5" x2="9.5" y2="9.5"/></svg>';
 const ICON_FIJAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h4l-.5 4.5L11 8H3l2.5-1.5z"/><line x1="7" y1="8" x2="7" y2="12.5"/></svg>';
 const ICON_FIJADO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h4l-.5 4.5L11 8H3l2.5-1.5z"/><line x1="7" y1="8" x2="7" y2="12.5"/></svg>';
+// Roles de mensaje: 👤 Tú / 🦙 Lyra — mismo problema, mismo tratamiento.
+// ICON_USUARIO reusa el mismo path que footer/registry.js (SVG_USUARIO) para
+// no inventar un segundo símbolo de "persona" en la app.
+const ICON_USUARIO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="4.2" r="2.4"/><path d="M2 12.5c0-2.8 2.2-5 5-5s5 2.2 5 5"/></svg>';
+const ICON_LYRA = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="none"><path d="M8 1L3 8h3.2L5.5 13l5.5-8H7.8L9 1H8z"/></svg>';
+const rolTu = () => html`<span dangerouslySetInnerHTML=${{ __html: ICON_USUARIO }}></span> Tú`;
+const rolLyra = () => html`<span dangerouslySetInnerHTML=${{ __html: ICON_LYRA }}></span> Lyra`;
 
 // Label de mensajes de proveedor externo (rolLabel/rolLabelFinal): mostraba
 // un glifo fijo (◇/◉/✶/⊕) igual que el header/selector del panel — mismo
@@ -1319,12 +1327,12 @@ export function Local({ active = true } = {}) {
           const esExterno = msg._via === 'direct-ai' || msg._via === 'duo-external';
           const esPiTool = msg._via === 'pi-tool';
           const rolLabel = msg.role === 'user'
-            ? '👤 Tú'
+            ? rolTu()
             : esPiTool
-              ? `🔧 pi tool${msg._toolIter ? ` · ${msg._toolIter}/${msg._toolMax || 6}` : ''}`
+              ? html`<span dangerouslySetInnerHTML=${{ __html: ICON_HERRAMIENTAS }}></span> pi tool${msg._toolIter ? ` · ${msg._toolIter}/${msg._toolMax || 6}` : ''}`
               : esExterno
                 ? html`<${RolProveedor} aiId=${cloudAiId} label=${AI_LABELS[cloudAiId] || 'AI ext'} />`
-                : '🦙 Lyra';
+                : rolLyra();
 
           if (msg.role === 'assistant') {
             const parsed = combinarPartesRicas(parsearMensajeRico(msg.content));
@@ -1432,10 +1440,10 @@ export function Local({ active = true } = {}) {
 
           const esExternoFinal = msg._via === 'direct-ai' || msg._via === 'duo-external';
           const rolLabelFinal = msg.role === 'user'
-            ? '👤 Tú'
+            ? rolTu()
             : esExternoFinal
               ? html`<${RolProveedor} aiId=${cloudAiId} label=${AI_LABELS[cloudAiId] || 'AI ext'} />`
-              : '🦙 Lyra';
+              : rolLyra();
           return html`
             <div key=${msgKey} class=${'message ' + msg.role + (esExternoFinal ? ' direct-ai' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
               <div class="message-header">
@@ -1477,7 +1485,7 @@ export function Local({ active = true } = {}) {
         ${(streamingVal || asistenteEnVivo.blocks.length > 0) && html`
           <div class="message assistant streaming">
             <div class="message-header">
-              <span class="role">🦙 Lyra</span>
+              <span class="role">${rolLyra()}</span>
               <span class="streaming-dot">●</span>
             </div>
             ${asistenteEnVivo.blocks.map((b, i) => {
@@ -1533,7 +1541,7 @@ export function Local({ active = true } = {}) {
 
         ${cargandoVal && !streamingVal && !thinkingVal && !cloudGenerandoVal && html`
           <div class="message assistant loading">
-            <div class="message-header"><span class="role">🦙 Lyra</span></div>
+            <div class="message-header"><span class="role">${rolLyra()}</span></div>
             <div class="message-content">
               <span class="typing-indicator">◌ Pensando…</span>
             </div>
@@ -1656,7 +1664,12 @@ export function Local({ active = true } = {}) {
                   dangerouslySetInnerHTML=${{ __html: cloudPosition === 'top' ? ICON_AL_PIE : ICON_A_CABECERA }}
                 ></button>
               `}
-              <button class="cloud-mini-btn" title=${cloudExpanded ? 'Contraer a mini' : 'Expandir'} onClick=${() => { setCloudExpanded(v => !v); setCloudHidden(false); }}>${cloudExpanded ? '▾' : '⛶'}</button>
+              <button
+                class="cloud-mini-btn"
+                title=${cloudExpanded ? 'Contraer a mini' : 'Expandir'}
+                onClick=${() => { setCloudExpanded(v => !v); setCloudHidden(false); }}
+                dangerouslySetInnerHTML=${{ __html: cloudExpanded ? ICON_COLAPSAR : ICON_EXPANDIR }}
+              ></button>
               <button class="cloud-mini-btn" title="Recargar" onClick=${() => recargarCloudIframe(cloudUrl)}>↺</button>
               <button class="cloud-mini-btn cloud-mini-btn--close" title="Cerrar" onClick=${closeCloud}>✕</button>
             </div>
