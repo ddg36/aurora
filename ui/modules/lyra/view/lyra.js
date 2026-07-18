@@ -71,6 +71,16 @@ const ICON_OCULTAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none
 const ICON_MOSTRAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c1.3-2.3 3.2-3.5 5-3.5s3.7 1.2 5 3.5c-1.3 2.3-3.2 3.5-5 3.5S3.3 9.3 2 7z"/><circle cx="7" cy="7" r="1.6"/></svg>';
 const ICON_COLAPSAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,5 7,9 11,5"/></svg>';
 
+// Fila de acciones del composer: usaba +, /, 🎤, ■, ↑ y el emoji 👁 mezclados
+// con texto plano — inconsistente con el resto de la interfaz (NavBar/Footer,
+// SVG monocromo viewBox 14x14). Mismo lenguaje visual para toda la fila.
+const ICON_MAS = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="2" x2="7" y2="12"/><line x1="2" y1="7" x2="12" y2="7"/></svg>';
+const ICON_COMANDO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="5,2 2,7 5,12"/><polyline points="9,2 12,7 9,12"/></svg>';
+const ICON_MIC = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="1.5" width="4" height="7" rx="2"/><path d="M3 7.5a4 4 0 008 0"/><line x1="7" y1="11.5" x2="7" y2="13"/><line x1="4.5" y1="13" x2="9.5" y2="13"/></svg>';
+const ICON_MIC_STOP = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"/></svg>';
+const ICON_ENVIAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="12" x2="7" y2="2"/><polyline points="3,6 7,2 11,6"/></svg>';
+const ICON_DETENER = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/></svg>';
+
 function AvatarSlot({ avatar, side }) {
   if (!avatar) return null;
   const mood = avatar.mood ?? 'neutral';
@@ -1766,13 +1776,15 @@ export function Local({ active = true } = {}) {
                       setPlusOpen(null);
                     }
                   }}
-                >+</button>
+                  dangerouslySetInnerHTML=${{ __html: ICON_MAS }}
+                ></button>
               </div>
               <button
                 class=${'composer-icon-btn' + (previewMd ? ' text-aurora-accent' : '')}
                 title="Vista previa Markdown"
                 onClick=${() => setPreviewMd(p => !p)}
-              >👁</button>
+                dangerouslySetInnerHTML=${{ __html: ICON_MOSTRAR }}
+              ></button>
               <button
                 class=${'composer-icon-btn' + (slashSel >= 0 ? ' text-aurora-accent' : '')}
                 title="Comandos pi (/)"
@@ -1783,7 +1795,8 @@ export function Local({ active = true } = {}) {
                   setSlashSel(0);
                   document.querySelector('.composer-textarea')?.focus();
                 }}
-              >/</button>
+                dangerouslySetInnerHTML=${{ __html: ICON_COMANDO }}
+              ></button>
               ${plusOpen && html`
                 <div
                   class="composer-plus-menu"
@@ -1830,15 +1843,16 @@ export function Local({ active = true } = {}) {
                 class=${'composer-icon-btn' + (grabandoVal ? ' composer-icon-btn--active' : '')}
                 onClick=${toggleMic}
                 title=${transcVal ? 'Transcribiendo…' : (grabandoVal ? 'Soltar para transcribir' : 'Dictar')}
-              >${transcVal ? '…' : (grabandoVal ? '⏹' : '🎤')}</button>
+              >${transcVal ? '…' : html`<span dangerouslySetInnerHTML=${{ __html: grabandoVal ? ICON_MIC_STOP : ICON_MIC }}></span>`}</button>
 
               ${cargandoVal
-                ? html`<button class="composer-send-btn composer-send-btn--stop" onClick=${detenerGeneracion} title="Detener">■</button>`
+                ? html`<button class="composer-send-btn composer-send-btn--stop" onClick=${detenerGeneracion} title="Detener" dangerouslySetInnerHTML=${{ __html: ICON_DETENER }}></button>`
                 : html`<button
                     class="composer-send-btn"
                     onClick=${() => enviarMensaje()}
                     disabled=${(!mensaje.trim() && pendingImagesVal.length === 0 && pendingFiles.length === 0) || (offline && !cloudVisible)}
-                  >↑</button>`
+                    dangerouslySetInnerHTML=${{ __html: ICON_ENVIAR }}
+                  ></button>`
               }
             </div>
           </div>
