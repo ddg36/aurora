@@ -90,6 +90,11 @@ const ICON_MIC = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" st
 const ICON_MIC_STOP = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"/></svg>';
 const ICON_ENVIAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="12" x2="7" y2="2"/><polyline points="3,6 7,2 11,6"/></svg>';
 const ICON_DETENER = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/></svg>';
+// Botón toggle Cloud: ☁ emoji fijo + label 'Cloud' cuando está apagado —
+// una vez conectado a un proveedor debe mostrar SU favicon (ver
+// iconoUrlPara), pero desactivado no hay proveedor que mostrar; una nube
+// SVG monocromo mantiene el mismo lenguaje visual sin el emoji.
+const ICON_NUBE = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 10.5h6a2.3 2.3 0 000-4.6 3.3 3.3 0 00-6.3-1 2.6 2.6 0 00-1.7 4.7"/></svg>';
 
 // Header y acciones de cada mensaje: 📋/✎/↻/🔊/📌/📍/🔇 — mismo problema,
 // mismo tratamiento (SVG monocromo 14x14).
@@ -1622,7 +1627,12 @@ export function Local({ active = true } = {}) {
               onClick=${() => cloudVisible ? closeCloud() : toggleCloud()}
               onContextMenu=${e => { e.preventDefault(); setCloudMenu({ x: e.clientX, y: e.clientY }); }}
               title=${cloudVisible ? 'Clic derecho: opciones · Clic: cerrar' : 'Activar Cloud Backend'}
-            >☁ ${cloudVisible ? cloudAiLabel : 'Cloud'}</button>
+            >
+              ${cloudVisible && iconoUrlPara(cloudAiId) && !faviconFallo[cloudAiId]
+                ? html`<img class="cloud-provider-favicon-inline" src=${iconoUrlPara(cloudAiId)} alt="" onError=${() => setFaviconFallo(f => ({ ...f, [cloudAiId]: true }))} />`
+                : html`<span dangerouslySetInnerHTML=${{ __html: ICON_NUBE }}></span>`}
+              ${cloudVisible ? cloudAiLabel : 'Cloud'}
+            </button>
             ${cloudVisible && html`
               <button
                 style="background:transparent;border:none;border-left:1px solid rgba(255,255,255,0.2);cursor:pointer;padding:0 6px;height:100%;color:inherit;display:flex;align-items:center"
