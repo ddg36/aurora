@@ -72,6 +72,20 @@ html[data-theme-mode="light"] .aurora-ui-shell :is(
 html[data-theme-mode="light"] .aurora-ui-shell .message.user {
   background-color: color-mix(in srgb, var(--aurora-accent) 10%, rgba(255,255,255,.9)) !important;
 }
+
+/* Código: en oscuro, blanco-transparente sobre --aurora-bg (siempre negro)
+   da contraste. En claro el fondo real es claro, así que ese mismo blanco
+   transparente queda casi invisible — el bloque de código (pre) y el código
+   inline (code) necesitan su propio fondo oscuro fijo en este modo, no
+   heredado de --aurora-bg (que no cambia con el tema). */
+html[data-theme-mode="light"] .message-content pre,
+html[data-theme-mode="light"] .message-content code {
+  background-color: rgba(15,23,42,.9) !important;
+  color: #e2e8f0 !important;
+}
+html[data-theme-mode="light"] .message-content pre code {
+  background: none !important;
+}
 html[data-theme-mode="dark"] .aurora-ui-shell :is(.message,.chat-input-area,.cloud-panel,.nav-rail) {
   backdrop-filter: blur(11px) saturate(.9);
   -webkit-backdrop-filter: blur(11px) saturate(.9);
