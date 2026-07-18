@@ -1,5 +1,5 @@
 const { Component } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, fitCanvas} from '../lib.js';
 
 // Nebulosa suave con estrellas titilantes.
 export class Nebula extends Component {

@@ -4,6 +4,8 @@
 // 'sniffer', clave = host). Al reabrir LLM Cloud, Aurora restaura ese hilo.
 // window.top === window → tab real del usuario, no iframe: no se espía.
 (() => {
+  // Guard: chrome.runtime no está disponible en todos los contextos.
+  if (!chrome?.runtime) return;
   if (window.top === window) return;
   // Reporta SOLO iframes montados por Aurora: el padre inmediato es la UI
   // (localhost:7779 — cubre el Cloud Backend de Lyra, anidado en /ui) o una

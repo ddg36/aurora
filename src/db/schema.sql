@@ -1,6 +1,6 @@
 -- ══════════════════════════════════════════
---  AIHUB.DB — Schema v5
---  Actualizado 2026-06-09 — v5
+--  AIHUB.DB — Schema v11
+--  Actualizado 2026-07-17 — v11
 -- ══════════════════════════════════════════
 
 -- ── MIGRACIONES ───────────────────────────
@@ -53,6 +53,7 @@ CREATE TABLE mensajes (
   chat_id     INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
   rol         TEXT    NOT NULL CHECK(rol IN ('user','assistant','system')),
   contenido   TEXT    NOT NULL,
+  estructura_json TEXT,                    -- turno Pi web v1; contenido sigue siendo texto/FTS
   tokens_est  INTEGER,
   creado_en   INTEGER NOT NULL DEFAULT (unixepoch())
 );
@@ -175,6 +176,47 @@ CREATE TABLE cloud_mensajes (
   contenido    TEXT    NOT NULL,
   capturado_en INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+-- ── CLOUD AGENT TURN JOURNAL ────────────────
+-- Snapshot del diálogo: prompt pendiente y punto de reanudación. La ejecución
+-- de tools y su idempotencia pertenecen exclusivamente a json_family_runs.
+CREATE TABLE cloud_agent_turns (
+  usuario_id   INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  turn_id      TEXT    NOT NULL,
+  conv_id      INTEGER REFERENCES cloud_conversaciones(id) ON DELETE SET NULL,
+  ai_id        TEXT,
+  url          TEXT,
+  pane_id      TEXT    NOT NULL DEFAULT 'cloud',
+  status       TEXT    NOT NULL DEFAULT 'prepared',
+  iteration    INTEGER NOT NULL DEFAULT 0,
+  request_id   TEXT,
+  prompt       TEXT,
+  next_prompt  TEXT,
+  state_json   TEXT,
+  created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+  completed_at INTEGER,
+  PRIMARY KEY (usuario_id, turn_id)
+);
+CREATE INDEX idx_cloud_turn_pending
+  ON cloud_agent_turns(usuario_id, pane_id, status, updated_at);
+
+-- Request completo de JSON Family: evita repetir tools con efectos cuando un
+-- relay reintenta o Aurora se recarga entre ejecución y entrega.
+CREATE TABLE json_family_runs (
+  usuario_id   INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  request_id   TEXT    NOT NULL,
+  input_hash   TEXT    NOT NULL,
+  status       TEXT    NOT NULL DEFAULT 'running',
+  response_json TEXT,
+  created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+  completed_at INTEGER,
+  delivered_at INTEGER,
+  PRIMARY KEY (usuario_id, request_id)
+);
+CREATE INDEX idx_json_family_runs_status
+  ON json_family_runs(usuario_id, status, updated_at);
 
 -- ── AJUSTES clave/valor ───────────────────
 -- Absorbe: theme, background, lastView, llama_instruccion,

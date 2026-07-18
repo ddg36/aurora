@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 // Puntos de luz que orbitan suavemente.
 export class Fireflies extends Component {
@@ -19,8 +19,9 @@ export class Fireflies extends Component {
     let W, H, flies;
 
     const resize = () => {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const makeFly = () => ({
@@ -63,7 +64,7 @@ export class Fireflies extends Component {
         ctx.fillStyle = `rgba(255,255,255,${alpha})`;
         ctx.fill();
       }
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     this._resize = resize;
@@ -74,7 +75,7 @@ export class Fireflies extends Component {
   }
 
   componentWillUnmount() {
-    cancelAnimationFrame(this._raf);
+    cancelSceneFrame(this._raf);
     window.removeEventListener('resize', this._resize);
     this.accent.stop();
   }

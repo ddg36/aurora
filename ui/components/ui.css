@@ -29,3 +29,8 @@
 @import '../modules/md-reader/md-reader.css';
 
 @import './globals/theme-mode.css';
+@import './globals/gothic.css';
+
+@import './themes/scenes.css';
+@import './themes/hud/interface.css';
+@import './globals/category-skins.css';

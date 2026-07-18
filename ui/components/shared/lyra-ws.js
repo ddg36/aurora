@@ -1,7 +1,13 @@
-const BASE_WS = `ws://${location.hostname}:7779/lyra`;
 const INITIAL_RECONNECT_MS   = 1000;
 const MAX_RECONNECT_MS       = 30000;
 const MAX_RECONNECT_ATTEMPTS = 10;
+
+function wsUrl() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const token = localStorage.getItem('aurora_token') || '';
+  const query = token ? `?token=${encodeURIComponent(token)}` : '';
+  return `${protocol}//${location.hostname}:7779/lyra${query}`;
+}
 
 let _ws                = null;
 let _handlers          = null;
@@ -12,6 +18,41 @@ let _widgetCb          = null;
 let _reconnectAttempts = 0;
 let _reconnectTimer    = null;
 let _intentionalClose  = false;
+const PI_EVENT_TRACE_LIMIT = 300;
+const _piEventTrace = [];
+
+function _tracePiEvent(envelope) {
+  const event = envelope?.event || {};
+  const resultContent = Array.isArray(event?.result?.content)
+    ? event.result.content.map(item => item?.type || typeof item)
+    : [];
+  _piEventTrace.push({
+    at: Date.now(),
+    protocolVersion: envelope?.protocolVersion,
+    runtime: envelope?.runtime,
+    seq: envelope?.seq,
+    type: event.type,
+    assistantEventType: event?.assistantMessageEvent?.type,
+    toolCallId: event.toolCallId || event?.assistantMessageEvent?.toolCall?.id,
+    toolName: event.toolName || event?.assistantMessageEvent?.toolCall?.name,
+    isError: event.isError ?? event?.result?.isError,
+    resultContent,
+  });
+  if (_piEventTrace.length > PI_EVENT_TRACE_LIMIT) {
+    _piEventTrace.splice(0, _piEventTrace.length - PI_EVENT_TRACE_LIMIT);
+  }
+}
+
+// Diagnóstico no destructivo para SOL-debug-tools. Sólo expone metadatos del
+// protocolo; nunca conserva texto completo, details ni imágenes/base64.
+export function getPiEventTrace(limit = 100) {
+  const safeLimit = Math.max(0, Math.min(Number(limit) || 0, PI_EVENT_TRACE_LIMIT));
+  return _piEventTrace.slice(-safeLimit).map(item => ({ ...item, resultContent: [...item.resultContent] }));
+}
+
+export function clearPiEventTrace() {
+  _piEventTrace.length = 0;
+}
 
 function _setOnline(online) {
   import('../../store.js').then(({ nexusOnline }) => { nexusOnline.value = online; });
@@ -46,7 +87,7 @@ function _connectInternal() {
       _ws.addEventListener('error', () => reject(new Error('conectando')), { once: true });
       return;
     }
-    const ws = new WebSocket(BASE_WS);
+    const ws = new WebSocket(wsUrl());
     _ws = ws;
     ws.addEventListener('open', () => {
       _reconnectAttempts = 0;
@@ -120,16 +161,17 @@ export function getConnectionState() {
 
 export async function sendToLyra({
   message, images, model, system = '', history = [], tools = [], pure_system = false, chat_id = null,
-  onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
+  onPiEvent, onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
   onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
   onSessionStats, onHubAction, onConfirmRequest, onCommandResult
 }) {
   const ws = await connectLyra();
   return new Promise((resolve, reject) => {
     _handlers = {
-      onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
+      onPiEvent, onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
       onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
-      onSessionStats, onHubAction, onConfirmRequest, onCommandResult, resolve, reject
+      onSessionStats, onHubAction, onConfirmRequest, onCommandResult, resolve, reject,
+      _piNativeSeen: false,
     };
     const payload = { type: 'chat', message, model, system, history, tools, pure_system, chat_id };
     if (images && images.length > 0) {
@@ -150,8 +192,14 @@ export function confirmTool(approved) {
 // curso) — solo manda el texto. El router decide steer vs prompt del lado
 // servidor según si ya hay un chat corriendo; los tokens resultantes siguen
 // llegando a los handlers YA activos del sendToLyra() en curso.
-export function enviarSteer(message, chat_id) {
-  _ws?.send(JSON.stringify({ type: 'chat', message, chat_id, system: '', history: [], tools: [] }));
+export function enviarSteer(message, chat_id, images = []) {
+  const contenido = images?.length
+    ? [
+        { type: 'text', text: message },
+        ...images.map(img => ({ type: 'image_url', image_url: { url: img } })),
+      ]
+    : message;
+  _ws?.send(JSON.stringify({ type: 'chat', message: contenido, chat_id, system: '', history: [], tools: [] }));
 }
 
 export function resetLyraSession() {
@@ -217,19 +265,28 @@ export function fetchCommands() {
 }
 
 function _dispatch(msg) {
+  if (msg.type === 'pi_event') _tracePiEvent(msg);
   if (!_handlers) return;
   const {
-    onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
+    onPiEvent, onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
     onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
     onSessionStats, onHubAction, onConfirmRequest, onCommandResult, resolve, reject
   } = _handlers;
   switch (msg.type) {
+    case 'pi_event':
+      _handlers._piNativeSeen = true;
+      onPiEvent?.(msg.event, msg);
+      break;
     case 'command_result': onCommandResult?.(msg.command, msg.interactive, msg.data); break;
-    case 'token':          onToken?.(msg.content); break;
-    case 'thinking':       onThinking?.(msg.content); break;
-    case 'tool_call':      onToolCall?.(msg.name, msg.args, msg.risk); break;
-    case 'tool_result':    onToolResult?.(msg.name, msg.output, msg.is_error); break;
-    case 'tool_progress':  onToolProgress?.(msg.name, msg.partial); break;
+    // Si el consumidor entiende el contrato Pi nativo, no entregarle también
+    // el espejo legacy: produciría bloques duplicados y volvería a emparejar
+    // tools por nombre. Otros módulos continúan usando estos callbacks durante
+    // la migración incremental de la Épica 19.
+    case 'token':          if (!_handlers._piNativeSeen) onToken?.(msg.content); break;
+    case 'thinking':       if (!_handlers._piNativeSeen) onThinking?.(msg.content); break;
+    case 'tool_call':      if (!_handlers._piNativeSeen) onToolCall?.(msg.name, msg.args, msg.risk); break;
+    case 'tool_result':    if (!_handlers._piNativeSeen) onToolResult?.(msg.name, msg.output, msg.is_error); break;
+    case 'tool_progress':  if (!_handlers._piNativeSeen) onToolProgress?.(msg.name, msg.partial); break;
     case 'message_start':  onMessageStart?.(msg.role); break;
     case 'message_end':    onMessageEnd?.(msg.role, msg.stop_reason, msg.usage, msg.tokens_per_sec); break;
     case 'agent_start':    onAgentStart?.(); break;

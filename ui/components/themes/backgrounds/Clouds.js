@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 const TAU = Math.PI * 2;
 
@@ -108,8 +108,9 @@ export class Clouds extends Component {
     let W = 0, H = 0, t = 0;
 
     const resize = () => {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const draw = () => {
@@ -156,7 +157,7 @@ export class Clouds extends Component {
       }
       ctx.globalAlpha = 1;
 
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     this._resize = resize;
@@ -166,7 +167,7 @@ export class Clouds extends Component {
   }
 
   componentWillUnmount() {
-    cancelAnimationFrame(this._raf);
+    cancelSceneFrame(this._raf);
     window.removeEventListener('resize', this._resize);
     this.accent.stop();
   }

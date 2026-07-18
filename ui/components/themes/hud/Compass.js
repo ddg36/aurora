@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 // Compass — brújula ártica con agujas animadas y marcadores cardinales. Temática glaciar.
 export class Compass extends Component {
@@ -23,8 +23,9 @@ export class Compass extends Component {
     let nextJitter = 0;
 
     const resize = () => {
-      W = canvas.width  = canvas.offsetWidth  || window.innerWidth;
-      H = canvas.height = canvas.offsetHeight || window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const CX = () => W - 65;
@@ -33,7 +34,7 @@ export class Compass extends Component {
 
     let raf;
     const draw = () => {
-      raf = requestAnimationFrame(draw);
+      raf = sceneFrame(draw);
       t++;
       ctx.clearRect(0, 0, W, H);
 
@@ -170,7 +171,7 @@ export class Compass extends Component {
     draw();
     this._ro = new ResizeObserver(resize);
     this._ro.observe(canvas);
-    this._stop = () => { cancelAnimationFrame(raf); this._ro.disconnect(); };
+    this._stop = () => { cancelSceneFrame(raf); this._ro.disconnect(); };
   }
 
   componentWillUnmount() { this._stop?.(); this.accent.stop(); }

@@ -1,73 +1,78 @@
-html[data-theme-mode="light"] .bg-black\/20,
-html[data-theme-mode="light"] .bg-black\/30 {
-  background-color: rgba(255,255,255,0.68) !important;
-}
+/* Compatibilidad de utilidades legacy en modo claro. Los módulos antiguos
+   usaban clases Tailwind literales pensadas sólo para fondo negro. */
+html[data-theme-mode="light"] .bg-black\/10 { background-color: rgba(255,255,255,.52) !important; }
+html[data-theme-mode="light"] .bg-black\/20 { background-color: rgba(255,255,255,.64) !important; }
+html[data-theme-mode="light"] .bg-black\/25 { background-color: rgba(255,255,255,.68) !important; }
+html[data-theme-mode="light"] .bg-black\/30 { background-color: rgba(255,255,255,.72) !important; }
+html[data-theme-mode="light"] .bg-black\/40 { background-color: rgba(255,255,255,.78) !important; }
+html[data-theme-mode="light"] .bg-black\/50 { background-color: rgba(255,255,255,.82) !important; }
+html[data-theme-mode="light"] .bg-black\/60 { background-color: rgba(255,255,255,.86) !important; }
+html[data-theme-mode="light"] .bg-black\/70 { background-color: rgba(255,255,255,.90) !important; }
+html[data-theme-mode="light"] .bg-black\/80 { background-color: rgba(255,255,255,.94) !important; }
 
-html[data-theme-mode="light"] .bg-white\/5 {
-  background-color: rgba(15,23,42,0.045) !important;
-}
+html[data-theme-mode="light"] .bg-white\/5  { background-color: rgba(15,23,42,.045) !important; }
+html[data-theme-mode="light"] .bg-white\/10 { background-color: rgba(15,23,42,.075) !important; }
+html[data-theme-mode="light"] .bg-white\/15 { background-color: rgba(15,23,42,.105) !important; }
+html[data-theme-mode="light"] .bg-white\/20 { background-color: rgba(15,23,42,.135) !important; }
+html[data-theme-mode="light"] .bg-white\/30 { background-color: rgba(15,23,42,.19) !important; }
 
-html[data-theme-mode="light"] .bg-white\/10 {
-  background-color: rgba(15,23,42,0.075) !important;
-}
-
-html[data-theme-mode="light"] .bg-white\/15 {
-  background-color: rgba(15,23,42,0.11) !important;
-}
-
-html[data-theme-mode="light"] .bg-white\/20 {
-  background-color: rgba(15,23,42,0.14) !important;
-}
-
-html[data-theme-mode="light"] .border-white\/5,
-html[data-theme-mode="light"] .border-white\/10 {
-  border-color: rgba(15,23,42,0.1) !important;
-}
-
-html[data-theme-mode="light"] .border-white\/30 {
-  border-color: rgba(15,23,42,0.22) !important;
-}
+html[data-theme-mode="light"] .border-white\/5  { border-color: rgba(15,23,42,.075) !important; }
+html[data-theme-mode="light"] .border-white\/10 { border-color: rgba(15,23,42,.10) !important; }
+html[data-theme-mode="light"] .border-white\/20 { border-color: rgba(15,23,42,.16) !important; }
+html[data-theme-mode="light"] .border-white\/25 { border-color: rgba(15,23,42,.19) !important; }
+html[data-theme-mode="light"] .border-white\/30 { border-color: rgba(15,23,42,.22) !important; }
 
 html[data-theme-mode="light"] .text-white,
-html[data-theme-mode="light"] .text-white\/80 {
-  color: var(--aurora-text) !important;
-}
-
+html[data-theme-mode="light"] .text-white\/90,
+html[data-theme-mode="light"] .text-white\/80 { color: var(--aurora-text) !important; }
 html[data-theme-mode="light"] .text-white\/70,
 html[data-theme-mode="light"] .text-white\/60,
-html[data-theme-mode="light"] .text-white\/50 {
-  color: var(--aurora-text-muted) !important;
-}
-
+html[data-theme-mode="light"] .text-white\/50,
+html[data-theme-mode="light"] .text-white\/45 { color: var(--aurora-text-muted) !important; }
 html[data-theme-mode="light"] .text-white\/40,
 html[data-theme-mode="light"] .text-white\/35,
-html[data-theme-mode="light"] .text-white\/30 {
-  color: var(--aurora-text-dim) !important;
-}
+html[data-theme-mode="light"] .text-white\/30,
+html[data-theme-mode="light"] .text-white\/25 { color: var(--aurora-text-dim) !important; }
 
 html[data-theme-mode="light"] .hover\:text-white\/80:hover,
-html[data-theme-mode="light"] .hover\:text-white\/70:hover {
-  color: var(--aurora-text) !important;
-}
-
+html[data-theme-mode="light"] .hover\:text-white\/70:hover { color: var(--aurora-text) !important; }
 html[data-theme-mode="light"] .hover\:bg-white\/5:hover,
-html[data-theme-mode="light"] .hover\:bg-white\/20:hover {
-  background-color: rgba(15,23,42,0.085) !important;
-}
+html[data-theme-mode="light"] .hover\:bg-white\/20:hover { background-color: rgba(15,23,42,.085) !important; }
 
 .aurora-bg-layer,
-.aurora-hud-layer {
-  transition: opacity .18s ease, filter .18s ease;
+.aurora-hud-layer { transition: opacity .22s ease, filter .22s ease; }
+html[data-theme-mode="light"] .aurora-bg-layer { opacity: 1; filter: none; mix-blend-mode: normal; }
+html[data-theme-mode="light"] .aurora-hud-layer { opacity: .68; filter: saturate(.9); mix-blend-mode: normal; }
+html[data-theme-mode="dark"] .aurora-hud-layer { opacity: .82; }
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-bg-layer, .aurora-hud-layer { transition: none !important; }
 }
 
-html[data-theme-mode="light"] .aurora-bg-layer {
-  opacity: 1;
-  filter: none;
-  mix-blend-mode: normal;
-}
 
-html[data-theme-mode="light"] .aurora-hud-layer {
-  opacity: .72;
-  filter: none;
-  mix-blend-mode: normal;
+/* Legibilidad de interfaz sobre escenas claras u oscuras. No tapa el fondo:
+   aumenta material/blur sólo en componentes que contienen texto. */
+html[data-theme-mode="light"] .aurora-ui-shell :is(
+  .nav-rail,
+  .message,
+  .chat-input-area,
+  .cloud-panel,
+  .llama-params-panel,
+  .llama-history-panel,
+  .llama-toolbar-panel,
+  .canvas-panel,
+  section > .bg-white\/5
+) {
+  background-color: rgba(255,255,255,.78) !important;
+  border-color: rgba(15,23,42,.13) !important;
+  box-shadow: 0 8px 28px rgba(15,23,42,.075), inset 0 1px 0 rgba(255,255,255,.72);
+  backdrop-filter: blur(15px) saturate(.86);
+  -webkit-backdrop-filter: blur(15px) saturate(.86);
+}
+html[data-theme-mode="light"] .aurora-ui-shell .message.user {
+  background-color: color-mix(in srgb, var(--aurora-accent) 10%, rgba(255,255,255,.9)) !important;
+}
+html[data-theme-mode="dark"] .aurora-ui-shell :is(.message,.chat-input-area,.cloud-panel,.nav-rail) {
+  backdrop-filter: blur(11px) saturate(.9);
+  -webkit-backdrop-filter: blur(11px) saturate(.9);
 }

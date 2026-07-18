@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 // Ember — brasas y runas ardientes en los bordes. Temática infernal.
 export class Ember extends Component {
@@ -45,13 +45,14 @@ export class Ember extends Component {
     const edgeEmbers = Array.from({ length: 30 }, makeEdgeEmber);
 
     const resize = () => {
-      W = canvas.width  = canvas.offsetWidth  || window.innerWidth;
-      H = canvas.height = canvas.offsetHeight || window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     let raf;
     const draw = () => {
-      raf = requestAnimationFrame(draw);
+      raf = sceneFrame(draw);
       t++;
       ctx.clearRect(0, 0, W, H);
 
@@ -125,7 +126,7 @@ export class Ember extends Component {
     draw();
     this._ro = new ResizeObserver(resize);
     this._ro.observe(canvas);
-    this._stop = () => { cancelAnimationFrame(raf); this._ro.disconnect(); };
+    this._stop = () => { cancelSceneFrame(raf); this._ro.disconnect(); };
   }
 
   componentWillUnmount() { this._stop?.(); this.accent.stop(); }

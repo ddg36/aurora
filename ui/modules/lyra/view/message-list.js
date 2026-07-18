@@ -89,7 +89,11 @@ export function MessageList({
             : '🦙 Lyra';
 
         if (msg.role === 'assistant') {
-          const parsed = combinarPartesRicas(parsearMensajeRico(msg.content));
+          const parsed = Array.isArray(msg._piTurn?.blocks)
+            ? msg._piTurn.blocks.map(block => block.tipo === 'tool'
+              ? { ...block, nombre: block.nombre || block.name }
+              : block)
+            : combinarPartesRicas(parsearMensajeRico(msg.content));
           const claseExt = esExterno ? ' direct-ai' : '';
           const claseDuo = msg._via === 'duo-external' ? ' duo-turn' : '';
           return html`
@@ -110,9 +114,18 @@ export function MessageList({
                   title="Releer mensaje"
                 >🔊</button>
               </div>
-              ${msg._toolVisual || msg._toolDraft
-                ? html`<${ToolVisualCard} visual=${msg._toolVisual || msg._toolDraft} />`
-                : parsed.length ? parsed.map((p, i) => {
+              ${msg._toolVisual
+                ? html`<${ToolVisualCard} visual=${msg._toolVisual} />`
+                : msg._toolDraft
+                  ? html`
+                      ${msg._toolText && html`
+                        <div class="message-content"
+                          dangerouslySetInnerHTML=${{ __html: renderizarContenido(msg._toolText) }}
+                        ></div>
+                      `}
+                      <${ToolVisualCard} visual=${msg._toolDraft} />
+                    `
+                  : parsed.length ? parsed.map((p, i) => {
                 if (p.tipo === 'thinking') {
                   const key = `${idx}_${i}`;
                   const abiertoThinking = expandedThinking[key] ?? getThinkingDefault(key);

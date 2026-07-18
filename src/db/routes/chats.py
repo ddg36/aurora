@@ -1,3 +1,4 @@
+import json
 import time
 from dataclasses import dataclass
 
@@ -43,6 +44,7 @@ class MensajeBody:
     rol: str
     contenido: str
     tokens_est: int | None = None
+    estructura: dict | None = None
 
 
 class ChatsController(Controller):
@@ -114,7 +116,7 @@ class ChatsController(Controller):
             if not await cur.fetchone():
                 raise NotFoundException("Chat no encontrado")
         async with db.execute(
-            "SELECT id, rol, contenido, tokens_est, creado_en, fijado FROM mensajes WHERE chat_id=? ORDER BY id ASC",
+            "SELECT id, rol, contenido, estructura_json, tokens_est, creado_en, fijado FROM mensajes WHERE chat_id=? ORDER BY id ASC",
             (chat_id,),
         ) as cur:
             rows = await cur.fetchall()
@@ -124,6 +126,11 @@ class ChatsController(Controller):
             item = dict(r)
             item["role"] = item.get("rol")
             item["content"] = item.get("contenido")
+            try:
+                item["estructura"] = json.loads(item["estructura_json"]) if item.get("estructura_json") else None
+            except (TypeError, ValueError):
+                item["estructura"] = None
+            item.pop("estructura_json", None)
             item["ts"] = (item.get("creado_en") or int(time.time())) * 1000
             out.append(item)
         return out
@@ -138,8 +145,10 @@ class ChatsController(Controller):
             if not await cur.fetchone():
                 raise NotFoundException("Chat no encontrado")
         cur = await db.execute(
-            "INSERT INTO mensajes (chat_id, rol, contenido, tokens_est) VALUES (?,?,?,?)",
-            (data.chat_id, data.rol, data.contenido, data.tokens_est),
+            "INSERT INTO mensajes (chat_id, rol, contenido, estructura_json, tokens_est) VALUES (?,?,?,?,?)",
+            (data.chat_id, data.rol, data.contenido,
+             json.dumps(data.estructura, ensure_ascii=False) if data.estructura is not None else None,
+             data.tokens_est),
         )
         now = int(time.time())
         await db.execute(
@@ -155,6 +164,7 @@ class ChatsController(Controller):
             "contenido": data.contenido,
             "role": data.rol,
             "content": data.contenido,
+            "estructura": data.estructura,
             "ts": now * 1000,
         }
 

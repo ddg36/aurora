@@ -7,6 +7,7 @@ from litestar.connection import Request
 from . import builtin, browser_task, cloud_ask, forge, forge_build, view_actions
 from .registry import get_tool, list_tools, run_tool
 from pi.ocr import extraer_texto
+from pi_tools import execute as execute_pi_tool
 
 _ = builtin, browser_task, cloud_ask, forge, forge_build, view_actions
 
@@ -16,6 +17,19 @@ log = logging.getLogger("aurora.tools.ocr")
 @get("/tools")
 async def tools_list() -> dict:
     return {"ok": True, "tools": list_tools()}
+
+
+@post("/artifacts/read")
+async def artifact_read(data: dict) -> dict:
+    """Lectura solicitada por la UI humana para Canvas/preview.
+
+    No es un dispatcher de tools Cloud: sólo admite read y nunca interpreta
+    JSON producido por un LLM. La policy agentic permanece en JSON Family.
+    """
+    path = str(data.get("path") or "").strip()
+    if not path:
+        return {"ok": False, "is_error": True, "output": "Falta path."}
+    return await execute_pi_tool("read", {"path": path})
 
 
 @get("/tools/{name:str}")
@@ -160,7 +174,7 @@ async def tools_ocr(data: dict) -> dict:
 
 TOOLS_ROUTES = [
     *view_actions.VIEW_ACTION_ROUTES,
-    tools_list, forge_list, forge_get, forge_draft, forge_test, forge_approve,
+    tools_list, artifact_read, forge_list, forge_get, forge_draft, forge_test, forge_approve,
     forge_activate, forge_rollback, forge_delete, tools_get, tools_approve_run,
     tools_run, tools_ocr,
 ] + browser_task.BROWSER_TASK_ROUTES + cloud_ask.CLOUD_ASK_ROUTES + forge_build.FORGE_BUILD_ROUTES

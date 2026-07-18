@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 export class Hellfire extends Component {
   constructor(props) {
@@ -43,8 +43,9 @@ export class Hellfire extends Component {
     });
 
     const resize = () => {
-      W = canvas.width  = canvas.offsetWidth  || window.innerWidth;
-      H = canvas.height = canvas.offsetHeight || window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const makeBase = () => ({
@@ -123,7 +124,7 @@ export class Hellfire extends Component {
 
     let raf;
     const draw = () => {
-      raf = requestAnimationFrame(draw);
+      raf = sceneFrame(draw);
       t += 0.03;
       const [r, g, b] = this.accent.rgb ?? [249, 115, 22];
 
@@ -231,7 +232,7 @@ export class Hellfire extends Component {
     draw();
     this._ro = new ResizeObserver(resize);
     this._ro.observe(canvas);
-    this._stop = () => { cancelAnimationFrame(raf); this._ro.disconnect(); };
+    this._stop = () => { cancelSceneFrame(raf); this._ro.disconnect(); };
   }
 
   componentWillUnmount() { this._stop?.(); this.accent.stop(); }

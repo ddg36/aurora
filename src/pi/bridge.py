@@ -33,6 +33,17 @@ _RUTA_SETTINGS = pathlib.Path.home() / '.pi' / 'agent' / 'settings.json'
 
 _DIALOGOS = ('select', 'confirm', 'input', 'editor')
 
+# Eventos semánticos oficiales de AgentSession que la UI web puede reducir sin
+# reconstruir strings. No se incluyen requests de extensiones/confirmaciones:
+# esos conservan su canal de seguridad específico en Aurora.
+_EVENTOS_PI_UI = {
+    'message_start', 'message_update', 'message_end',
+    'tool_execution_start', 'tool_execution_update', 'tool_execution_end',
+    'agent_start', 'agent_end', 'queue_update', 'session_info_changed',
+    'thinking_level_changed', 'compaction_start', 'compaction_end',
+    'auto_retry_start', 'auto_retry_end',
+}
+
 # Config PERSISTIDA de pi real (settings-manager.js — se guarda directo en
 # settings.json, sin RPC, mismo mecanismo que auth.json/scoped-models.json).
 # (id, ruta anidada, tipo, valores válidos, default si no está en el archivo,
@@ -359,6 +370,8 @@ class PiBridge:
         self._builtin_confirm: asyncio.Future | None = None
         self._error_pendiente: str | None = None
         self._msg_start_ts: float | None = None
+        self._pi_event_seq = 0
+        self._pi_snapshot_ts = 0.0
 
     async def send(self, payload: dict):
         await self.socket.send_text(json.dumps(payload, ensure_ascii=False))
@@ -381,8 +394,45 @@ class PiBridge:
 
     # ── eventos pi → UI ───────────────────────────────
 
+    async def _enviar_evento_pi(self, evt: dict):
+        """Envelope v1: conserva IDs/resultados nativos sin mandar snapshots
+        acumulados en cada token (eso sería tráfico O(n²)). Los deltas viajan
+        inmediatamente; `message` se adjunta cada 250 ms y siempre al cerrar.
+        `message_end` queda como snapshot final autoritativo."""
+        tipo = evt.get('type')
+        if tipo not in _EVENTOS_PI_UI:
+            return
+        evento = dict(evt)
+        if tipo == 'message_update':
+            delta = dict(evento.get('assistantMessageEvent') or {})
+            # `partial` duplica el mensaje acumulado dentro del mismo evento.
+            # El snapshot autoritativo vive en `event.message`.
+            delta.pop('partial', None)
+            evento['assistantMessageEvent'] = delta
+            ahora = time.monotonic()
+            forzar_snapshot = delta.get('type') in {
+                'start', 'text_end', 'thinking_end', 'toolcall_end', 'done', 'error',
+            }
+            if not forzar_snapshot and ahora - self._pi_snapshot_ts < 0.25:
+                evento.pop('message', None)
+            else:
+                self._pi_snapshot_ts = ahora
+        self._pi_event_seq += 1
+        await self.send({
+            'type': 'pi_event',
+            'protocolVersion': 1,
+            'runtime': 'pi-rpc',
+            'seq': self._pi_event_seq,
+            'event': evento,
+        })
+
     async def evento_pi(self, evt: dict):
         tipo = evt.get('type')
+
+        # Espejo nativo primero. Los mensajes legacy de abajo permanecen
+        # temporalmente para Toolkit/Captura y clientes antiguos; Lyria Chat
+        # los ignora cuando registra onPiEvent.
+        await self._enviar_evento_pi(evt)
 
         if tipo == 'message_update':
             delta = evt.get('assistantMessageEvent') or {}

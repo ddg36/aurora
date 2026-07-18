@@ -1,0 +1,185 @@
+/* HUD V4 — modifica la interfaz real; nunca pinta un escenario de fondo. */
+.aurora-interface-hud-marker { display: none; }
+
+.aurora-ui-shell {
+  --hud-accent: var(--aurora-accent);
+  --hud-glow: var(--aurora-edge-glow);
+  --hud-line: color-mix(in srgb, var(--aurora-accent) 42%, var(--aurora-border));
+}
+
+/* Superficies a las que puede aplicarse un HUD. Se limita a bloques reales de
+   UI y evita convertir cada div de layout en una tarjeta. */
+.aurora-hud-layer[data-hud]:not([data-hud="none"]) ~ .aurora-ui-shell :is(
+  .nav-rail,
+  .message,
+  .chat-input-area,
+  .cloud-panel,
+  .llama-params-panel,
+  .llama-history-panel,
+  .llama-toolbar-panel,
+  .canvas-panel,
+  section > .bg-white\/5
+) {
+  position: relative;
+  isolation: isolate;
+  transition: border-color .22s ease, box-shadow .22s ease, background-color .22s ease, filter .22s ease;
+}
+
+/* El Cloud expandido es un overlay de Lyra. Un HUD puede decorarlo, pero no
+   cambiar su geometría: la regla genérica anterior tiene más especificidad
+   que `.cloud-panel.expanded` y antes lo convertía accidentalmente en un
+   bloque normal. */
+.aurora-hud-layer[data-hud]:not([data-hud="none"]) ~ .aurora-ui-shell
+  .llama-view.cloud-expanded .cloud-panel.expanded {
+  position: absolute;
+}
+
+.aurora-hud-layer[data-hud]:not([data-hud="none"]) ~ .aurora-ui-shell :is(button,input,textarea,select) {
+  transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease, transform .18s ease;
+}
+
+/* Halo de foco — estado, no decoración flotante. */
+.aurora-hud-layer[data-hud="pulse-rings"] ~ .aurora-ui-shell :is(button,input,textarea,select):focus-visible,
+.aurora-hud-layer[data-hud="pulse-rings"] ~ .aurora-ui-shell button[aria-pressed="true"],
+.aurora-hud-layer[data-hud="pulse-rings"] ~ .aurora-ui-shell .message.streaming {
+  outline: none;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--hud-accent) 70%, transparent),
+    0 0 0 5px color-mix(in srgb, var(--hud-accent) 13%, transparent),
+    0 0 24px color-mix(in srgb, var(--hud-accent) 18%, transparent) !important;
+  animation: hud-focus-breathe 2.4s ease-in-out infinite;
+}
+
+/* CRT: textura dentro de superficies, no en toda la pantalla. */
+.aurora-hud-layer[data-hud="scanlines"] ~ .aurora-ui-shell :is(
+  .nav-rail,.message,.chat-input-area,.cloud-panel,.llama-params-panel,.llama-history-panel,.llama-toolbar-panel,.canvas-panel,section > .bg-white\/5
+) {
+  background-image:
+    repeating-linear-gradient(0deg, color-mix(in srgb, var(--hud-accent) 4%, transparent) 0 1px, transparent 1px 4px),
+    linear-gradient(90deg, color-mix(in srgb, var(--hud-accent) 2.5%, transparent), transparent 32%, color-mix(in srgb, var(--hud-accent) 2%, transparent));
+  background-blend-mode: overlay;
+}
+.aurora-hud-layer[data-hud="scanlines"] ~ .aurora-ui-shell .message.streaming {
+  box-shadow: inset 3px 0 0 var(--hud-accent), 0 0 20px color-mix(in srgb,var(--hud-accent) 12%,transparent);
+}
+
+/* Circuitos: líneas y nodos asociados a paneles/controles. */
+.aurora-hud-layer[data-hud="circuit"] ~ .aurora-ui-shell :is(.nav-rail,.chat-input-area,.cloud-panel,section > .bg-white\/5) {
+  border-color: color-mix(in srgb, var(--hud-accent) 34%, var(--aurora-border)) !important;
+  background-image:
+    linear-gradient(90deg, transparent 0 8%, color-mix(in srgb,var(--hud-accent) 13%,transparent) 8% 8.5%, transparent 8.5% 62%, color-mix(in srgb,var(--hud-accent) 11%,transparent) 62% 62.5%, transparent 62.5%),
+    linear-gradient(0deg, transparent 0 72%, color-mix(in srgb,var(--hud-accent) 10%,transparent) 72% 72.5%, transparent 72.5%);
+}
+.aurora-hud-layer[data-hud="circuit"] ~ .aurora-ui-shell :is(.nav-rail,.chat-input-area,.cloud-panel,section > .bg-white\/5)::after {
+  content: '';
+  position: absolute;
+  width: 5px;height: 5px;border-radius: 50%;right: 10px;top: 8px;
+  background: var(--hud-accent);
+  box-shadow: -26px 0 0 color-mix(in srgb,var(--hud-accent) 45%,transparent), 0 0 10px var(--hud-glow);
+  opacity: .75;
+  animation: hud-node-pulse 2.8s steps(2,end) infinite;
+  pointer-events: none;
+}
+.aurora-hud-layer[data-hud="circuit"] ~ .aurora-ui-shell button:hover {
+  box-shadow: inset 0 -2px 0 color-mix(in srgb,var(--hud-accent) 60%,transparent), 0 0 12px color-mix(in srgb,var(--hud-accent) 12%,transparent);
+}
+
+/* Brackets: esquinas técnicas sobre tarjetas reales. */
+.aurora-hud-layer[data-hud="corners"] ~ .aurora-ui-shell :is(.message,.cloud-panel,.llama-params-panel,.llama-history-panel,.llama-toolbar-panel,section > .bg-white\/5) {
+  background-image:
+    linear-gradient(var(--hud-accent),var(--hud-accent)),linear-gradient(var(--hud-accent),var(--hud-accent)),
+    linear-gradient(var(--hud-accent),var(--hud-accent)),linear-gradient(var(--hud-accent),var(--hud-accent)),
+    linear-gradient(var(--hud-accent),var(--hud-accent)),linear-gradient(var(--hud-accent),var(--hud-accent)),
+    linear-gradient(var(--hud-accent),var(--hud-accent)),linear-gradient(var(--hud-accent),var(--hud-accent));
+  background-size: 13px 1px,1px 13px,13px 1px,1px 13px,13px 1px,1px 13px,13px 1px,1px 13px;
+  background-position: left 6px top 6px,left 6px top 6px,right 6px top 6px,right 6px top 6px,left 6px bottom 6px,left 6px bottom 6px,right 6px bottom 6px,right 6px bottom 6px;
+  background-repeat: no-repeat;
+}
+.aurora-hud-layer[data-hud="corners"] ~ .aurora-ui-shell button:focus-visible {
+  outline: 1px solid var(--hud-accent); outline-offset: 3px;
+}
+
+/* Gótico cálido: filigrana y luz en marcos, no velas flotantes. */
+.aurora-hud-layer[data-hud="candles"] ~ .aurora-ui-shell :is(.nav-rail,.message,.chat-input-area,.cloud-panel,section > .bg-white\/5) {
+  border-color: color-mix(in srgb,var(--hud-accent) 26%,var(--aurora-border)) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb,#ffd7a0 7%,transparent), 0 10px 28px color-mix(in srgb,var(--hud-accent) 7%,transparent);
+}
+.aurora-hud-layer[data-hud="candles"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::before {
+  content: '✦'; color: color-mix(in srgb,var(--hud-accent) 76%,#f6c889); margin-right: .45em; opacity: .7; text-shadow: 0 0 8px var(--hud-glow);
+}
+.aurora-hud-layer[data-hud="candles"] ~ .aurora-ui-shell button[aria-pressed="true"] {
+  box-shadow: inset 0 -2px 0 color-mix(in srgb,#ffd08a 60%,var(--hud-accent)), 0 0 16px color-mix(in srgb,var(--hud-accent) 14%,transparent);
+}
+
+/* Runas: semántica en títulos, activo y cabeceras. */
+.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::before { content:'᛭'; margin-right:.45em; color:var(--hud-accent); opacity:.72; text-shadow:0 0 10px var(--hud-glow); }
+.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::after { content:'᛫'; margin-left:.45em; color:var(--hud-accent); opacity:.42; }
+.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell .nav-rail button[aria-current="page"]::after,
+.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell .nav-rail button[aria-pressed="true"]::after {
+  content:'ᚨ'; position:absolute; right:2px; top:2px; font-size:7px; color:var(--hud-accent); opacity:.75;
+}
+
+/* Carmesí: remates en la propia geometría de paneles. */
+.aurora-hud-layer[data-hud="drip"] ~ .aurora-ui-shell :is(.message,.chat-input-area,.cloud-panel,section > .bg-white\/5) {
+  border-top-color: color-mix(in srgb,var(--hud-accent) 60%,var(--aurora-border)) !important;
+  background-image:
+    radial-gradient(ellipse at 12% 0, color-mix(in srgb,var(--hud-accent) 22%,transparent) 0 3px, transparent 4px),
+    radial-gradient(ellipse at 69% 0, color-mix(in srgb,var(--hud-accent) 16%,transparent) 0 5px, transparent 6px);
+}
+.aurora-hud-layer[data-hud="drip"] ~ .aurora-ui-shell .message.is-error,
+.aurora-hud-layer[data-hud="drip"] ~ .aurora-ui-shell .tool-error {
+  box-shadow: inset 3px 0 0 var(--hud-accent), 0 0 18px color-mix(in srgb,var(--hud-accent) 16%,transparent);
+}
+
+/* Sonar: sólo señala foco y procesos vivos. */
+.aurora-hud-layer[data-hud="sonar"] ~ .aurora-ui-shell :is(button,input,textarea,select):focus-visible,
+.aurora-hud-layer[data-hud="sonar"] ~ .aurora-ui-shell :is(.message.streaming,.tool-running) {
+  outline:none;
+  animation:hud-sonar 2s ease-out infinite;
+}
+.aurora-hud-layer[data-hud="sonar"] ~ .aurora-ui-shell .nav-rail button:hover { box-shadow:0 0 0 1px var(--hud-accent),0 0 0 5px color-mix(in srgb,var(--hud-accent) 8%,transparent); }
+
+/* Brasa: calor en activos, estados y líneas de énfasis. */
+.aurora-hud-layer[data-hud="ember"] ~ .aurora-ui-shell :is(.nav-rail,.chat-input-area,.message,.cloud-panel,section > .bg-white\/5) {
+  border-color: color-mix(in srgb,var(--hud-accent) 28%,var(--aurora-border)) !important;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb,var(--hud-accent) 18%,transparent);
+}
+.aurora-hud-layer[data-hud="ember"] ~ .aurora-ui-shell :is(button[aria-pressed="true"],.message.streaming,.tool-running) {
+  box-shadow: inset 0 -2px 0 color-mix(in srgb,#ffd089 45%,var(--hud-accent)), 0 0 20px color-mix(in srgb,var(--hud-accent) 18%,transparent) !important;
+  animation:hud-ember 2.2s ease-in-out infinite;
+}
+
+/* Torii: vigas/umbrales en cabeceras y navegación. */
+.aurora-hud-layer[data-hud="torii"] ~ .aurora-ui-shell :is(h1,h2,.message-header) {
+  border-top:2px solid color-mix(in srgb,var(--hud-accent) 62%,transparent);
+  padding-top:.35rem;
+}
+.aurora-hud-layer[data-hud="torii"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::after {
+  content:''; display:inline-block; width:24px; height:4px; margin-left:.55em; border-left:2px solid var(--hud-accent); border-right:2px solid var(--hud-accent); border-top:1px solid var(--hud-accent); opacity:.58;
+}
+.aurora-hud-layer[data-hud="torii"] ~ .aurora-ui-shell .nav-rail button[aria-pressed="true"] { border-top:2px solid var(--hud-accent); border-bottom:1px solid color-mix(in srgb,var(--hud-accent) 50%,transparent); }
+
+/* Compass: guía de navegación, no una brújula flotando sobre el fondo. */
+.aurora-hud-layer[data-hud="compass"] ~ .aurora-ui-shell .nav-rail::before {
+  content:'N'; position:sticky; top:0; display:block; text-align:center; padding:3px 0; font:700 7px/1 monospace; color:var(--hud-accent); background:var(--aurora-glass); backdrop-filter:blur(8px); z-index:3; opacity:.7;
+}
+.aurora-hud-layer[data-hud="compass"] ~ .aurora-ui-shell .nav-rail button[aria-pressed="true"],
+.aurora-hud-layer[data-hud="compass"] ~ .aurora-ui-shell .nav-rail button:focus-visible {
+  box-shadow: inset 3px 0 0 var(--hud-accent), 0 0 14px color-mix(in srgb,var(--hud-accent) 13%,transparent);
+}
+.aurora-hud-layer[data-hud="compass"] ~ .aurora-ui-shell main::before {
+  content:'W  ·  N  ·  E'; position:sticky; top:0; align-self:center; z-index:20; font:600 7px/1 monospace; letter-spacing:.35em; color:color-mix(in srgb,var(--hud-accent) 58%,var(--aurora-text-muted)); opacity:.45; pointer-events:none; padding:4px 8px;
+}
+
+@keyframes hud-focus-breathe { 0%,100%{filter:none} 50%{filter:brightness(1.06)} }
+@keyframes hud-node-pulse { 0%,45%{opacity:.35} 50%,100%{opacity:.85} }
+@keyframes hud-sonar { 0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--hud-accent) 28%,transparent)} 100%{box-shadow:0 0 0 12px transparent} }
+@keyframes hud-ember { 0%,100%{filter:none} 50%{filter:brightness(1.08) saturate(1.08)} }
+
+html[data-theme-mode="light"] .aurora-hud-layer[data-hud]:not([data-hud="none"]) ~ .aurora-ui-shell {
+  --hud-line: color-mix(in srgb,var(--aurora-accent) 36%,rgba(15,23,42,.18));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-hud-layer[data-hud] ~ .aurora-ui-shell * { animation-duration: 6s !important; }
+}

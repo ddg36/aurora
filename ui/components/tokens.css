@@ -51,6 +51,8 @@
 
   /* ── Acento — defaults, ui/themes/manager.js los sobreescribe ─ */
   --aurora-accent:      #ef4444;
+  --aurora-accent-rgb:  239, 68, 68;
+  --aurora-link:        #fb7185;
   --aurora-surface2:    #2b0000;
   --aurora-edge:        #ef4444;
   --aurora-edge-dim:    #7f0000;
@@ -62,6 +64,9 @@
 
   /* ── Legacy aliases — compatibilidad con módulos migrados ── */
   --accent:      var(--aurora-accent);
+  --accent-rgb:  var(--aurora-accent-rgb);
+  --au-accent:   var(--aurora-accent);
+  --bg:          var(--aurora-bg);
   --surface:     var(--aurora-surface);
   --surface2:    var(--aurora-surface2);
   --surface3:    var(--aurora-surface3);

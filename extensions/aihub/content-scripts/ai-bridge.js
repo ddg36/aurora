@@ -5,6 +5,10 @@
 (function () {
   'use strict';
 
+  // Guard: chrome.runtime no está disponible en todos los contextos de iframe.
+  // Si no existe, salir silenciosamente — no romper la página.
+  if (!chrome?.runtime) return;
+
   // Selectores de input por dominio
   const INPUT_SELECTORS = [
     '#prompt-textarea',                           // ChatGPT

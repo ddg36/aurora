@@ -27,20 +27,30 @@ def json_loose(texto, fallback=None):
         return fallback
 
 
+def _normalizar_ruta_db(valor: str | os.PathLike[str]) -> pathlib.Path:
+    """Resuelve rutas relativas contra la raíz de Aurora, no contra el CWD."""
+    ruta = pathlib.Path(valor).expanduser()
+    if not ruta.is_absolute():
+        ruta = ROOT / ruta
+    return ruta.resolve(strict=False)
+
+
 def _resolve_db_path() -> pathlib.Path:
-    """Única verdad de dónde vive la DB: env > config/server.toml [db] > default."""
+    """Única verdad de la DB: env > config por SO > config común > default."""
     if env := os.environ.get("AURORA_DB_PATH"):
-        return pathlib.Path(env)
+        return _normalizar_ruta_db(env)
+
     toml_path = ROOT / "config" / "server.toml"
     if toml_path.exists():
         try:
             cfg = tomllib.loads(toml_path.read_text(encoding="utf-8")).get("db", {})
             key = "path_windows" if platform.system() == "Windows" else "path_linux"
-            if p := cfg.get(key):
-                return pathlib.Path(p)
+            if valor := cfg.get(key) or cfg.get("path"):
+                return _normalizar_ruta_db(valor)
         except Exception as e:
             log.warning("server.toml [db] ilegible (%s), usando default", e)
-    return ROOT / "databases" / "aihub.db"
+
+    return _normalizar_ruta_db("databases/aihub.db")
 
 
 DB_PATH = _resolve_db_path()
@@ -54,7 +64,17 @@ async def get_db() -> aiosqlite.Connection:
     if _db is None:
         async with _init_lock:
             if _db is None:
-                conn = await aiosqlite.connect(DB_PATH)
+                if DB_PATH.exists() and DB_PATH.is_dir():
+                    raise IsADirectoryError(f"AURORA_DB_PATH apunta a un directorio: {DB_PATH}")
+                try:
+                    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+                except OSError as exc:
+                    raise RuntimeError(
+                        f"No se pudo preparar el directorio de la DB: {DB_PATH.parent}"
+                    ) from exc
+
+                log.info("abriendo SQLite en %s", DB_PATH)
+                conn = await aiosqlite.connect(str(DB_PATH))
                 conn.row_factory = aiosqlite.Row
                 await conn.execute("PRAGMA journal_mode=WAL")
                 await conn.execute("PRAGMA foreign_keys=ON")
@@ -116,6 +136,11 @@ async def _mig_prompts_guardados(db):
 
 async def _mig_idx_mensajes(db):
     await db.execute("CREATE INDEX IF NOT EXISTS idx_mensajes_chat_ts ON mensajes(chat_id, creado_en)")
+
+
+async def _mig_mensajes_estructura(db):
+    if not await _tiene_columna(db, "mensajes", "estructura_json"):
+        await db.execute("ALTER TABLE mensajes ADD COLUMN estructura_json TEXT")
 
 
 async def _mig_fts(db):
@@ -204,6 +229,61 @@ async def _fts_backfill(db):
     """)
 
 
+async def _mig_cloud_agent_journal(db):
+    # Journal durable del diálogo Cloud. Tools viven en JSON Family.
+    await db.executescript('''
+        CREATE TABLE IF NOT EXISTS cloud_agent_turns (
+            usuario_id   INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            turn_id      TEXT    NOT NULL,
+            conv_id      INTEGER REFERENCES cloud_conversaciones(id) ON DELETE SET NULL,
+            ai_id        TEXT,
+            url          TEXT,
+            pane_id      TEXT    NOT NULL DEFAULT 'cloud',
+            status       TEXT    NOT NULL DEFAULT 'prepared',
+            iteration    INTEGER NOT NULL DEFAULT 0,
+            request_id   TEXT,
+            prompt       TEXT,
+            next_prompt  TEXT,
+            state_json   TEXT,
+            created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+            completed_at INTEGER,
+            PRIMARY KEY (usuario_id, turn_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_cloud_turn_pending
+            ON cloud_agent_turns(usuario_id, pane_id, status, updated_at);
+    ''')
+
+
+async def _mig_json_family_runs(db):
+    await db.executescript('''
+        CREATE TABLE IF NOT EXISTS json_family_runs (
+            usuario_id    INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            request_id    TEXT    NOT NULL,
+            input_hash    TEXT    NOT NULL,
+            status        TEXT    NOT NULL DEFAULT 'running',
+            response_json TEXT,
+            created_at    INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at    INTEGER NOT NULL DEFAULT (unixepoch()),
+            completed_at  INTEGER,
+            PRIMARY KEY (usuario_id, request_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_json_family_runs_status
+            ON json_family_runs(usuario_id, status, updated_at);
+    ''')
+
+
+async def _mig_json_family_delivery_ack(db):
+    if not await _tiene_columna(db, "json_family_runs", "delivered_at"):
+        await db.execute("ALTER TABLE json_family_runs ADD COLUMN delivered_at INTEGER")
+
+
+async def _mig_drop_legacy_cloud_tool_journal(db):
+    # JSON Family reemplazó por completo este journal duplicado. Los snapshots
+    # reanudables permanecen en cloud_agent_turns/json_family_runs.
+    await db.execute("DROP TABLE IF EXISTS cloud_tool_journal")
+
+
 MIGRACIONES: list[tuple[int, str, object]] = [
     (2, "mensajes.fijado", _mig_fijado),
     (3, "chats.parent_chat_id", _mig_parent_chat),
@@ -212,6 +292,11 @@ MIGRACIONES: list[tuple[int, str, object]] = [
     (6, "indice mensajes(chat_id, creado_en)", _mig_idx_mensajes),
     (7, "busqueda full-text FTS5 (search_fts)", _mig_fts),
     (8, "repoblar FTS si quedó vacío", _fts_backfill),
+    (9, "journal durable de tools y turnos Cloud", _mig_cloud_agent_journal),
+    (10, "journal durable de requests JSON Family", _mig_json_family_runs),
+    (11, "acuse durable de entrega JSON Family", _mig_json_family_delivery_ack),
+    (12, "retirar journal legacy de cloud-tool", _mig_drop_legacy_cloud_tool_journal),
+    (13, "turnos Pi estructurados en mensajes", _mig_mensajes_estructura),
 ]
 
 
@@ -250,6 +335,12 @@ async def init_db():
             await db.rollback()
             log.exception("migración %d falló: %s", version, descripcion)
             raise
+
+    if await _tiene_tabla(db, "json_family_runs"):
+        await db.execute(
+            "UPDATE json_family_runs SET status='unknown', updated_at=unixepoch() WHERE status='running'"
+        )
+        await db.commit()
 
     # El seed corre en cada arranque: en DB nueva los usuarios aparecen
     # después de la primera migración, no durante.

@@ -15,13 +15,20 @@ navegador; `--verbose` permite verlas en vivo únicamente al investigar un fallo
 
 ```bash
 python3 scripts/SOL-debug-tools/sol-debug.py --targets
+python3 scripts/SOL-debug-tools/sol-debug.py --contracts
+python3 scripts/SOL-debug-tools/sol-debug.py --relay-doctor
+python3 scripts/SOL-debug-tools/sol-debug.py --relay-load 100
+python3 scripts/SOL-debug-tools/sol-debug.py --reinject-relays
+python3 scripts/SOL-debug-tools/sol-debug.py --json-family-run relay-v1-abc123
 python3 scripts/SOL-debug-tools/sol-debug.py --view lyra
+python3 scripts/SOL-debug-tools/sol-debug.py --lyra-cloud
 python3 scripts/SOL-debug-tools/sol-debug.py --click 'Tool Forge'
 python3 scripts/SOL-debug-tools/sol-debug.py --status
 python3 scripts/SOL-debug-tools/sol-debug.py --full-reload
 python3 scripts/SOL-debug-tools/sol-debug.py --background
 python3 scripts/SOL-debug-tools/sol-debug.py --foreground
 python3 scripts/SOL-debug-tools/sol-debug.py --lyra-send 'Respondé OK'
+python3 scripts/SOL-debug-tools/sol-debug.py --lyra-local-send 'Usa read y responde OK' --timeout 120
 python3 scripts/SOL-debug-tools/sol-debug.py --lyra-send 'Leé el archivo' --file /tmp/x.txt
 python3 scripts/SOL-debug-tools/sol-debug.py --cloud-ask 'Respondé OK' --pane izq
 python3 scripts/SOL-debug-tools/sol-debug.py --new-chat --pane izq
@@ -37,11 +44,46 @@ python3 scripts/SOL-debug-tools/sol-debug.py --shot /tmp/aurora.png
 python3 scripts/SOL-debug-tools/sol-debug.py --cloud-ask 'Respondé OK' --verbose
 ```
 
+## Contratos y diagnóstico
+
+- `--contracts`: ejecuta las suites canónicas de JSON Family, Relay Family,
+  Endpoint Registry, Relay Reinjector, frontera Cloud, pureza del proveedor y
+  visuales de tools. La
+  frontera falla si reaparece un dispatcher directo que evite JSON Family. Usa
+  siempre `.venv-linux/bin/python`, nunca el Python del sistema, y devuelve un
+  resumen único con exit code por suite.
+- `--relay-doctor`: inventaría OOPIF Cloud y tabs normales con Relay activo.
+  Consulta semánticamente composer, Send, Stop y turnos; además muestra Surface
+  Context, `endpointId`, estado durable y el registro central. Comprueba la cadena
+  `cloud-relay → relay-core → driver → provider-relay → Endpoint Registry` sin
+  codificar selectores del proveedor en la herramienta. Después de recargar la
+  extensión, el Registry es autoritativo frente a datasets que pueda dejar un
+  mundo isolated invalidado; tabs `frozen/offline` se reportan como diferidas.
+- `--relay-load N`: dispara en paralelo un mínimo de diez endpoints simulados
+  en estado `generating` (100 por defecto), resuelve todas sus rutas al mismo
+  tiempo, fuerza un rebind y los libera concurrentemente. Falla ante IDs/rutas
+  cruzadas, selección ambigua o protección anti-discard huérfana.
+- `--reinject-relays`: hace ping a cada courier y recupera únicamente las capas
+  ausentes. No navega, no recarga y no pulsa Stop; reporta `alive`,
+  `reconnected`, `ignored` o `deferred_frozen/discarded` por frame.
+- `--lyra-cloud`: abre Lyra y activa su botón interno “Cloud Backend”. Evita la
+  ambigüedad con la pestaña global Cloud y espera el placeholder real.
+- `--json-family-run REQUEST_ID`: resume estado, timestamps, tools, imagen y
+  ACK desde el journal durable, omitiendo `response_json` y base64 grandes.
+
+Estas flags orquestan los tests, pero no los reemplazan: las aserciones viven
+en `tests/` para que también puedan ejecutarse en CI.
+
 ## Capas de prueba
 
 - `--lyra-send`: prueba de extremo a extremo. Escribe en el textarea real,
   adjunta mediante el selector nativo, pulsa el botón de envío y verifica
   composer, indicador de generación, Stop, historial y respuesta final.
+- `--lyra-local-send`: prueba separada del modo local. Abre Lyra, desactiva
+  Cloud si estaba persistido, escribe en el mismo chatbox y verifica el ciclo
+  `Lyria → WebSocket → Pi RPC`. También exige envelopes `pi_event` v1 y
+  correlaciona cada `tool_execution_start/end` por el `toolCallId` oficial,
+  sin guardar outputs extensos ni imágenes base64 en la traza.
 - `--cloud-ask`: prueba de componente. Entra directamente por `askCloud`; sirve
   para aislar relay e iframes en la vista Cloud (`--pane izq|der|cloud`). No se
   considera una prueba suficiente de la interfaz de Lyra.
@@ -66,13 +108,17 @@ python3 scripts/SOL-debug-tools/sol-debug.py --full-reload --timeout 30
 ```
 
 `--full-reload` recarga Aurora Hub mediante `chrome.runtime.reload()`, abre una
-nueva pestaña de la extensión, espera el iframe de Aurora, pulsa su botón nativo
+única pestaña nueva de la extensión (cierra shells `newtab.html` anteriores),
+espera su iframe específico de Aurora, pulsa su botón nativo
 de hard reload y no termina hasta confirmar el remount cache-busted. Esto carga
 también la versión actual de los content scripts como `cloud-relay.js`. Antes de
 recargar inventaría todos los OOPIF de proveedores Cloud; los hijos de Aurora
 son destruidos con su página y cualquier iframe LLM que sobreviva se navega de
 nuevo para forzar la reinyección. El resultado informa `allIframesInvalidated`,
 `iframesBefore` y cualquier fallo individual.
+Si Helium bloquea la apertura CDP directa de `chrome-extension://`, la tool
+reutiliza el target creado y lo navega mediante `Page.navigate`; no confunde
+`ERR_BLOCKED_BY_CLIENT` con un timeout de Aurora.
 
 Los prompts Cloud se ejecutan como jobs dentro del navegador y se consultan por
 ID. Así el WebSocket CDP no necesita permanecer abierto durante toda la

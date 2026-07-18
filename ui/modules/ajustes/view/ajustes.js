@@ -1,6 +1,6 @@
 const html = (...args) => globalThis.html(...args);
 const { useState, useEffect } = globalThis.preactHooks;
-import { THEMES, BACKGROUNDS, HUDS } from '../../../components/themes/index.js';
+import { THEMES, BACKGROUNDS, BACKGROUND_SERIES, HUDS } from '../../../components/themes/index.js?v=v4-interface-hud-1';
 import { theme, themeMode, background, hud, guardarTema, guardarThemeMode, guardarBackground, guardarHud } from '../scripts/tema.js';
 import { llms, cargarLLMs, crearLLM, borrarLLM } from '../scripts/llms.js';
 import { crearSnapshotAjustes, descargarJSON, leerJSONArchivo } from '../scripts/export.js';
@@ -28,6 +28,36 @@ function ChipGrid({ items, activo, onPick }) {
         <//>
       `)}
     <//>
+  `;
+}
+
+function BackgroundPicker({ activo, onPick }) {
+  const activeItem = BACKGROUNDS.find(x => x.id === activo);
+  const [serie, setSerie] = useState(activeItem?.series || 'remake');
+
+  useEffect(() => {
+    const selected = BACKGROUNDS.find(x => x.id === activo);
+    if (selected?.series && selected.series !== serie) setSerie(selected.series);
+  }, [activo]);
+
+  const meta = BACKGROUND_SERIES.find(x => x.id === serie) || BACKGROUND_SERIES[0];
+  const items = BACKGROUNDS.filter(x => x.series === serie);
+  return html`
+    <div class="min-w-0">
+      <div class="flex flex-wrap gap-2 mb-2">
+        ${BACKGROUND_SERIES.map(s => html`
+          <${Chip} key=${s.id} active=${serie === s.id} onClick=${() => setSerie(s.id)}>
+            ${s.name}
+          <//>
+        `)}
+      </div>
+      <div class="text-[11px] text-white/35 mb-3">${meta.description}</div>
+      <${ChipGrid}
+        items=${[{ id: 'none', name: 'Ninguno', icon: '∅', series: serie }, ...items]}
+        activo=${activo}
+        onPick=${onPick}
+      />
+    </div>
   `;
 }
 
@@ -149,11 +179,13 @@ export default function Ajustes() {
       <//>
 
       <${Seccion} titulo="Fondo">
-        <${ChipGrid} items=${[{ id: 'none', name: 'Ninguno', icon: '∅' }, ...BACKGROUNDS]} activo=${bgActivo} onPick=${guardarBackground} />
+        <${BackgroundPicker} activo=${bgActivo} onPick=${guardarBackground} />
       <//>
 
-      <${Seccion} titulo="HUD">
+      <${Seccion} titulo="HUD de interfaz">
+        <div class="text-[11px] text-white/35 mb-3">El HUD no dibuja otra escena: modifica controles, paneles, bordes, foco y estados activos.</div>
         <${ChipGrid} items=${[{ id: 'none', name: 'Ninguno', icon: '∅' }, ...HUDS]} activo=${hudActivo} onPick=${guardarHud} />
+        ${hudActivo !== 'none' && html`<div class="mt-3 text-[11px] text-white/40">${HUDS.find(x => x.id === hudActivo)?.description || ''}</div>`}
       <//>
 
       <${Seccion} titulo="LLMs Cloud personalizados">

@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, fitCanvas} from '../lib.js';
 
 // Cuadrícula CRT retro con scanlines animadas.
 export class Grid extends Component {

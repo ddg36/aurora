@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 // Matrix rain — caracteres cayendo estilo Matrix.
 export class Matrix extends Component {
@@ -20,8 +20,9 @@ export class Matrix extends Component {
     let W, H, cols, drops;
 
     const resize = () => {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
       cols = Math.floor(W / PASO);
       drops = Array.from({ length: cols }, () => Math.random() * -50);
     };
@@ -45,7 +46,7 @@ export class Matrix extends Component {
         drops[i]++;
         if (drops[i] * PASO > H && Math.random() > 0.975) drops[i] = 0;
       }
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     this._resize = resize;
@@ -55,7 +56,7 @@ export class Matrix extends Component {
   }
 
   componentWillUnmount() {
-    cancelAnimationFrame(this._raf);
+    cancelSceneFrame(this._raf);
     window.removeEventListener('resize', this._resize);
     this.accent.stop();
   }

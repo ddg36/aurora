@@ -16,6 +16,20 @@ function escape(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// `inline()` trabaja sobre texto que ya pasó por escape(), por eso acá sólo
+// escapamos comillas del atributo y validamos el destino antes de construir
+// el `<a>`. Se permiten enlaces web, correo y rutas relativas; esquemas como
+// javascript:, data: o file: se muestran como texto y nunca se vuelven href.
+function hrefSeguro(hrefYaEscapado) {
+  const valor = String(hrefYaEscapado || '').trim();
+  if (!valor || /[\u0000-\u001f\u007f]/.test(valor) || valor.startsWith('//')) return null;
+
+  const esquema = valor.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+  if (esquema && !new Set(['http', 'https', 'mailto']).has(esquema[1].toLowerCase())) return null;
+
+  return valor.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function wrap(className, text) {
   return `<span class="hl-${className}">${text}</span>`;
 }
@@ -109,7 +123,12 @@ function inline(s) {
     .replace(/`([^`\n]+)`/g,       '<code>$1</code>')
     .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*\n]+)\*/g,     '<em>$1</em>')
-    .replace(/\[([^\]\n]+)\]\(([^)\n]+)\)/g, '<a class="md-link" href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    .replace(/\[([^\]\n]+)\]\(([^)\n]+)\)/g, (_, etiqueta, destino) => {
+      const href = hrefSeguro(destino);
+      return href
+        ? `<a class="md-link" href="${href}" target="_blank" rel="noopener noreferrer">${etiqueta}</a>`
+        : `<span class="md-link md-link--blocked" title="Enlace bloqueado por seguridad">${etiqueta}</span>`;
+    });
 }
 
 function parseFilaTabla(linea) {

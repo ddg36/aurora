@@ -225,7 +225,7 @@ console.warn("[Aurora v2] auth init failed", err);
 
 const [{ App }, store, extBridge, eventos, agentEye, cloudBridge] = await Promise.all([
 
-import("./app.js?v=v2-visual-variants-6"),
+import("./app.js?v=v5-cloud-recovery-1"),
 
 import("./store.js"),
 

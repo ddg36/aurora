@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 // Fog — niebla densa que se mueve lentamente. Ambiente gótico.
 export class Fog extends Component {
@@ -26,8 +26,9 @@ export class Fog extends Component {
     }));
 
     const resize = () => {
-      W = canvas.width  = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
       layers.forEach(l => { l.x = Math.random() * W; l.y = Math.random() * H; });
     };
 
@@ -63,7 +64,7 @@ export class Fog extends Component {
       ctx.fillStyle = groundGrad;
       ctx.fillRect(0, H * 0.6, W, H * 0.4);
 
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     this._resize = resize;
@@ -73,7 +74,7 @@ export class Fog extends Component {
   }
 
   componentWillUnmount() {
-    cancelAnimationFrame(this._raf);
+    cancelSceneFrame(this._raf);
     window.removeEventListener('resize', this._resize);
     this.accent.stop();
   }

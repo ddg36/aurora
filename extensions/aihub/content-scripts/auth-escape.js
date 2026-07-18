@@ -29,6 +29,9 @@ const RUTAS_NO_LOGIN = ['/RotateCookiesPage', '/ListAccounts', '/CheckCookie'];
 (function () {
   'use strict';
 
+  // Guard: chrome.runtime no está disponible en todos los contextos.
+  if (!chrome?.runtime) return;
+
   if (RUTAS_NO_LOGIN.some(r => location.pathname.startsWith(r))) return;
   if (window.top === window.self) return; // ya es top-level, nada que hacer
 

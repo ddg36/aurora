@@ -26,6 +26,7 @@ from ext.router import EXT_ROUTES, get_active_session
 from browser.router import NAV_BROWSER_ROUTES, browser_use_disponible
 from jobs.cleanup_capturas import run_cleanup
 from jobs.db_maintenance import run_mantenimiento
+from json_family import JSON_FAMILY_ROUTES
 from logging_config import setup_logging
 
 log = setup_logging()
@@ -111,7 +112,7 @@ async def on_startup() -> None:
     log.info("Aurora Server ready — LLM engine: pi")
 
 
-ROUTES = [root, ping, health, favicon] + EVENTOS_WS_ROUTES + PI_ROUTES + VOZ_ROUTES + NEXUS_ROUTES + TOOLS_ROUTES + MCP_ROUTES + EXT_ROUTES + ALL_CONTROLLERS + NAV_BROWSER_ROUTES
+ROUTES = [root, ping, health, favicon] + JSON_FAMILY_ROUTES + EVENTOS_WS_ROUTES + PI_ROUTES + VOZ_ROUTES + NEXUS_ROUTES + TOOLS_ROUTES + MCP_ROUTES + EXT_ROUTES + ALL_CONTROLLERS + NAV_BROWSER_ROUTES
 
 if UI_DIR.exists():
     ROUTES.append(

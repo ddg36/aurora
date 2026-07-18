@@ -1,0 +1,83 @@
+/* THEME SCENES — capa común para fondos clásicos y Remake. */
+.aurora-scene-host,
+.aurora-scene-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.aurora-scene-host { overflow: hidden; isolation: isolate; }
+.aurora-scene-canvas { display: block; z-index: 0; }
+.aurora-scene-host > :not(.aurora-scene-scrim) { z-index: 0 !important; }
+.aurora-scene-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  transition: background .28s ease, opacity .28s ease;
+}
+
+/* Los clásicos nocturnos siguen siendo seleccionables en modo claro sin
+   convertir toda la interfaz en una mancha negra: una película mineral clara
+   integra el canvas con paneles blancos. */
+html[data-theme-mode="light"] .aurora-scene-host[data-family="classic-night"] {
+  filter: saturate(.88) brightness(1.06) contrast(.92);
+}
+html[data-theme-mode="light"] .aurora-scene-host[data-family="classic-night"] .aurora-scene-scrim {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.08) 48%, rgba(241,245,249,.20)),
+    radial-gradient(circle at 50% 42%, transparent 0 36%, rgba(255,255,255,.16) 100%);
+}
+
+/* Los antiguos fondos de día se rescatan como escenas independientes. En
+   modo oscuro conservan su composición, pero bajan luminancia para no lavar
+   texto, barras y paneles translúcidos. */
+html[data-theme-mode="dark"] .aurora-scene-host[data-family="classic-day"] {
+  filter: saturate(.92) brightness(.72) contrast(1.04);
+}
+html[data-theme-mode="dark"] .aurora-scene-host[data-family="classic-day"] .aurora-scene-scrim {
+  background:
+    linear-gradient(180deg, rgba(2,6,14,.24), rgba(2,6,14,.42)),
+    radial-gradient(circle at 50% 38%, transparent 0 26%, rgba(0,0,0,.28) 100%);
+}
+
+/* Suaviza fondos muy luminosos debajo de controles transparentes sin alterar
+   el dibujo central. */
+html[data-theme-mode="light"] .aurora-scene-host[data-luminance="light"] .aurora-scene-scrim {
+  box-shadow: inset 0 0 180px rgba(15,23,42,.08);
+}
+html[data-theme-mode="dark"] .aurora-scene-host[data-luminance="light"] .aurora-scene-scrim {
+  background: rgba(0,0,0,.12);
+}
+
+/* La preferencia del SO reduce intensidad, pero no congela Aurora. El apagado
+   total es una decisión explícita mediante data-motion=off. */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-bg-layer *, .aurora-hud-layer * {
+    animation-duration: 8s !important;
+    transition-duration: .01ms !important;
+  }
+}
+html[data-motion="off"] .aurora-bg-layer *,
+html[data-motion="off"] .aurora-hud-layer * {
+  animation-play-state: paused !important;
+  transition-duration: 0s !important;
+}
+
+
+/* Integración de escenas Remake con modo claro. La composición se conserva,
+   pero una película localizada impide que masas oscuras compitan con texto. */
+html[data-theme-mode="light"] .aurora-scene-host[data-family="remake"] .aurora-scene-scrim {
+  background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.075));
+}
+html[data-theme-mode="light"] .aurora-scene-host[data-family="remake"][data-scene="void"] .aurora-scene-scrim,
+html[data-theme-mode="light"] .aurora-scene-host[data-family="remake"][data-scene="lava"] .aurora-scene-scrim,
+html[data-theme-mode="light"] .aurora-scene-host[data-family="remake"][data-scene="hellfire"] .aurora-scene-scrim,
+html[data-theme-mode="light"] .aurora-scene-host[data-family="remake"][data-scene="castle"] .aurora-scene-scrim,
+html[data-theme-mode="light"] .aurora-scene-host[data-family="remake"][data-scene="ravens"] .aurora-scene-scrim,
+html[data-theme-mode="light"] .aurora-scene-host[data-family="remake"][data-scene="luna"] .aurora-scene-scrim {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.13)),
+    radial-gradient(circle at 50% 45%, transparent 0 28%, rgba(255,255,255,.08) 75%, rgba(255,255,255,.14) 100%);
+}

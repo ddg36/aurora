@@ -11,8 +11,27 @@ import { onEvento } from './eventos-ws.js';
 // esta se actualiza en vivo. Anti-eco: `raw` guarda el último valor
 // serializado conocido (carga inicial, escritura propia o evento); un
 // evento cuyo valor coincide con `raw` es eco de esta misma tab y se ignora.
+const MIRROR_PREFIX = 'aurora_ajuste_cache_v1:';
+
+function leerEspejo(clave, initial) {
+  try {
+    const valor = localStorage.getItem(MIRROR_PREFIX + clave);
+    if (valor === null) return initial;
+    try { return JSON.parse(valor); } catch { return valor; }
+  } catch {
+    return initial;
+  }
+}
+
+function guardarEspejo(clave, valor) {
+  try {
+    if (valor === null || valor === undefined) localStorage.removeItem(MIRROR_PREFIX + clave);
+    else localStorage.setItem(MIRROR_PREFIX + clave, valor);
+  } catch (_) {}
+}
+
 export function usePersistedState(clave, initial) {
-  const [value, setValue] = useState(initial);
+  const [value, setValue] = useState(() => leerEspejo(clave, initial));
   const raw = useRef(undefined);
 
   useEffect(() => {
@@ -20,6 +39,7 @@ export function usePersistedState(clave, initial) {
 
     const aplicar = (valor) => {
       raw.current = valor;
+      guardarEspejo(clave, valor);
       if (valor === null) { setValue(initial); return; }
       try { setValue(JSON.parse(valor)); } catch { setValue(valor); }
     };
@@ -41,6 +61,7 @@ export function usePersistedState(clave, initial) {
     setValue(prev => {
       const resolved = typeof next === 'function' ? next(prev) : next;
       raw.current = JSON.stringify(resolved);
+      guardarEspejo(clave, raw.current);
       putJSON(`/db/ajustes/${clave}`, { valor: raw.current }).catch(() => {});
       return resolved;
     });

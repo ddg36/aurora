@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 const TAU = Math.PI * 2;
 
@@ -38,8 +38,9 @@ export class Aurora extends Component {
     let W, H, t = 0, stars;
 
     const resize = () => {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
       stars = Array.from({ length: Math.max(70, Math.round((W * H) / 22000 * (esDispositivoLiviano() ? 0.3 : 1))) }, () => ({
         x: Math.random() * W,
         y: Math.random() * H * .72,
@@ -102,7 +103,7 @@ export class Aurora extends Component {
       }
 
       drawRays(ar, ag, ab, t);
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     this._resize = resize;
@@ -112,7 +113,7 @@ export class Aurora extends Component {
   }
 
   componentWillUnmount() {
-    cancelAnimationFrame(this._raf);
+    cancelSceneFrame(this._raf);
     window.removeEventListener('resize', this._resize);
     this.accent.stop();
   }

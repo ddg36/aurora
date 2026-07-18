@@ -41,75 +41,57 @@ export const THEMES = [
   { id: 'tundra',   name: 'Tundra',    category: 'arctic',    accent: '#94a3b8', surface2: '#080a0d', edgeGlow: 'rgba(148,163,184,0.15)', accentDim: '#2a3545' },
 ];
 
-export const BACKGROUNDS = [
-  // 🌌 Cósmico
-  { id: 'starfield', name: 'Starfield', category: 'cosmic',    icon: '✨' },
-  { id: 'void',      name: 'Void',      category: 'cosmic',    icon: '🌌' },
-  { id: 'clouds',    name: 'Clouds',    category: 'cosmic',    icon: '☁️' },
-  { id: 'nebula',    name: 'Nebula',    category: 'cosmic',    icon: '🌠' },
-  { id: 'aurora',    name: 'Aurora',    category: 'cosmic',    icon: '🌌' },
-  { id: 'particles', name: 'Particles', category: 'cosmic',    icon: '🔵' },
-
-  // ⚡ Cyberpunk
-  { id: 'matrix',    name: 'Matrix',    category: 'cyberpunk', icon: '💻' },
-  { id: 'grid',      name: 'Grid CRT',  category: 'cyberpunk', icon: '⊞'  },
-  { id: 'rain',      name: 'Neon Rain', category: 'cyberpunk', icon: '🌧' },
-  { id: 'glitch',    name: 'Glitch',    category: 'cyberpunk', icon: '📡' },
+const BASE_BACKGROUNDS = [
+  { id: 'starfield', name: 'Starfield', category: 'cosmic', icon: '✨' },
+  { id: 'void', name: 'Void', category: 'cosmic', icon: '🌌' },
+  { id: 'clouds', name: 'Clouds', category: 'cosmic', icon: '☁️' },
+  { id: 'nebula', name: 'Nebula', category: 'cosmic', icon: '🌠' },
+  { id: 'aurora', name: 'Aurora', category: 'cosmic', icon: '🌌' },
+  { id: 'particles', name: 'Particles', category: 'cosmic', icon: '🔵' },
+  { id: 'matrix', name: 'Matrix', category: 'cyberpunk', icon: '💻' },
+  { id: 'grid', name: 'Grid CRT', category: 'cyberpunk', icon: '⊞' },
+  { id: 'rain', name: 'Neon Rain', category: 'cyberpunk', icon: '🌧' },
+  { id: 'glitch', name: 'Glitch', category: 'cyberpunk', icon: '📡' },
   { id: 'fireflies', name: 'Fireflies', category: 'cyberpunk', icon: '🔆' },
+  { id: 'castle', name: 'Castle', category: 'gothic', icon: '🏰' },
+  { id: 'blood', name: 'Blood', category: 'gothic', icon: '🩸' },
+  { id: 'ash', name: 'Ash', category: 'gothic', icon: '🌑' },
+  { id: 'fog', name: 'Fog', category: 'gothic', icon: '🌫' },
+  { id: 'ravens', name: 'Ravens', category: 'gothic', icon: '🦇' },
+  { id: 'abyss', name: 'Abyss', category: 'abysmal', icon: '🌊' },
+  { id: 'depths', name: 'Depths', category: 'abysmal', icon: '🌿' },
+  { id: 'hellfire', name: 'Hellfire', category: 'infernal', icon: '🔥' },
+  { id: 'lava', name: 'Lava', category: 'infernal', icon: '🌋' },
+  { id: 'sakura', name: 'Sakura', category: 'sakura', icon: '🌸' },
+  { id: 'autumn', name: 'Autumn', category: 'sakura', icon: '🍂' },
+  { id: 'moonlit', name: 'Moonlit', category: 'sakura', icon: '🌕' },
+  { id: 'blizzard', name: 'Blizzard', category: 'arctic', icon: '❄️' },
+  { id: 'tundra', name: 'Tundra', category: 'arctic', icon: '🏔' },
+];
 
-  // 🦇 Gótico
-  { id: 'castle',    name: 'Castle',    category: 'gothic',    icon: '🏰' },
-  { id: 'blood',     name: 'Blood',     category: 'gothic',    icon: '🩸' },
-  { id: 'ash',       name: 'Ash',       category: 'gothic',    icon: '🌑' },
-  { id: 'fog',       name: 'Fog',       category: 'gothic',    icon: '🌫' },
-  { id: 'ravens',    name: 'Ravens',    category: 'gothic',    icon: '🦇' },
+export const BACKGROUND_SERIES = [
+  { id: 'remake', name: 'Remake adaptativo', description: 'Escenas nuevas que cambian de paleta sin cambiar de composición.' },
+  { id: 'classic-night', name: 'Clásicos nocturnos', description: 'Fondos oscuros originales, conservados como opciones.' },
+  { id: 'classic-day', name: 'Clásicos claros', description: 'Visuales del antiguo modo blanco, rescatados como opciones independientes.' },
+];
 
-  // 🌊 Abismal
-  { id: 'abyss',     name: 'Abyss',     category: 'abysmal',   icon: '🌊' },
-  { id: 'depths',    name: 'Depths',    category: 'abysmal',   icon: '🌿' },
-
-  // 🔥 Infernal
-  { id: 'hellfire',  name: 'Hellfire',  category: 'infernal',  icon: '🔥' },
-  { id: 'lava',      name: 'Lava',      category: 'infernal',  icon: '🌋' },
-
-  // 🌸 Sakura
-  { id: 'sakura',    name: 'Sakura',    category: 'sakura',    icon: '🌸' },
-  { id: 'autumn',    name: 'Autumn',    category: 'sakura',    icon: '🍂' },
-  { id: 'moonlit',   name: 'Moonlit',   category: 'sakura',    icon: '🌕' },
-
-  // ❄️ Ártico
-  { id: 'blizzard',  name: 'Blizzard',  category: 'arctic',    icon: '❄️' },
-  { id: 'tundra',    name: 'Tundra',    category: 'arctic',    icon: '🏔' },
-
-  { id: 'none',      name: 'Ninguno',   category: 'cosmic',    icon: '⬛' },
+export const BACKGROUNDS = [
+  { id: 'luna-remake', name: 'Luna · Remake', category: 'gothic', icon: '🌙', series: 'remake' },
+  ...BASE_BACKGROUNDS.map(x => ({ ...x, id: `${x.id}-remake`, series: 'remake', name: `${x.name} · Remake` })),
+  ...BASE_BACKGROUNDS.map(x => ({ ...x, series: 'classic-night', name: `${x.name} · Noche clásica` })),
+  ...BASE_BACKGROUNDS.map(x => ({ ...x, id: `${x.id}-classic-day`, series: 'classic-day', name: `${x.name} · Día clásico` })),
 ];
 
 export const HUDS = [
-  // 🌌 Cósmico
-  { id: 'luna',        name: 'Luna',        category: 'cosmic',    icon: '🌙' },
-  { id: 'pulse-rings', name: 'Pulse Rings', category: 'cosmic',    icon: '◎'  },
-
-  // ⚡ Cyberpunk
-  { id: 'scanlines',   name: 'Scanlines',   category: 'cyberpunk', icon: '📺' },
-  { id: 'circuit',     name: 'Circuit',     category: 'cyberpunk', icon: '⚡' },
-  { id: 'corners',     name: 'Corners',     category: 'cyberpunk', icon: '⌗'  },
-
-  // 🦇 Gótico
-  { id: 'candles',     name: 'Candles',     category: 'gothic',    icon: '🕯' },
-  { id: 'runes',       name: 'Runes',       category: 'gothic',    icon: '᛭'  },
-  { id: 'drip',        name: 'Drip',        category: 'gothic',    icon: '🩸' },
-
-  // 🌊 Abismal
-  { id: 'sonar',       name: 'Sonar',       category: 'abysmal',   icon: '🔵' },
-
-  // 🔥 Infernal
-  { id: 'ember',       name: 'Ember',       category: 'infernal',  icon: '🔥' },
-
-  // 🌸 Sakura
-  { id: 'torii',       name: 'Torii',       category: 'sakura',    icon: '⛩'  },
-
-  // ❄️ Ártico
-  { id: 'compass',     name: 'Compass',     category: 'arctic',    icon: '🧭' },
-
-  { id: 'none',        name: 'Ninguno',     category: 'cosmic',    icon: '⬛' },
+  { id: 'pulse-rings', name: 'Halo de foco', category: 'cosmic', icon: '◎', description: 'Resalta foco, streaming y controles activos.' },
+  { id: 'scanlines', name: 'Panel CRT', category: 'cyberpunk', icon: '▤', description: 'Textura scanline sólo dentro de paneles y barras.' },
+  { id: 'circuit', name: 'Circuitos UI', category: 'cyberpunk', icon: '⚡', description: 'Trazas, nodos y bordes técnicos en la interfaz.' },
+  { id: 'corners', name: 'Brackets', category: 'cyberpunk', icon: '⌗', description: 'Esquinas de targeting en tarjetas y controles.' },
+  { id: 'candles', name: 'Filigrana cálida', category: 'gothic', icon: '♰', description: 'Ornamentos y brillos cálidos en paneles.' },
+  { id: 'runes', name: 'Runas UI', category: 'gothic', icon: '᛭', description: 'Glifos discretos en títulos y estados activos.' },
+  { id: 'drip', name: 'Borde carmesí', category: 'gothic', icon: '⌄', description: 'Remates verticales y subrayados dramáticos.' },
+  { id: 'sonar', name: 'Sonar de foco', category: 'abysmal', icon: '◉', description: 'Pulsos sobre controles activos y estados en curso.' },
+  { id: 'ember', name: 'Interfaz brasa', category: 'infernal', icon: '◆', description: 'Bordes calientes, estados activos y microglows.' },
+  { id: 'torii', name: 'Marcos Torii', category: 'sakura', icon: '⛩', description: 'Cabeceras y divisores inspirados en arquitectura Torii.' },
+  { id: 'compass', name: 'Navegación polar', category: 'arctic', icon: '⌖', description: 'Marcas cardinales y guía visual del elemento activo.' },
 ];

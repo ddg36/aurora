@@ -10,6 +10,24 @@ export const cargando         = signal(false);
 // y muestra "☁ generando…" mientras la burbuja crece con el stream.
 export const cloudGenerando   = signal(false);
 
+let _uiSeq = 0;
+
+export function crearUiIdMensaje(prefijo = 'msg') {
+  try {
+    const uuid = globalThis.crypto?.randomUUID?.();
+    if (uuid) return `${prefijo}:${uuid}`;
+  } catch (_) {}
+  _uiSeq += 1;
+  return `${prefijo}:${Date.now().toString(36)}:${_uiSeq.toString(36)}`;
+}
+
+export function asegurarUiIdMensaje(msg, prefijo = 'msg') {
+  if (typeof msg?._uiId === 'string' && msg._uiId) return msg._uiId;
+  const dbId = msg?.id ?? msg?.mensaje_id;
+  if (dbId !== undefined && dbId !== null && dbId !== '') return `db:${dbId}`;
+  return crearUiIdMensaje(prefijo);
+}
+
 export function registrarToolEvent(evento) {
   toolEvents.value = [...toolEvents.value, { ...evento, ts: Date.now() }];
 }
@@ -25,13 +43,22 @@ function normalizeMensaje(m) {
   const content = m.content ?? m.contenido ?? m.texto ?? '';
   const tsRaw = m.ts ?? m.creado_en ?? Date.now();
   const ts = tsRaw < 1000000000000 ? tsRaw * 1000 : tsRaw;
-  return { ...m, role, content, ts };
+  const estructura = m.estructura ?? m._piTurn ?? null;
+  const normalizado = { ...m, role, content, ts, _piTurn: estructura };
+  return { ...normalizado, _uiId: asegurarUiIdMensaje(normalizado) };
 }
 
 function appendIfNotLast(msg) {
-  const last = historial.value[historial.value.length - 1];
-  if (last && last.role === msg.role && last.content === msg.content) return;
-  historial.value = [...historial.value, msg];
+  const normalizado = normalizeMensaje(msg);
+  const arr = historial.value;
+  const last = arr[arr.length - 1];
+  if (last && last.role === normalizado.role && last.content === normalizado.content) {
+    const combinado = { ...last, ...normalizado, _uiId: last._uiId || normalizado._uiId };
+    historial.value = [...arr.slice(0, -1), combinado];
+    return combinado;
+  }
+  historial.value = [...arr, normalizado];
+  return normalizado;
 }
 
 export async function cargarMensajes(chatId) {
@@ -49,10 +76,10 @@ export async function cargarMensajes(chatId) {
   } catch {}
 }
 
-export async function guardarMensaje(chatId, rol, texto) {
+export async function guardarMensaje(chatId, rol, texto, estructura = null) {
   if (!chatId || !texto) return null;
 
-  const localMsg = { role: rol, content: texto, ts: Date.now() };
+  const localMsg = normalizeMensaje({ role: rol, content: texto, ts: Date.now() });
 
   try {
     const res = await fetch(`${BASE}/db/chats/mensajes`, {
@@ -62,12 +89,17 @@ export async function guardarMensaje(chatId, rol, texto) {
         chat_id: Number(chatId),
         rol,
         contenido: texto,
+        estructura,
       }),
     });
 
     if (res.ok) {
-      appendIfNotLast(localMsg);
-      return localMsg;
+      let persistido = null;
+      try { persistido = await res.json(); } catch (_) {}
+      const conDb = persistido && typeof persistido === 'object'
+        ? normalizeMensaje({ ...localMsg, ...persistido, _uiId: localMsg._uiId })
+        : localMsg;
+      return appendIfNotLast(conDb);
     }
   } catch {}
 
@@ -90,11 +122,11 @@ export async function borrarMensaje(mensajeId) {
 }
 
 export function agregarMensajeLocal(rol, texto) {
-  appendIfNotLast({ role: rol, content: texto, ts: Date.now() });
+  return appendIfNotLast({ role: rol, content: texto, ts: Date.now() });
 }
 
 export function agregarMensajeRico(msg) {
-  appendIfNotLast({ ts: Date.now(), ...msg });
+  return appendIfNotLast({ ts: Date.now(), ...msg });
 }
 
 // Cache por contenido: parsearMensajeRico corre por CADA mensaje en CADA render.

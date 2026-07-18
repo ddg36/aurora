@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 // Torii — arco torii en la esquina inferior + pétalos y líneas zen. Temática sakura.
 export class Torii extends Component {
@@ -30,8 +30,9 @@ export class Torii extends Component {
     const petalHuds = Array.from({ length: 18 }, makePetal);
 
     const resize = () => {
-      W = canvas.width  = canvas.offsetWidth  || window.innerWidth;
-      H = canvas.height = canvas.offsetHeight || window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const drawTorii = () => {
@@ -114,7 +115,7 @@ export class Torii extends Component {
 
     let raf;
     const draw = () => {
-      raf = requestAnimationFrame(draw);
+      raf = sceneFrame(draw);
       t++;
       ctx.clearRect(0, 0, W, H);
 
@@ -126,7 +127,7 @@ export class Torii extends Component {
     draw();
     this._ro = new ResizeObserver(resize);
     this._ro.observe(canvas);
-    this._stop = () => { cancelAnimationFrame(raf); this._ro.disconnect(); };
+    this._stop = () => { cancelSceneFrame(raf); this._ro.disconnect(); };
   }
 
   componentWillUnmount() { this._stop?.(); this.accent.stop(); }

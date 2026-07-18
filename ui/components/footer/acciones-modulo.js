@@ -1,6 +1,9 @@
 import { setTab } from '../../store.js';
 import { Toast } from '../shared/toast.js';
 import { iconButtonClass, ICON_BTN_SQUARE } from '../shared/iconButton.js';
+import { copiarTexto } from '../shared/clipboard.js';
+import { getCloudToolPrimer } from '../shared/cloud-tool-primer.js';
+import { jsonFamilyEnabled, initJSONFamilyState, setJSONFamilyEnabled } from '../shared/json-family-state.js';
 
 // ── SVG icons ────────────────────────────────────────────────
 const SVG_CAMERA = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4.5C1 3.67 1.67 3 2.5 3h1.17L4.5 1.5h5l.83 1.5H11.5C12.33 3 13 3.67 13 4.5v6c0 .83-.67 1.5-1.5 1.5h-9C1.67 12 1 11.33 1 10.5v-6z"/><circle cx="7" cy="7.5" r="2"/></svg>`;
@@ -17,40 +20,12 @@ async function leerClipboard() {
   }
 }
 
-function tryParseJson(text) {
-  try {
-    return { ok: true, status: 'JSON válido detectado', formatted: JSON.stringify(JSON.parse(text), null, 2) };
-  } catch {
-    return { ok: false };
-  }
-}
-
-function detectJson(raw) {
-  const direct = tryParseJson(raw);
-  if (direct.ok) return direct;
-  const match = raw.match(/\{[\s\S]*\}/) || raw.match(/\[[\s\S]*\]/);
-  if (match) {
-    const extracted = tryParseJson(match[0]);
-    if (extracted.ok) return { ...extracted, status: 'JSON extraído del texto' };
-  }
-  return { ok: false, status: 'No se encontró JSON válido', formatted: String(raw) };
-}
-
 async function abrirNotaScratchpad(nombre, contenido) {
   await asegurarRaiz();
   const path = `${NOTAS_ROOT}/${nombre}`;
   await escribirNota(path, contenido);
   setTab('scratchpad');
   return path;
-}
-
-async function aihubJsonDetective() {
-  const raw = await leerClipboard();
-  if (!raw) { Toast.show('Portapapeles vacío', 'warning'); return; }
-  const result = detectJson(raw);
-  const contenido = ['# JSON Detective', '', result.status, '', '```json', result.formatted, '```'].join('\n');
-  await abrirNotaScratchpad(`json-detective-${Date.now()}.md`, contenido);
-  Toast.show(result.status, result.ok ? 'success' : 'warning');
 }
 
 async function aihubLoadClipboard() {
@@ -65,15 +40,16 @@ function aihubOpenAddLlm() {
   Toast.show('Agregá tu LLM custom abajo en Ajustes', 'info');
 }
 
-function aihubInjectProtocol() {
-  const frames = document.querySelectorAll('iframe[data-aurora-frame-id], iframe[data-pane]');
-  if (!frames.length) { Toast.show('No hay iframes de LLM activos', 'warning'); return; }
-  let count = 0;
-  for (const iframe of frames) {
-    try { iframe.contentWindow?.postMessage({ type: 'AURORA_INJECT_PROTOCOL' }, '*'); count++; } catch {}
+async function aihubInjectProtocol() {
+  try {
+    const copiado = await copiarTexto(await getCloudToolPrimer());
+    Toast.show(
+      copiado ? 'Instrucción de Pi Tools copiada al portapapeles' : 'No se pudo copiar la instrucción',
+      copiado ? 'success' : 'error',
+    );
+  } catch (error) {
+    Toast.show('No se pudo copiar la instrucción: ' + (error?.message || error), 'error');
   }
-  if (count) Toast.show(`Señal enviada a ${count} iframe(s) — requiere la extensión para inyectar`, 'info');
-  else Toast.show('Inject de protocolo requiere la extensión de browser', 'warning');
 }
 
 // ── Quick-capture desde footer ────────────────────────────────
@@ -124,9 +100,26 @@ async function quickCapturePage() {
 
 export const ACCIONES_MODULO = [
   { id: 'aihub-add-llm', icon: '＋', title: 'Añadir LLM', onClick: aihubOpenAddLlm },
-  { id: 'aihub-json-detective', icon: '{ }', title: 'JSON Detective', onClick: aihubJsonDetective },
+  {
+    id: 'aihub-json-family', title: 'JSON Family',
+    component: () => {
+      const html = (...args) => globalThis.html(...args);
+      const { useEffect, useState } = globalThis.preactHooks;
+      const [enabled, setEnabled] = useState(jsonFamilyEnabled.value);
+      useEffect(() => {
+        initJSONFamilyState().then(setEnabled);
+        return jsonFamilyEnabled.subscribe(setEnabled);
+      }, []);
+      const toggle = async () => {
+        const next = await setJSONFamilyEnabled(!enabled);
+        setEnabled(next);
+        Toast.show(`JSON Family ${next ? 'ON' : 'OFF'}`, next ? 'success' : 'info');
+      };
+      return html`<button class=${iconButtonClass(enabled, `${ICON_BTN_SQUARE} text-[10px] font-mono`)} title=${`JSON Family global: ${enabled ? 'ON' : 'OFF'}`} onClick=${toggle}><span>{ }</span><b class="ml-1 text-[8px]">${enabled ? 'ON' : 'OFF'}</b></button>`;
+    },
+  },
   { id: 'aihub-load-clipboard', icon: '⊞', title: 'Cargar portapapeles a Notas', onClick: aihubLoadClipboard },
-  { id: 'aihub-inject-protocol', icon: '@@', title: 'Enseñar protocolo @@ al LLM (requiere extensión)', onClick: aihubInjectProtocol },
+  { id: 'aihub-inject-protocol', icon: '@@', title: 'Copiar instrucciones de Pi Tools al portapapeles', onClick: aihubInjectProtocol },
 ];
 
 function SvgBtn({ svg, title, onClick }) {

@@ -66,7 +66,7 @@ button.btn-primary {
   border-color: var(--aurora-accent);
   font-weight: 500;
 }
-button.btn-primary:hover { background: #d64a4a; border-color: #d64a4a; box-shadow: 0 4px 16px var(--aurora-edge-glow); }
+button.btn-primary:hover { background: color-mix(in srgb, var(--aurora-accent) 82%, var(--aurora-text)); border-color: color-mix(in srgb, var(--aurora-accent) 82%, var(--aurora-text)); box-shadow: 0 4px 16px var(--aurora-edge-glow); }
 
 button.btn-danger { background: transparent; color: var(--aurora-error); border-color: var(--aurora-error); }
 button.btn-danger:hover { background: rgba(199,62,62,.1); }
@@ -91,3 +91,13 @@ input:focus, select:focus, textarea:focus {
 }
 textarea { resize: vertical; }
 select   { cursor: pointer; }
+
+
+html, body, button, input, select, textarea {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: .18s;
+  transition-timing-function: ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  html, body, button, input, select, textarea { transition-duration: 0s !important; }
+}

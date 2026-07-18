@@ -4,10 +4,9 @@ host = "0.0.0.0"
 port = 7779
 reload = true
 
-# [db] es la fuente de verdad de la ruta de la DB (la lee src/db/connection.py).
+# Ruta relativa a la raíz de Aurora. Funciona igual en Linux y Windows.
 # Override puntual: variable de entorno AURORA_DB_PATH.
 [db]
-path_linux  = "/media/almacen/deml/Downloads/core_instruction/aurora/databases/aihub.db"
-path_windows = "D:\\Downloads\\core_instruction\\aurora\\databases\\aihub.db"
+path = "databases/aihub.db"
 
 # CORS se configura en src/main.py (allowlist de orígenes locales + extensión).

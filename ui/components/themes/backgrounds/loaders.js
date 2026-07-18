@@ -1,45 +1,73 @@
-// Loaders lazy — solo se importa el background activo y su variante día/noche.
-const V = '?v=v2-visual-variants-2';
+// Loaders lazy. La selección de escena ya no cambia al alternar claro/oscuro:
+// `mode` se entrega al componente para que adapte su paleta sin desmontarse por
+// una identidad visual distinta.
+const { h } = globalThis.preact;
+const V = '?v=v4-interface-hud-1';
 const load = (file) => import(`${file}${V}`);
-const light = (name) => load('./light.js').then(m => m[name]);
 
-export const BACKGROUND_LOADERS = {
-  // 🌌 Cósmico
-  void:      (mode) => mode === 'light' ? light('LightVoid')      : load('./Void.js').then(m => m.Void),
-  starfield: (mode) => mode === 'light' ? light('LightStarfield') : load('./Starfield.js').then(m => m.Starfield),
-  clouds:    (mode) => mode === 'light' ? light('LightClouds')    : load('./Clouds.js').then(m => m.Clouds),
-  nebula:    (mode) => mode === 'light' ? light('LightNebula')    : load('./Nebula.js').then(m => m.Nebula),
-  aurora:    (mode) => mode === 'light' ? light('LightAurora')    : load('./Aurora.js').then(m => m.Aurora),
-  particles: (mode) => mode === 'light' ? light('LightParticles') : load('./Particles.js').then(m => m.Particles),
-
-  // ⚡ Cyberpunk
-  matrix:    (mode) => mode === 'light' ? light('LightMatrix')    : load('./Matrix.js').then(m => m.Matrix),
-  grid:      (mode) => mode === 'light' ? light('LightGrid')      : load('./Grid.js').then(m => m.Grid),
-  rain:      (mode) => mode === 'light' ? light('LightRain')      : load('./Rain.js').then(m => m.Rain),
-  glitch:    (mode) => mode === 'light' ? light('LightGlitch')    : load('./Glitch.js').then(m => m.Glitch),
-  fireflies: (mode) => mode === 'light' ? light('LightFireflies') : load('./Fireflies.js').then(m => m.Fireflies),
-
-  // 🦇 Gótico
-  castle:    (mode) => mode === 'light' ? light('LightCastle')    : load('./Castle.js').then(m => m.Castle),
-  blood:     (mode) => mode === 'light' ? light('LightBlood')     : load('./Blood.js').then(m => m.Blood),
-  ash:       (mode) => mode === 'light' ? light('LightAsh')       : load('./Ash.js').then(m => m.Ash),
-  fog:       (mode) => mode === 'light' ? light('LightFog')       : load('./Fog.js').then(m => m.Fog),
-  ravens:    (mode) => mode === 'light' ? light('LightRavens')    : load('./Ravens.js').then(m => m.Ravens),
-
-  // 🌊 Abismal
-  abyss:     (mode) => mode === 'light' ? light('LightAbyss')     : load('./Abyss.js').then(m => m.Abyss),
-  depths:    (mode) => mode === 'light' ? light('LightDepths')    : load('./Depths.js').then(m => m.Depths),
-
-  // 🔥 Infernal
-  hellfire:  (mode) => mode === 'light' ? light('LightHellfire')  : load('./Hellfire.js').then(m => m.Hellfire),
-  lava:      (mode) => mode === 'light' ? light('LightLava')      : load('./Lava.js').then(m => m.Lava),
-
-  // 🌸 Sakura
-  sakura:    (mode) => mode === 'light' ? light('LightSakura')    : load('./Sakura.js').then(m => m.Sakura),
-  autumn:    (mode) => mode === 'light' ? light('LightAutumn')    : load('./Autumn.js').then(m => m.Autumn),
-  moonlit:   (mode) => mode === 'light' ? light('LightMoonlit')   : load('./Moonlit.js').then(m => m.Moonlit),
-
-  // ❄️ Ártico
-  blizzard:  (mode) => mode === 'light' ? light('LightBlizzard')  : load('./Blizzard.js').then(m => m.Blizzard),
-  tundra:    (mode) => mode === 'light' ? light('LightTundra')    : load('./Tundra.js').then(m => m.Tundra),
+const DEFINITIONS = {
+  starfield: ['Starfield.js', 'Starfield', 'RemakeStarfield', 'LightStarfield'],
+  void: ['Void.js', 'Void', 'RemakeVoid', 'LightVoid'],
+  clouds: ['Clouds.js', 'Clouds', 'RemakeClouds', 'LightClouds'],
+  nebula: ['Nebula.js', 'Nebula', 'RemakeNebula', 'LightNebula'],
+  aurora: ['Aurora.js', 'Aurora', 'RemakeAurora', 'LightAurora'],
+  particles: ['Particles.js', 'Particles', 'RemakeParticles', 'LightParticles'],
+  matrix: ['Matrix.js', 'Matrix', 'RemakeMatrix', 'LightMatrix'],
+  grid: ['Grid.js', 'Grid', 'RemakeGrid', 'LightGrid'],
+  rain: ['Rain.js', 'Rain', 'RemakeRain', 'LightRain'],
+  glitch: ['Glitch.js', 'Glitch', 'RemakeGlitch', 'LightGlitch'],
+  fireflies: ['Fireflies.js', 'Fireflies', 'RemakeFireflies', 'LightFireflies'],
+  castle: ['Castle.js', 'Castle', 'RemakeCastle', 'LightCastle'],
+  blood: ['Blood.js', 'Blood', 'RemakeBlood', 'LightBlood'],
+  ash: ['Ash.js', 'Ash', 'RemakeAsh', 'LightAsh'],
+  fog: ['Fog.js', 'Fog', 'RemakeFog', 'LightFog'],
+  ravens: ['Ravens.js', 'Ravens', 'RemakeRavens', 'LightRavens'],
+  abyss: ['Abyss.js', 'Abyss', 'RemakeAbyss', 'LightAbyss'],
+  depths: ['Depths.js', 'Depths', 'RemakeDepths', 'LightDepths'],
+  hellfire: ['Hellfire.js', 'Hellfire', 'RemakeHellfire', 'LightHellfire'],
+  lava: ['Lava.js', 'Lava', 'RemakeLava', 'LightLava'],
+  sakura: ['Sakura.js', 'Sakura', 'RemakeSakura', 'LightSakura'],
+  autumn: ['Autumn.js', 'Autumn', 'RemakeAutumn', 'LightAutumn'],
+  moonlit: ['Moonlit.js', 'Moonlit', 'RemakeMoonlit', 'LightMoonlit'],
+  blizzard: ['Blizzard.js', 'Blizzard', 'RemakeBlizzard', 'LightBlizzard'],
+  tundra: ['Tundra.js', 'Tundra', 'RemakeTundra', 'LightTundra'],
 };
+
+function frame(Comp, family, luminance, sceneId) {
+  if (typeof Comp !== 'function') return null;
+  return function BackgroundFrame({ mode = 'dark' }) {
+    return h('div', {
+      class: 'aurora-scene-host',
+      'data-family': family,
+      'data-luminance': luminance,
+      'data-scene': sceneId,
+      'data-mode': mode,
+      'aria-hidden': 'true',
+    },
+      h(Comp, { mode }),
+      h('div', { class: 'aurora-scene-scrim' }),
+    );
+  };
+}
+
+function remake(id, exportName) {
+  return () => load('./Remake.js').then(m => frame(m[exportName], 'remake', 'mixed', id));
+}
+function classicNight(id, file, exportName) {
+  return () => load(`./${file}`).then(m => frame(m[exportName], 'classic-night', 'dark', id));
+}
+function classicDay(id, exportName) {
+  return () => load('./light.js').then(m => frame(m[exportName], 'classic-day', 'light', id));
+}
+
+export const BACKGROUND_LOADERS = {};
+for (const [id, [file, darkExport, remakeExport, lightExport]] of Object.entries(DEFINITIONS)) {
+  // El ID histórico conserva el fondo nocturno original para no cambiar
+  // preferencias guardadas. Remake y Día son elecciones explícitas.
+  BACKGROUND_LOADERS[id] = classicNight(id, file, darkExport);
+  BACKGROUND_LOADERS[`${id}-remake`] = remake(id, remakeExport);
+  BACKGROUND_LOADERS[`${id}-classic-day`] = classicDay(id, lightExport);
+}
+
+// Luna dejó de ser HUD: ahora es una escena de fondo adaptativa.
+BACKGROUND_LOADERS['luna-remake'] = remake('luna', 'RemakeLuna');

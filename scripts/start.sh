@@ -11,6 +11,7 @@ if [ ! -d "$VENV" ]; then
 fi
 
 export PYTHONPATH="$AURORA_DIR/src"
+cd "$AURORA_DIR"
 
 echo "╔══════════════════════════════════════╗"
 echo "║   Aurora Server                     ║"
@@ -18,7 +19,8 @@ echo "║   http://localhost:7779/ui          ║"
 echo "║   PID: $$                         ║"
 echo "╚══════════════════════════════════════╝"
 
-"$VENV/bin/uvicorn" main:app \
+"$VENV/bin/python" -m uvicorn main:app \
   --host 0.0.0.0 \
   --port 7779 \
+  --reload \
   --reload-dir "$AURORA_DIR/src"

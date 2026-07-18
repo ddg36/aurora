@@ -1,6 +1,6 @@
 // Lenguaje visual compartido para tools de Lyra, Cloud y Duo.
 // Importante: detectar un borrador sólo cambia la UI. La ejecución sigue
-// dependiendo del parser estricto de cada motor y de un JSON completo válido.
+// dependiendo del parser estricto y unificado de JSON Family.
 
 const html = (...args) => globalThis.html(...args);
 
@@ -20,6 +20,9 @@ function valorParcial(texto, clave) {
 }
 
 export function detectarToolDraft(texto = '') {
+  // Pista puramente visual durante streaming. No autoriza ni ejecuta tools;
+  // la decisión canónica ocurre luego en /json-family/process.
+  if (!/(?:^|```(?:json|pitool)?\s*)(?:json\s*)?\{?\s*"tool"\s*:/i.test(String(texto))) return null;
   // Algunos proveedores muestran el label visual `JSON` sin fence antes del
   // objeto ("JSON{...}"). Sigue siendo sólo una pista de renderizado.
   const inicio = texto.search(/(?:^|```(?:json|pitool)?\s*)(?:json\s*)?\{?\s*"tool"\s*:/i);
@@ -28,7 +31,7 @@ export function detectarToolDraft(texto = '') {
   const tool = tramo.match(/"tool"\s*:\s*"([^"\\]{1,32})/i)?.[1]?.toLowerCase();
   if (!tool) return { tool: 'tool', status: 'preparing', summary: 'Leyendo solicitud…' };
   const path = valorParcial(tramo, 'path');
-  const command = valorParcial(tramo, 'cmd');
+  const command = valorParcial(tramo, 'command') || valorParcial(tramo, 'cmd');
   const content = valorParcial(tramo, 'content');
   const to = valorParcial(tramo, 'to');
   const message = valorParcial(tramo, 'message');
@@ -59,7 +62,7 @@ export function toolVisual({ tool, args = {}, status = 'running', result, error,
   const fallo = error || result?.is_error || result?.ok === false;
   const path = args.path || '';
   return {
-    tool: tool || 'tool', args, path, command: args.cmd || '', paneId, quien, runId,
+    tool: tool || 'tool', args, path, command: args.command || args.cmd || '', paneId, quien, runId,
     size: typeof args.content === 'string' ? args.content.length : 0,
     summary: tool === 'panel_send'
       ? `→ ${args.to || 'panel'} · ${String(args.message || '').replace(/\s+/g, ' ').slice(0, 120)}`
@@ -98,7 +101,7 @@ export function ToolVisualCard({ visual, compact = false }) {
   const status = visual.status || 'preparing';
   const [fase, tone, dot] = FASES[status] || FASES.preparing;
   const path = visual.path || visual.args?.path;
-  const command = visual.command || visual.args?.cmd;
+  const command = visual.command || visual.args?.command || visual.args?.cmd;
   const detalle = path || command || visual.summary || (visual.size ? `${visual.size.toLocaleString()} caracteres` : 'Preparando argumentos…');
   const artifact = visual.artifact || ((status === 'success' && path && ['write', 'edit'].includes(visual.tool)) ? { path, type: extension(path) } : null);
   return html`

@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { readThemeColors } from '../lib.js';
+import { readThemeColors, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -290,8 +290,9 @@ class LightBackground extends Component {
     });
 
     const resize = () => {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
       const density = Math.max(80, Math.min(260, Math.round((W * H) / 14500)));
       this.items = Array.from({ length: density }, makeItem);
       this.extra = Array.from({ length: Math.round(density * .45) }, variant === 'autumn' || variant === 'sakura' ? makeLeaf : makeSnow);
@@ -650,7 +651,7 @@ class LightBackground extends Component {
         bg('#ffffff', rgba(pale, .72), '#ffffff');
       }
 
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     this._resize = resize;
@@ -660,7 +661,7 @@ class LightBackground extends Component {
   }
 
   componentWillUnmount() {
-    cancelAnimationFrame(this._raf);
+    cancelSceneFrame(this._raf);
     window.removeEventListener('resize', this._resize);
   }
 
@@ -692,8 +693,9 @@ class LightHellfireCanvas extends Component {
     }
 
     const resize = () => {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const makeParticle = (full) => ({
@@ -780,7 +782,7 @@ class LightHellfireCanvas extends Component {
       t += .03;
       bgLight(ctx, W, H, theme);
       if (!this.ready) {
-        this._raf = requestAnimationFrame(draw);
+        this._raf = sceneFrame(draw);
         return;
       }
 
@@ -883,14 +885,14 @@ class LightHellfireCanvas extends Component {
           ctx.stroke();
         }
       }
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     init();
     draw();
     this._ro = new ResizeObserver(resize);
     this._ro.observe(canvas);
-    this._stop = () => { cancelAnimationFrame(this._raf); this._ro.disconnect(); };
+    this._stop = () => { cancelSceneFrame(this._raf); this._ro.disconnect(); };
   }
 
   componentWillUnmount() {
@@ -934,8 +936,9 @@ class LightBloodCanvas extends Component {
     let W = 0, H = 0, t = 0, waves, cells, drips;
 
     const resize = () => {
-      W = canvas.width = canvas.offsetWidth || window.innerWidth;
-      H = canvas.height = canvas.offsetHeight || window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const makeWave = () => ({
@@ -1083,14 +1086,14 @@ class LightBloodCanvas extends Component {
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, W, H);
       ctx.globalCompositeOperation = 'source-over';
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     init();
     draw();
     this._ro = new ResizeObserver(() => { init(); });
     this._ro.observe(canvas);
-    this._stop = () => { cancelAnimationFrame(this._raf); this._ro.disconnect(); };
+    this._stop = () => { cancelSceneFrame(this._raf); this._ro.disconnect(); };
   }
 
   componentWillUnmount() {

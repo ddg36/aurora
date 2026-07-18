@@ -1,14 +1,14 @@
-# Lyra — chat local sobre pi harness via RPC (gemita murió — git history si hace falta)
+# Lyra — chat local sobre pi harness via RPC.
 [pi]
-bin = "/home/deml/.bun/bin/pi"
-runtime = "/home/deml/.bun/bin/bun"
-# session_dir = ""    # sin setear: pi usa su default real (~/.pi/agent/sessions/),
-#                     # igual que correr `pi` a mano — Aurora es una interfaz
-#                     # distinta sobre el MISMO pi, no debe redirigir sus datos.
-# cwd = ""            # workspace del agente — default: raíz de aurora
-# extra_args = []     # flags extra para pi (ej: ["--no-extensions"])
+# Sin rutas explícitas, Aurora usa ~/.bun/bin/pi y ~/.bun/bin/bun,
+# con los nombres correctos para Linux o Windows. Para sobrescribir:
+# bin_linux = "/ruta/a/pi"
+# runtime_linux = "/ruta/a/bun"
+# bin_windows = "C:\\Users\\usuario\\.bun\\bin\\pi.cmd"
+# runtime_windows = "C:\\Users\\usuario\\.bun\\bin\\bun.exe"
+# session_dir = ""
+# cwd = ""
+# extra_args = []
 
 [llama]
-# base_url no aplica acá: cada proveedor local (llamacpp/lmstudio/ollama) tiene
-# su propio endpoint fijo en src/llm/providers.py DEFAULT_PROVIDERS.
 default_model = ""

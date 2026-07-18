@@ -40,8 +40,11 @@ export function aplicarTema(temaInput) {
 
   const temaId = tema.id;
   const mode = themeMode.value === 'light' ? 'light' : 'dark';
+  const category = tema.category || 'cosmic';
   document.body.dataset.tema = temaId;
   document.documentElement.dataset.tema = temaId;
+  document.body.dataset.themeCategory = category;
+  document.documentElement.dataset.themeCategory = category;
   document.body.dataset.themeMode = mode;
   document.documentElement.dataset.themeMode = mode;
 
@@ -50,8 +53,8 @@ export function aplicarTema(temaInput) {
       bg: '#ffffff',
       surface: '#ffffff',
       surface1: '#ffffff',
-      surface2Base: '#eef1f7',
-      surface3: '#dfe4ee',
+      surface2Base: mixHex('#f4f6fb', tema.accent, 0.045),
+      surface3: mixHex('#e6eaf2', tema.accent, 0.055),
       hover: 'rgba(15,23,42,0.055)',
       field: 'rgba(15,23,42,0.045)',
       text: '#10131a',
@@ -65,9 +68,9 @@ export function aplicarTema(temaInput) {
       borderStrong: 'rgba(15,23,42,0.18)',
       shadowSm: '0 1px 2px rgba(15,23,42,0.08)',
       shadowMd: '0 12px 32px rgba(15,23,42,0.12)',
-      accentSurface: `color-mix(in srgb, ${tema.accent} 12%, #ffffff)`,
-      accentDim: tema.accentDim,
-      glow: tema.edgeGlow,
+      accentSurface: `color-mix(in srgb, ${tema.accent} 10%, #ffffff)`,
+      accentDim: mixHex(tema.accent, '#111827', 0.42),
+      glow: rgbaHex(tema.accent, 0.18),
     }
     : {
       bg: '#000000',
@@ -92,6 +95,10 @@ export function aplicarTema(temaInput) {
       accentDim: tema.accentDim,
       glow: tema.edgeGlow,
     };
+
+  const [accentR, accentG, accentB] = hexToRgb(tema.accent);
+  const accentRgb = `${accentR}, ${accentG}, ${accentB}`;
+  const link = mode === 'light' ? mixHex(tema.accent, '#111827', 0.24) : mixHex(tema.accent, '#ffffff', 0.18);
 
   if (tema.animated) {
     _getStyleEl().textContent = `
@@ -127,6 +134,9 @@ export function aplicarTema(temaInput) {
         animation: aurora-shift 8s ease-in-out infinite;
         color-scheme: ${mode};
         --aurora-bg: ${base.bg};
+        --aurora-accent-rgb: ${accentRgb};
+        --accent-rgb: ${accentRgb};
+        --aurora-link: ${link};
         --aurora-surface: ${base.surface};
         --aurora-surface-1: ${base.surface1};
         --aurora-surface-2: ${base.surface2Base};
@@ -160,6 +170,9 @@ export function aplicarTema(temaInput) {
         animation: none;
         color-scheme: ${mode};
         --aurora-bg:         ${base.bg};
+        --aurora-accent-rgb:${accentRgb};
+        --accent-rgb:       ${accentRgb};
+        --aurora-link:      ${link};
         --aurora-surface:    ${base.surface};
         --aurora-surface-1:  ${base.surface1};
         --aurora-surface-2:  ${base.surface2Base};
@@ -190,4 +203,7 @@ export function aplicarTema(temaInput) {
       }
     `;
   }
+
+  const root = document.documentElement;
+  root.dataset.themeRevision = String((Number(root.dataset.themeRevision) || 0) + 1);
 }

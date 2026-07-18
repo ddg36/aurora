@@ -11,8 +11,18 @@ export async function cargarTema() {
     ]);
     if (t.valor) setTheme(t.valor);
     if (m.valor) setThemeMode(m.valor);
-    if (b.valor) setBackground(b.valor);
-    if (h.valor) setHud(h.valor);
+    if (h.valor === 'luna') {
+      // Migración v4: Luna ahora es fondo, no una capa HUD.
+      setBackground('luna-remake');
+      setHud('none');
+      Promise.all([
+        putJSON('/db/ajustes/background', { valor: 'luna-remake' }),
+        putJSON('/db/ajustes/hud', { valor: 'none' }),
+      ]).catch(() => {});
+    } else {
+      if (b.valor) setBackground(b.valor);
+      if (h.valor) setHud(h.valor);
+    }
   } catch {}
 }
 

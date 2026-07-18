@@ -10,7 +10,21 @@
       ]
     },
     "condition": {
-      "urlFilter": "*",
+      "requestDomains": [
+        "chatgpt.com",
+        "chat.openai.com",
+        "claude.ai",
+        "gemini.google.com",
+        "grok.com",
+        "copilot.microsoft.com",
+        "chat.deepseek.com",
+        "chat.qwen.ai",
+        "perplexity.ai",
+        "www.perplexity.ai",
+        "kimi.moonshot.cn",
+        "you.com",
+        "poe.com"
+      ],
       "resourceTypes": ["sub_frame"]
     }
   },
@@ -27,7 +41,6 @@
       "requestDomains": [
         "chatgpt.com",
         "chat.openai.com",
-        "auth.openai.com",
         "claude.ai",
         "gemini.google.com",
         "grok.com",
@@ -37,9 +50,7 @@
         "www.meta.ai",
         "chat.mistral.ai",
         "you.com",
-        "poe.com",
-        "accounts.google.com",
-        "appleid.apple.com"
+        "poe.com"
       ],
       "resourceTypes": ["sub_frame"]
     }

@@ -1,0 +1,107 @@
+/* CATEGORY SKINS — cada familia cambia materiales y ornamento, no sólo el acento. */
+html[data-theme-category] .nav-rail,
+html[data-theme-category] footer,
+html[data-theme-category] .aurora-view-scope > section,
+html[data-theme-category] .aurora-view-scope .bg-white\/5 {
+  transition: background .22s ease, border-color .22s ease, box-shadow .22s ease;
+}
+
+/* Cósmico */
+html[data-theme-category="cosmic"] .nav-rail,
+html[data-theme-category="cosmic"] footer {
+  background:
+    radial-gradient(circle at 50% 0, color-mix(in srgb,var(--aurora-accent) 12%,transparent), transparent 45%),
+    color-mix(in srgb,var(--aurora-surface) 91%,transparent) !important;
+  backdrop-filter: blur(14px) saturate(1.15);
+}
+html[data-theme-category="cosmic"] .aurora-view-scope > section,
+html[data-theme-category="cosmic"] .aurora-view-scope .bg-white\/5 {
+  background: linear-gradient(145deg, color-mix(in srgb,var(--aurora-surface) 91%,transparent), color-mix(in srgb,var(--aurora-accent) 3%,var(--aurora-surface))) !important;
+}
+
+/* Cyberpunk */
+html[data-theme-category="cyberpunk"] .nav-rail,
+html[data-theme-category="cyberpunk"] footer {
+  background:
+    repeating-linear-gradient(90deg,transparent 0 18px,color-mix(in srgb,var(--aurora-accent) 5%,transparent) 18px 19px),
+    var(--aurora-surface) !important;
+  border-color: color-mix(in srgb,var(--aurora-accent) 25%,var(--aurora-border)) !important;
+}
+html[data-theme-category="cyberpunk"] button { border-radius: 4px; }
+html[data-theme-category="cyberpunk"] .aurora-view-scope > section,
+html[data-theme-category="cyberpunk"] .aurora-view-scope .bg-white\/5 {
+  background:
+    linear-gradient(135deg,color-mix(in srgb,var(--aurora-accent) 4%,var(--aurora-surface)),var(--aurora-surface)) !important;
+  box-shadow: inset 3px 0 color-mix(in srgb,var(--aurora-accent) 28%,transparent);
+}
+
+/* Abismal */
+html[data-theme-category="abysmal"] .nav-rail,
+html[data-theme-category="abysmal"] footer {
+  background:
+    radial-gradient(ellipse at 50% 110%,color-mix(in srgb,var(--aurora-accent) 15%,transparent),transparent 64%),
+    color-mix(in srgb,var(--aurora-surface) 94%,transparent) !important;
+  backdrop-filter: blur(18px);
+}
+html[data-theme-category="abysmal"] .aurora-view-scope > section,
+html[data-theme-category="abysmal"] .aurora-view-scope .bg-white\/5 {
+  border-color: color-mix(in srgb,var(--aurora-accent) 16%,var(--aurora-border)) !important;
+  box-shadow: inset 0 -18px 42px color-mix(in srgb,var(--aurora-accent) 4%,transparent);
+}
+
+/* Infernal */
+html[data-theme-category="infernal"] .nav-rail,
+html[data-theme-category="infernal"] footer {
+  background:
+    linear-gradient(180deg,color-mix(in srgb,var(--aurora-accent) 8%,var(--aurora-surface)),var(--aurora-surface)) !important;
+  border-color: color-mix(in srgb,var(--aurora-accent) 28%,var(--aurora-border)) !important;
+}
+html[data-theme-category="infernal"] .aurora-view-scope > section,
+html[data-theme-category="infernal"] .aurora-view-scope .bg-white\/5 {
+  background: linear-gradient(160deg,var(--aurora-surface),color-mix(in srgb,var(--aurora-accent) 5%,var(--aurora-surface))) !important;
+  box-shadow: inset 0 -2px color-mix(in srgb,var(--aurora-accent) 18%,transparent);
+}
+
+/* Sakura */
+html[data-theme-category="sakura"] .nav-rail,
+html[data-theme-category="sakura"] footer {
+  background:
+    radial-gradient(circle at 70% 0,color-mix(in srgb,var(--aurora-accent) 11%,transparent),transparent 44%),
+    color-mix(in srgb,var(--aurora-surface) 92%,transparent) !important;
+}
+html[data-theme-category="sakura"] button { border-radius: 12px; }
+html[data-theme-category="sakura"] .aurora-view-scope > section,
+html[data-theme-category="sakura"] .aurora-view-scope .bg-white\/5 {
+  border-radius: 14px !important;
+  background: linear-gradient(145deg,color-mix(in srgb,var(--aurora-accent) 4%,var(--aurora-surface)),var(--aurora-surface)) !important;
+}
+
+/* Ártico */
+html[data-theme-category="arctic"] .nav-rail,
+html[data-theme-category="arctic"] footer {
+  background:
+    linear-gradient(180deg,color-mix(in srgb,var(--aurora-accent) 6%,var(--aurora-surface)),color-mix(in srgb,var(--aurora-surface) 94%,transparent)) !important;
+  backdrop-filter: blur(16px) saturate(.88);
+}
+html[data-theme-category="arctic"] .aurora-view-scope > section,
+html[data-theme-category="arctic"] .aurora-view-scope .bg-white\/5 {
+  background: linear-gradient(155deg,color-mix(in srgb,white 3%,var(--aurora-surface)),color-mix(in srgb,var(--aurora-accent) 3%,var(--aurora-surface))) !important;
+  border-color: color-mix(in srgb,var(--aurora-accent) 14%,var(--aurora-border)) !important;
+}
+
+/* El gótico claro antes no tenía piel: conserva la filigrana sin usar negro. */
+html[data-theme-category="gothic"][data-theme-mode="light"] .nav-rail,
+html[data-theme-category="gothic"][data-theme-mode="light"] footer {
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.86),rgba(245,242,247,.76)),
+    radial-gradient(circle at 50% 0,color-mix(in srgb,var(--aurora-accent) 9%,transparent),transparent 48%) !important;
+  border-color: color-mix(in srgb,var(--aurora-accent) 18%,var(--aurora-border)) !important;
+  backdrop-filter: blur(16px);
+}
+html[data-theme-category="gothic"][data-theme-mode="light"] .aurora-view-scope > section,
+html[data-theme-category="gothic"][data-theme-mode="light"] .aurora-view-scope .bg-white\/5 {
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.88),rgba(247,244,249,.75)),
+    radial-gradient(circle at 90% 0,color-mix(in srgb,var(--aurora-accent) 6%,transparent),transparent 38%) !important;
+  border-color: color-mix(in srgb,var(--aurora-accent) 13%,var(--aurora-border)) !important;
+}

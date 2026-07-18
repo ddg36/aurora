@@ -4,6 +4,9 @@
 (function () {
   'use strict';
 
+  // Guard: chrome.runtime no está disponible en todos los contextos.
+  if (!chrome?.runtime) return;
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === 'AURORA_PING_CS') {
       sendResponse({ ok: true, url: location.href });

@@ -38,14 +38,16 @@ Aurora reemplazó a `gemita` (loop agéntico propio) como motor del chat. **pi e
 
 Aurora ya conecta Lyra con proveedores Cloud autenticados en iframes reales
 (Gemini y ChatGPT verificados) sin convertirlos en APIs falsas. El content
-script `cloud-relay.js` observa las interfaces nativas, transmite streaming y
-permite ejecutar `read`, `bash`, `edit` y `write` mediante un proceso pi
-dedicado y aislado.
+Relay V2 observa las interfaces nativas y transmite streaming. JSON Family es
+la única frontera de ejecución agentic: valida/deduplica la solicitud y usa las
+factories oficiales de Pi sin despertar el LLM local.
 
 ```text
-Lyra Cloud → askCloud → iframe nativo → cloud-relay
-     ↑                                      ↓
-feedback de tool ← /pi/cloud-tool ← JSON validado
+Lyra Cloud → askCloud → Relay Core → Provider Driver
+     ↑                              ↓
+feedback + ACK ← JSON Family ← JSON capturado
+                      ↓
+             Pi Tool Provider oficial
 ```
 
 La vista Cloud dispone de Split con dos proveedores persistentes. Su Duo
@@ -80,7 +82,9 @@ superideas vive en `docs/ideas/ideas-rescatadas.md`.
 │  /eventos  → WS bus Observer (broadcast/usuario)        │
 │  /nexus/*  → shell, fs, py, editor, approvals, tasks    │
 │  /db/*     → SQLite gateway (22+ controllers)           │
-│  /tools/*  → tool registry + browser_task + cloud_ask   │
+│  /tools/*  → registry + browser_task + cloud_ask        │
+│  /json-family/* → ejecución Cloud única + ACK durable   │
+│  /artifacts/read → lectura humana para Canvas/preview   │
 │  /voz/*    → STT faster-whisper + TTS edge-tts          │
 │  /mcp/*    → MCP protocol                               │
 │  /ext/*    → extension bus                              │
@@ -89,14 +93,14 @@ superideas vive en `docs/ideas/ideas-rescatadas.md`.
 │                                                         │
 │  pi/proceso.py → spawn `pi --mode rpc` (por SO)         │
 │  pi/bridge.py  → RPC JSONL, protocolo Lyra              │
-│  pi/cloud_executor.py → LLM nube aislado (propia sesión)│
+│  pi_tools/* → factories oficiales de Pi, sin LLM/RPC    │
 │  pi/ocr.py    → OCR vía proceso dedicado                │
 └──────────────────┬──────────────────────────────────────┘
                    │ SQLite WAL
 ┌──────────────────▼──────────────────────────────────────┐
 │  aihub.db — HDD NTFS compartido                         │
 │  Linux ↔ Windows                                        │
-│  Schema v8 con 8 migraciones numeradas                  │
+│  Schema v13 con migraciones numeradas                   │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -113,7 +117,7 @@ superideas vive en `docs/ideas/ideas-rescatadas.md`.
 | Capa | Tecnología | Notas |
 |------|-----------|-------|
 | **Backend** | Python 3.12 / Litestar / aiosqlite | Proceso único, puerto 7779 |
-| **Base de datos** | SQLite 3 (WAL, busy_timeout=5000) | Schema v8, 46+ tablas |
+| **Base de datos** | SQLite 3 (WAL, busy_timeout=5000) | Schema v13 |
 | **Motor LLM** | pi (`@earendil-works/pi-coding-agent`) | Modo RPC, JSONL |
 | **Frontend** | Preact 10 + HTM + Twind + Signals | Sin build step, ES modules nativos |
 | **Extensiones** | Chrome MV3 (Manifest V3) | Thin clients, iframe-first |
@@ -135,10 +139,10 @@ aurora/
 │   │   ├── bridge.py         ← 22 comandos pi, settings, tree, mapas
 │   │   ├── proceso.py        ← PiProceso: spawn, restart, RPC JSONL
 │   │   ├── router.py         ← WS /lyra handler
-│   │   ├── cloud_executor.py ← LLM nube aislado (propia sesión)
-│   │   ├── cloud_tools.py    ← tool cloud_ask
 │   │   ├── ocr.py            ← OCR proceso dedicado
 │   │   └── config.py         ← bin/runtime por SO
+│   ├── pi_tools/             ← host persistente de factories oficiales Pi
+│   ├── json_family/          ← parser, journal, policy y delivery Cloud
 │   ├── llm/                  ← providers.py (movido desde gemita/)
 │   ├── nexus/                ← Workspace engine
 │   │   ├── router.py         ← /nexus/* endpoints
@@ -157,7 +161,7 @@ aurora/
 │   │   ├── connection.py     ← Async SQLite, migraciones
 │   │   ├── auth.py           ← Auth guard middleware
 │   │   ├── router.py         ← 22+ controllers registrados
-│   │   ├── schema.sql        ← Schema v5 base (v8 con migraciones)
+│   │   ├── schema.sql        ← Schema base + migraciones hasta v13
 │   │   └── routes/           ← Individual route modules
 │   │       ├── usuarios.py
 │   │       ├── chats.py
@@ -190,7 +194,6 @@ aurora/
 │   │   ├── policy.py         ← Políticas de ejecución
 │   │   ├── browser_task.py   ← browser_task tool (pi → /nav)
 │   │   ├── cloud_ask.py      ← cloud_ask tool (pi → cloud LLM)
-│   │   ├── cloud_tools.py    ← Cloud tools executor
 │   │   ├── forge.py          ← paquetes inmutables, sandbox y lifecycle
 │   │   └── forge_build.py    ← Lyra → Duo Cloud → draft probado
 │   ├── ext/                  ← Extension communication bus
@@ -368,15 +371,16 @@ aurora/
 - Widgets: franja sobre el composer
 - Model cycling: `Alt+M`
 
-**`cloud_executor.py`** — LLM nube aislado:
-- Propia sesión descartable (no comparte con chat Lyra)
-- Auto-approve de bash desde la nube
-- Confirmaciones, cancelación
-- Sesión limpia y dedicada
+**`../pi_tools/`** — Tool Provider oficial:
+- importa `createReadTool`, `createBashTool`, `createEditTool`, `createWriteTool`,
+  `createGrepTool`, `createFindTool` y `createLsTool` desde el SDK instalado;
+- host Node/Bun persistente, sin AgentSession, RPC ni segundo LLM;
+- sólo JSON Family puede usarlo para una tool elegida por un LLM Cloud.
 
-**`cloud_tools.py`** — Executor de tools cloud:
-- `ejecutar_tool()` → invoke cloud LLM
-- Aislado del pi del chat
+**`../json_family/`** — Frontera Cloud:
+- parser final estricto, policy atómica y deduplicación por `requestId`;
+- journal `json_family_runs`, recovery conservador y ACK de entrega;
+- resultados de imagen reconstruidos para el Relay.
 
 **`ocr.py`** — OCR vía pi:
 - Segundo `PiProceso` dedicado (paralelo al chat)
@@ -675,11 +679,11 @@ aihub/
 
 ## Base de Datos
 
-### Schema v8 — `aihub.db`
+### Schema v13 — `aihub.db`
 
 **Motor:** SQLite 3 con WAL (Write-Ahead Logging)
 **Ruta:** `databases/aihub.db` (resuelto por `_resolve_db_path()`)
-**Migraciones:** 8 migraciones numeradas idempotentes
+**Migraciones:** 13 migraciones numeradas idempotentes
 
 **Tablas principales:**
 
@@ -700,6 +704,8 @@ aihub/
 | `llm_adapters` | Adapters DOM para LLMs |
 | `cloud_conversaciones` | Conversaciones capturadas de LLM cloud |
 | `cloud_mensajes` | Mensajes de conversaciones cloud |
+| `cloud_agent_turns` | Snapshot reanudable del diálogo Cloud |
+| `json_family_runs` | Ejecución, deduplicación y ACK de tools Cloud |
 | `wiki_indice` | Índice wiki para RAG |
 | `md_reader_prefs` | Preferencias MD Reader |
 | `md_reader_index_meta` | Metadata índice MD Reader |
@@ -753,12 +759,12 @@ aihub/
 ### ✅ Backend
 
 - [x] Server Litestar `:7779` con CORS acotado + guard global
-- [x] SQLite schema v8 con 8 migraciones numeradas
+- [x] SQLite schema v13 con 13 migraciones numeradas
 - [x] Auth guard con allowlist de rutas públicas
 - [x] Bus de eventos `/eventos` con persistencia reactiva
 - [x] Pi bridge completo (Fase 1+2): streaming fiel, 22 comandos, `/tree`
 - [x] Pi proceso: spawn lazy, restart automático, shutdown limpio
-- [x] Pi cloud_executor: LLM nube aislado (propia sesión)
+- [x] JSON Family + Pi Tool Provider oficial, sin segundo LLM
 - [x] Pi ocr: proceso dedicado (no pisa chat)
 - [x] Nexus: shell, fs, py, editor, approvals, tasks
 - [x] Browser-use: agent.py + router.py (POST `/nav/run`, SSE `/nav/stream`)

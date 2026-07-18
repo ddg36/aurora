@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 // Drip — gotas realistas que caen, se acumulan y forman charcos.
 export class Drip extends Component {
@@ -34,8 +34,9 @@ export class Drip extends Component {
     });
 
     const resize = () => {
-      W = canvas.width  = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const drawDrip = (d, ar, ag, ab) => {
@@ -141,7 +142,7 @@ export class Drip extends Component {
 
       drips = drips.filter(d => !d.landed || d.splashA > 0);
 
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     this._resize = resize;
@@ -154,7 +155,7 @@ export class Drip extends Component {
   }
 
   componentWillUnmount() {
-    cancelAnimationFrame(this._raf);
+    cancelSceneFrame(this._raf);
     window.removeEventListener('resize', this._resize);
     this.accent.stop();
   }

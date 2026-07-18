@@ -8,6 +8,9 @@
 (function () {
   'use strict';
 
+  // Guard: chrome.runtime no está disponible en todos los contextos.
+  if (!chrome?.runtime) return;
+
   const MS = {
     title:     ['h1.ytd-video-primary-info-renderer yt-formatted-string','h1.ytd-watch-metadata yt-formatted-string','#title h1 yt-formatted-string','#above-the-fold #title yt-formatted-string'],
     channel:   ['ytd-channel-name#channel-name a','#channel-name a','ytd-video-owner-renderer a'],

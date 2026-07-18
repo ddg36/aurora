@@ -3,305 +3,23 @@
 // distinto) y NUNCA toca a pi: no llama sendToLyra ni guarda en la tabla
 // `mensajes` (contexto de pi). Su memoria vive aparte en cloud_mensajes.
 //
-// Tools: el LLM de la nube puede pedir las herramientas REALES de pi
-// (read/bash/edit/write) escribiendo bloques ```json ejecutables. Un pi
-// DEDICADO las ejecuta (POST /pi/cloud-tool, sesión propia — "engaño": pi
-// cree que es tarea suya) y el resultado vuelve al iframe. Loop agéntico.
+// Tools: el LLM de la nube puede pedir las factories REALES de pi mediante
+// JSON Family. El Pi Tool Provider las ejecuta directamente, sin RPC,
+// AgentSession ni segundo LLM, y el resultado vuelve al origen.
 
 import { historial, cargando, cloudGenerando, agregarMensajeRico } from './mensajes.js';
 import { askCloud, confirmarCloudAnswer } from '../../../../components/shared/cloud-ask.js';
 import { postJSON, getJSON, putJSON } from '../../../../components/shared/api.js';
 import { detectarToolDraft, toolVisual, emitirToolVisual } from '../../../../components/shared/cloud-tool-visual.js';
-import { submitForge } from '../../../../components/shared/forge-submit.js';
+import { getCloudToolPrimer } from '../../../../components/shared/cloud-tool-primer.js';
+import { processJSONFamily } from '../../../../components/shared/json-family-client.js';
+import { jsonFamilyEnabled, initJSONFamilyState } from '../../../../components/shared/json-family-state.js';
 
-// Tools reales del harness de pi (verificado). Solo estas se aceptan.
-const TOOLS_PI = {
-  read:  'Leé un archivo. args: {"path": "ruta"}',
-  bash:  'Corré un comando de shell. args: {"cmd": "comando"}',
-  edit:  'Editá un archivo por reemplazo exacto. args: {"path","oldText","newText"}',
-  write: 'Escribí/creá un archivo. args: {"path","content"}',
-  forge_submit: 'Entrega una herramienta versionada. args: {"manifest":{...},"code":"handler.py"}',
-  view_describe: 'Descubre una interfaz de Aurora. args: {"view":"scratchpad|md-reader|canvas"}',
-  view_invoke: 'Invoca una acción nativa de Aurora. args: {"view","action","args":{...}}',
-};
-
-const TOOL_ARG_RULES = {
-  read:          { required: ['path'], allowed: ['path'], strings: ['path'] },
-  bash:          { required: ['cmd'], allowed: ['cmd'], strings: ['cmd'] },
-  edit:          { required: ['path', 'oldText', 'newText'], allowed: ['path', 'oldText', 'newText'], strings: ['path', 'oldText', 'newText'] },
-  write:         { required: ['path', 'content'], allowed: ['path', 'content'], strings: ['path', 'content'] },
-  forge_submit:  { required: ['manifest', 'code'], allowed: ['manifest', 'code'], strings: ['code'], objects: ['manifest'] },
-  view_describe: { required: ['view'], allowed: ['view'], strings: ['view'] },
-  view_invoke:   { required: ['view', 'action', 'args'], allowed: ['view', 'action', 'args'], strings: ['view', 'action'], objects: ['args'] },
-};
-
-function esObjetoPlano(valor) {
-  return !!valor && typeof valor === 'object' && !Array.isArray(valor);
-}
-
-function validarToolCall(obj) {
-  if (!esObjetoPlano(obj)) return { error: 'Cada bloque final debe contener un único objeto JSON.' };
-
-  const claves = Object.keys(obj);
-  const extrasTop = claves.filter(k => k !== 'tool' && k !== 'args');
-  if (extrasTop.length) return { error: `Claves superiores no permitidas: ${extrasTop.join(', ')}. Usá solamente "tool" y "args".` };
-  if (typeof obj.tool !== 'string' || !obj.tool.trim()) return { error: 'La clave "tool" debe ser un string no vacío.' };
-  if (!(obj.tool in TOOLS_PI)) return { error: `Tool desconocida "${obj.tool}". Válidas: ${Object.keys(TOOLS_PI).join(', ')}.` };
-  if (!esObjetoPlano(obj.args)) return { error: 'La clave "args" debe ser un objeto JSON.' };
-
-  const regla = TOOL_ARG_RULES[obj.tool];
-  const clavesArgs = Object.keys(obj.args);
-  const faltantes = regla.required.filter(k => !(k in obj.args));
-  if (faltantes.length) return { error: `Faltan args requeridos para ${obj.tool}: ${faltantes.join(', ')}.` };
-
-  const extras = clavesArgs.filter(k => !regla.allowed.includes(k));
-  if (extras.length) return { error: `Args no permitidos para ${obj.tool}: ${extras.join(', ')}.` };
-
-  for (const k of regla.strings || []) {
-    if (typeof obj.args[k] !== 'string') return { error: `El arg "${k}" de ${obj.tool} debe ser string.` };
-  }
-  for (const k of regla.objects || []) {
-    if (!esObjetoPlano(obj.args[k])) return { error: `El arg "${k}" de ${obj.tool} debe ser objeto JSON.` };
-  }
-  if (obj.tool === 'read' && !obj.args.path.trim()) return { error: 'El path de read no puede estar vacío.' };
-  if (obj.tool === 'bash' && !obj.args.cmd.trim()) return { error: 'El cmd de bash no puede estar vacío.' };
-  if (obj.tool === 'view_describe' && !['scratchpad', 'md-reader', 'canvas'].includes(obj.args.view)) {
-    return { error: 'view_describe sólo acepta scratchpad, md-reader o canvas.' };
-  }
-  if (obj.tool === 'view_invoke' && !['scratchpad', 'md-reader', 'canvas'].includes(obj.args.view)) {
-    return { error: 'view_invoke sólo acepta scratchpad, md-reader o canvas.' };
-  }
-
-  return { call: { tool: obj.tool, args: obj.args } };
-}
-
-// Canal de ejecución estricto: sólo se consideran bloques ```json completos
-// que formen un grupo CONTIGUO al final de la respuesta. La explicación puede
-// ir antes, pero cualquier ejemplo o JSON incrustado fuera de ese grupo final
-// se ignora y jamás se ejecuta. Cada bloque contiene exactamente un objeto.
-//
-// Fallback: si NO hay fences etiquetados, se aceptan fences SIN etiqueta
-// ``` como último recurso, ÚNICAMENTE cuando:
-//   • forman un grupo contiguo al final del texto (sin texto posterior);
-//   • su contenido es un único objeto JSON válido;
-//   //   • pasa completamente validarToolCall;
-//   • se mantiene el lote atómico (si alguno falla, se rechaza todo);
-//   • múltiples llamadas sólo se permiten si todas son read.
-// No se escanea JSON arbitrario dentro del texto.
-function extraerBloquesJsonFinales(texto) {
-  const src = String(texto || '');
-  const bloques = [];
-  const rechazados = [];
-
-  // Los delimitadores cuentan sólo cuando ocupan una línea completa.
-  // Así, secuencias de backticks dentro de strings JSON o código no cortan
-  // accidentalmente el payload de una tool.
-  const fence = '```';
-  const lineas = src.split('\n');
-  const inicios = [];
-  let offset = 0;
-  for (const linea of lineas) {
-    inicios.push(offset);
-    offset += linea.length + 1;
-  }
-
-  const normalizar = linea => String(linea || '').replace(/\r$/, '').trim();
-  const esCierre = linea => normalizar(linea) === fence;
-  const tipoApertura = linea => {
-    const limpia = normalizar(linea).toLowerCase();
-    if (limpia === fence + 'json') return 'json';
-    if (limpia === fence) return 'plain';
-    return null;
-  };
-
-  let i = lineas.length - 1;
-  while (i >= 0 && normalizar(lineas[i]) === '') i--;
-
-  // Si la respuesta termina en prosa, no se buscan fences anteriores.
-  // Esos bloques son ejemplos o documentación y deben ignorarse sin error.
-  if (i < 0 || !esCierre(lineas[i])) {
-    return { bloques: [], prefijo: src, rechazados: [] };
-  }
-
-  const encontrados = [];
-  while (i >= 0 && esCierre(lineas[i])) {
-    const cierre = i;
-    let apertura = cierre - 1;
-
-    // La apertura válida más cercana debe ser una línea de fence completa.
-    while (apertura >= 0 && !tipoApertura(lineas[apertura])) apertura--;
-    if (apertura < 0) {
-      return {
-        bloques: [],
-        prefijo: src,
-        rechazados: [{
-          contenido: '(grupo final)',
-          razon: 'Fence de cierre final sin apertura correspondiente.'
-        }]
-      };
-    }
-
-    const tipo = tipoApertura(lineas[apertura]);
-    const contenido = lineas.slice(apertura + 1, cierre).join('\n').trim();
-    encontrados.unshift({
-      contenido,
-      tipo,
-      inicio: inicios[apertura]
-    });
-
-    i = apertura - 1;
-    while (i >= 0 && normalizar(lineas[i]) === '') i--;
-
-    // Sólo seguimos si el bloque anterior termina inmediatamente antes,
-    // salvo whitespace. La prosa corta el grupo final.
-    if (i < 0 || !esCierre(lineas[i])) break;
-  }
-
-  if (!encontrados.length) {
-    return { bloques: [], prefijo: src, rechazados: [] };
-  }
-
-  // Los fences sin etiqueta son fallback. Sólo se aceptan cuando el contenido
-  // es inequívocamente una tool válida. Código normal o JSON documental se
-  // ignoran silenciosamente, pero una tool reconocible y mal formada se reporta.
-  for (const bloque of encontrados) {
-    if (bloque.tipo !== 'plain') continue;
-
-    let parsed;
-    try {
-      parsed = JSON.parse(bloque.contenido);
-    } catch {
-      return { bloques: [], prefijo: src, rechazados: [] };
-    }
-
-    const pareceTool = esObjetoPlano(parsed) &&
-      (Object.prototype.hasOwnProperty.call(parsed, 'tool') ||
-       Object.prototype.hasOwnProperty.call(parsed, 'args'));
-
-    if (!pareceTool) {
-      return { bloques: [], prefijo: src, rechazados: [] };
-    }
-
-    const validado = validarToolCall(parsed);
-    if (validado.error) {
-      rechazados.push({
-        contenido: bloque.contenido,
-        razon: validado.error
-      });
-    }
-  }
-
-  // Lote atómico: cualquier fallback reconocible pero inválido anula todo.
-  if (rechazados.length) {
-    return {
-      bloques: [],
-      prefijo: src.slice(0, encontrados[0].inicio),
-      rechazados
-    };
-  }
-
-  return {
-    bloques: encontrados.map(b => b.contenido),
-    prefijo: src.slice(0, encontrados[0].inicio),
-    rechazados: []
-  };
-}
-
-function parsearToolCalls(texto) {
-  const calls = [];
-  const errors = [];
-  const src = String(texto || '');
-  const { bloques, rechazados } = extraerBloquesJsonFinales(src);
-
-  // Reportar errores explícitos de bloques rechazados (fences sin etiqueta)
-  for (const r of (rechazados || [])) {
-    if (r.razon === 'JSON inválido') {
-      errors.push('Fence final sin etiqueta detectado pero contiene JSON inválido: ' + r.contenido.slice(0, 80) + '. Usá ```json para las tools.');
-    } else {
-      errors.push('Fence final sin etiqueta detectado pero no es una tool válida: ' + r.razon + '. Usá ```json para las tools.');
-    }
-  }
-
-  for (const bloque of bloques) {
-    if (!bloque) {
-      errors.push('El bloque JSON final está vacío. Emití un único objeto válido dentro del bloque.');
-      continue;
-    }
-    try {
-      const validado = validarToolCall(JSON.parse(bloque));
-      if (validado.error) errors.push(validado.error);
-      else calls.push(validado.call);
-    } catch (err) {
-      errors.push('JSON de tool inválido: ' + err.message + '. Reemitilo como JSON estricto dentro de un bloque final ```json.');
-    }
-  }
-
-  if (!bloques.length) {
-    const trimmed = src.trim();
-    const ultimaApertura = trimmed.lastIndexOf('```json');
-    if (ultimaApertura >= 0 && trimmed.indexOf('```', ultimaApertura + 7) < 0) {
-      errors.push('Bloque JSON de tool incompleto: falta el cierre ```. Reemití el bloque final completo.');
-    } else if (/^[\[{]/.test(trimmed) && /["']?tool["']?\s*:/i.test(trimmed)) {
-      errors.push('La solicitud de tool no se ejecutó porque no está dentro de un bloque ```json final. Reemitila con el fence requerido.');
-    }
-  }
-
-  // El grupo final es atómico: una solicitud inválida impide ejecutar las
-  // restantes. Así una escritura válida no se aplica parcialmente junto a un
-  // segundo bloque defectuoso. La única operación múltiple permitida son
-  // lecturas independientes, que el executor procesa en paralelo.
-  if (errors.length && calls.length) {
-    errors.unshift('Se rechazó el grupo final completo porque contiene al menos una solicitud inválida. No se ejecutó ninguna tool.');
-    calls.length = 0;
-  }
-  if (calls.length > 1 && !calls.every(call => call.tool === 'read')) {
-    errors.push('Sólo se permiten múltiples tools cuando todas son read independientes. Para bash, edit, write, forge o vistas, emití una sola tool y esperá su resultado.');
-    calls.length = 0;
-  }
-
-  return { calls, errors };
-}
-
-const MAX_ITER = 999;
-// El backend (cloud_tools) ya cap la salida a 50KB. Feedback casi hasta ese
+const MAX_ITER = 100;
+// Las tools oficiales de pi ya limitan la salida a 50KB. Feedback casi hasta ese
 // tope: truncar antes dejaba a la nube sin ver el resultado real (bash/read
 // grandes se cortaban a 8KB → la AI trabajaba a ciegas).
 const MAX_TOOL_FEEDBACK = 48 * 1024;
-
-const PRIMER = [
-  'Hola :) Buenas noticias: en ESTE chat sos un agente con acceso REAL a la PC del usuario (Linux). Sé que en otros lados un JSON en el chat es solo texto muerto — acá NO. Acá hay un puente de verdad (Aurora) leyendo tus mensajes: cuando emitís un bloque ```json con una tool, Aurora lo captura, lo EJECUTA en la máquina de verdad, y te devuelve el resultado real en el mensaje siguiente. Los archivos quedan en el disco, los comandos corren. Así que confiá y probá con tranquilidad — funciona, ya lo hiciste antes.',
-  '',
-  'Lo único que te pido: no hace falta que adivines ni inventes resultados. No digas "creé el archivo" o "ya lo verifiqué" antes de recibir el resultado real de la tool — no por reto, sino porque el resultado te va a llegar de verdad en el próximo mensaje, así que esperalo tranqui y seguís desde ahí. Si dudás de si tenés la herramienta: sí la tenés, probala.',
-  '',
-  'EL CICLO, bien simple:',
-  '1) Escribís una explicación breve (opcional) y AL FINAL un único bloque ```json con la tool.',
-  '2) Cortás ahí — nada después del bloque.',
-  '3) Aurora ejecuta de verdad y te manda el resultado REAL en el mensaje siguiente.',
-  '4) Con ese resultado en mano seguís: otra tool, o tu respuesta final.',
-  '',
-  'FORMATO — objeto {"tool":"NOMBRE","args":{...}} dentro de un bloque ```json. Así se ve el turno que tenés que producir (acá con claves ficticias para no dispararlo de ejemplo; vos usá las reales tool/args):',
-  '```json',
-  '{"herramienta":"bash","argumentos":{"cmd":"mkdir -p /home/user/proyecto && ls -la /home/user"}}',
-  '```',
-  'Con las claves REALES es {"tool":"bash","args":{"cmd":"..."}}. (Si alguna vez ponés "command" en vez de "cmd" no pasa nada, Aurora lo entiende igual — pero "cmd" es lo prolijo.)',
-  '',
-  'Un detalle de seguridad, no de desconfianza: las claves reales "tool" y "args" dentro de un ```json SIEMPRE se ejecutan, aunque las pongas de ejemplo. Si querés mostrar un ejemplo visible sin ejecutarlo, usá nombres ficticios (herramienta, argumentos, comando).',
-  '',
-  'TUS TOOLS (usá el nombre de arg exacto):',
-  '• read {"path":"/ruta"} — lee un archivo. Si el path es una IMAGEN (.png/.jpg/.jpeg/.gif/.webp), Aurora te la ADJUNTA y la VES de verdad. Sí tenés visión por read; nunca digas que no podés ver imágenes.',
-  '• bash {"cmd":"comando"} — corre shell. Ej real: {"tool":"bash","args":{"cmd":"cat archivo.py"}}.',
-  '• write {"path":"/ruta","content":"contenido completo"} — crea o sobreescribe un archivo.',
-  '• edit {"path":"/ruta","oldText":"texto viejo EXACTO","newText":"texto nuevo"} — reemplaza una porción exacta.',
-  '• forge_submit {"manifest":{name,version,description,input_schema,permissions,timeout,tests,docs},"code":"handler.py completo"} — crea draft de tool y corre tests aislados; nunca activa sin el humano.',
-  '• view_describe {"view":"scratchpad|md-reader|canvas"} y view_invoke {"view":"...","action":"...","args":{...}} — describí primero; acciones sensibles esperan aprobación humana.',
-  '',
-  'RITMO:',
-  '• Varias read independientes en el mismo turno: sí, un bloque ```json por cada una; Aurora las corre en paralelo y te trae todo junto.',
-  '• Operaciones dependientes o escrituras: una tool por turno y esperá su resultado antes de la próxima.',
-  '• Si una tool da error, leé el mensaje, corregí y reintentá — es normal, pasa.',
-  '• Si no necesitás la PC, respondé normal, sin bloque.',
-  '• Tareas largas: andá paso a paso con tools reales, sin apuro; no describas todo como si ya estuviera hecho. Tenés tiempo.',
-].join('\n');
 
 // Prime UNA sola vez por HILO de la nube. Antes vivía en sessionStorage, que se
 // borra en cada reload/reinicio de Aurora: al reabrir Aurora y seguir el MISMO
@@ -413,8 +131,8 @@ async function persistir(convId, rol, contenido) {
   }
 }
 
-// Resultado de /pi/cloud-tool ({ok, output, is_error}) → texto para el iframe.
-function formatearResultado(r) {
+// Resultado canónico devuelto dentro de una entry de JSON Family.
+function textoResultadoFamily(r) {
   if (!r?.ok && !r?.output) return 'Tool error: ' + (r?.error || 'unknown');
   return ((r.is_error ? '[ERROR] ' : '') + (r.output || '(sin salida)')).trim();
 }
@@ -456,7 +174,7 @@ function normalizarTurnoCloud(turno) {
 }
 
 async function guardarTurnoCloud(turnId, data = {}) {
-  const r = await postJSON('/pi/cloud-turn/save', {
+  const r = await postJSON('/cloud-agent/turn/save', {
     turnId,
     paneId: 'cloud',
     ...data,
@@ -467,7 +185,7 @@ async function guardarTurnoCloud(turnId, data = {}) {
 
 async function completarTurnoCloud(turnId, status = 'completed') {
   try {
-    return await postJSON('/pi/cloud-turn/complete', { turnId, status });
+    return await postJSON('/cloud-agent/turn/complete', { turnId, status });
   } catch {
     return null;
   }
@@ -492,7 +210,7 @@ function resultadoToolPersistible(r, salida, esError, feedback, image) {
 
 export async function recuperarCloudPendiente({ iframe } = {}) {
   if (cloudGenerando.value) return { resumed: false, reason: 'busy' };
-  const r = await postJSON('/pi/cloud-turn/recover', { paneId: 'cloud' });
+  const r = await postJSON('/cloud-agent/turn/recover', { paneId: 'cloud' });
   const turn = normalizarTurnoCloud(r?.turn);
   if (!turn) return { resumed: false, reason: 'none' };
 
@@ -501,12 +219,13 @@ export async function recuperarCloudPendiente({ iframe } = {}) {
     texto: turn.prompt || turn.nextPrompt || '',
     aiId: turn.aiId,
     url: turn.url,
-    resume: { turn, calls: r.calls || [] },
+    resume: { turn },
   });
   return { resumed: true, turnId: turn.turnId, aiId: turn.aiId, url: turn.url };
 }
 
 export async function enviarACloud({ iframe, texto, aiId, url, images, files, resume = null }) {
+  await initJSONFamilyState();
   const turnoPrevio = normalizarTurnoCloud(resume?.turn);
   const retomando = !!turnoPrevio;
   const turnId = turnoPrevio?.turnId || nuevoTurnId();
@@ -548,7 +267,8 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
         return m ? `${u.host}:${m[1]}` : null;
       } catch { return null; }
     })();
-    prompt = (convKey && yaCebado(convKey)) ? texto : `${PRIMER}\n\n${texto}`;
+    const primer = (!jsonFamilyEnabled.value || (convKey && yaCebado(convKey))) ? '' : await getCloudToolPrimer();
+    prompt = primer ? `${primer}\n\n${texto}` : texto;
     if (convKey) marcarCebado(convKey);
     await guardarTurnoCloud(turnId, {
       convId, aiId, url, status: 'prepared', iteration: 0, prompt,
@@ -674,7 +394,13 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
         });
       }
 
-      const parsedTools = parsearToolCalls(final);
+      const familyResult = jsonFamilyEnabled.value
+        ? await processJSONFamily(final, {
+            requestId: `lyra-cloud-${turnId}-${iter}`,
+            origin: { relay: 'lyra-cloud', surface: 'iframe', provider: aiId || 'cloud' },
+          })
+        : { kind: 'disabled', parsed: { calls: [], errors: [] }, entries: [] };
+      const parsedTools = familyResult.parsed || { calls: [], errors: [] };
       const calls = parsedTools.calls;
       if (!calls.length && !parsedTools.errors.length) {
         await completarTurnoCloud(turnId, 'completed');
@@ -772,22 +498,9 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
         let esError = false;
         let r;
         try {
-          r = call.tool === 'forge_submit'
-            ? await submitForge(call.args)
-            : call.tool === 'view_describe' || call.tool === 'view_invoke'
-              ? await postJSON(`/tools/${call.tool}/run`, { arguments: call.args })
-              : await postJSON('/pi/cloud-tool', {
-                  tool: call.tool,
-                  args: call.args,
-                  callId,
-                  turnId,
-                  iteration: iter,
-                  ordinal: indice,
-                });
-          if ((call.tool === 'view_describe' || call.tool === 'view_invoke') && !r.output) {
-            r = { ...r, is_error: r.ok === false, output: JSON.stringify(r.result ?? r, null, 2) };
-          }
-          salida = formatearResultado(r);
+          const entry = (familyResult.entries || []).filter(item => item.kind === 'tool_result')[indice];
+          r = entry?.result || { ok: false, is_error: true, output: 'JSON Family no devolvió el resultado de esta tool.' };
+          salida = textoResultadoFamily(r);
           esError = !!(r?.is_error || r?.ok === false);
         } catch (err) {
           salida = 'Error llamando a pi: ' + (err?.message || err);

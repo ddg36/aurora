@@ -3,71 +3,21 @@
 // No hay alternancia artificial ni transcript duplicado de Aurora.
 
 import { askCloud, detenerCloud, nuevaConversacionCloud } from '../../../components/shared/cloud-ask.js';
-import { postJSON } from '../../../components/shared/api.js';
-import { submitForge } from '../../../components/shared/forge-submit.js';
+import { processJSONFamily } from '../../../components/shared/json-family-client.js';
+import { getCloudToolPrimer } from '../../../components/shared/cloud-tool-primer.js';
+import { jsonFamilyEnabled, initJSONFamilyState } from '../../../components/shared/json-family-state.js';
 
-const MAX_ITER = 6;
+const MAX_ITER = 100;
 const MAX_TOOL_FEEDBACK = 8 * 1024;
-const TOOLS = new Set(['read', 'bash', 'edit', 'write', 'panel_send', 'forge_submit', 'view_describe', 'view_invoke']);
-const PRIMER =
-  'Participás en una conversación con otra IA dentro de Aurora. Tenés acceso REAL a tools de la PC. ' +
-  'Cuando necesites una, emití UN objeto completo dentro de un bloque ```json y cerrá siempre el bloque. ' +
-  'Formatos exactos válidos: {"tool":"read","args":{"path":"/ruta"}}; ' +
-  '{"tool":"bash","args":{"cmd":"comando"}}; ' +
-  '{"tool":"edit","args":{"path":"/ruta","oldText":"texto anterior","newText":"texto nuevo"}}; ' +
-  '{"tool":"write","args":{"path":"/ruta","content":"contenido"}}. ' +
-  'Para comunicarte con el otro agente usá {"tool":"panel_send","args":{"to":"panel1|panel2","message":"mensaje completo"}}. ' +
-  'Para entregar una herramienta a Tool Forge usá {"tool":"forge_submit","args":{"manifest":{...},"code":"handler.py completo"}}; Aurora crea una versión inmutable y corre sus tests en sandbox, pero sólo el humano puede aprobarla/activarla. ' +
-  'Para operar Aurora sin clics: {"tool":"view_describe","args":{"view":"scratchpad|md-reader|canvas"}} y después {"tool":"view_invoke","args":{"view":"...","action":"...","args":{...}}}. ' +
-  'panel1 es el iframe izquierdo y panel2 el derecho. Sólo panel_send entrega un mensaje al otro panel; una respuesta normal termina tu participación. ' +
-  'Usá un nombre real de tool, nunca una unión con | ni {...}. Preferí una tool por turno y esperá su resultado. ' +
-  'No afirmes que un archivo fue creado, leído o modificado si Aurora no confirmó una ejecución exitosa.';
-
-function extraerTools(texto = '') {
-  const calls = [], errors = [];
-  let from = 0;
-  while (from < texto.length) {
-    const rel = texto.slice(from).search(/\{\s*"tool"\s*:/);
-    if (rel < 0) break;
-    const ini = from + rel;
-    let depth = 0, fin = -1, str = false, esc = false;
-    for (let i = ini; i < texto.length; i++) {
-      const ch = texto[i];
-      if (esc) { esc = false; continue; }
-      if (ch === '\\') { esc = true; continue; }
-      if (ch === '"') { str = !str; continue; }
-      if (str) continue;
-      if (ch === '{') depth++;
-      if (ch === '}' && --depth === 0) { fin = i; break; }
-    }
-    if (fin < 0) { errors.push('JSON de tool incompleto'); break; }
-    try {
-      const call = JSON.parse(texto.slice(ini, fin + 1));
-      if (!TOOLS.has(call.tool)) errors.push(`tool desconocida: ${call.tool}`);
-      else calls.push({ tool: call.tool, args: call.args || {} });
-    } catch (e) { errors.push('JSON de tool inválido: ' + e.message); }
-    from = fin + 1;
-  }
-  if (!calls.length && !errors.length && /\{\s*["']?tool["']?\s*:/i.test(texto)) {
-    errors.push('La tool no es JSON estricto; usá comillas dobles.');
-  }
-  // ChatGPT ocasionalmente corta el stream apenas en `{"`. Eso no es una
-  // respuesta final válida: devolver feedback fuerza una reemisión limpia en
-  // vez de entregar el fragmento como turno a la otra IA.
-  if (!calls.length && !errors.length && texto.trim().startsWith('{')) {
-    let balance = 0;
-    for (const ch of texto) balance += ch === '{' ? 1 : ch === '}' ? -1 : 0;
-    if (balance !== 0 || texto.trim().length < 8) errors.push('JSON de tool incompleto; reemití el objeto completo.');
-  }
-  return { calls, errors };
-}
 
 async function turnoAgente({ paneId, prompt, primed, runId, cancelado, onChunk, onTool }) {
+  await initJSONFamilyState();
   const panelPropio = paneId === 'izq' ? 'panel1' : 'panel2';
   const marco = `[AURORA_DUO_RUN:${runId}] Esta es una ejecución nueva y aislada. ` +
     `Vos sos ${panelPropio}. Ignorá objetivos, paths y resultados de ejecuciones Duo anteriores. ` +
     'Sólo cuenta la evidencia producida dentro de este RUN. Para hablar con el otro panel debés usar panel_send.';
-  let siguiente = primed ? `${marco}\n\n${prompt}` : `${PRIMER}\n\n${marco}\n\nMensaje para vos:\n${prompt}`;
+  const primer = (primed || !jsonFamilyEnabled.value) ? '' : await getCloudToolPrimer({ collaboration: true });
+  let siguiente = primer ? `${primer}\n\n${marco}\n\nMensaje para vos:\n${prompt}` : `${marco}\n\n${prompt}`;
   let ultimoErrorFormato = '', repeticionesFormato = 0;
   let intentoTool = false, toolsExitosas = 0, pidioCorreccionEvidencia = false;
   for (let iter = 0; iter < MAX_ITER; iter++) {
@@ -84,7 +34,14 @@ async function turnoAgente({ paneId, prompt, primed, runId, cancelado, onChunk, 
       break;
     }
     if (!r.ok || !r.text?.trim()) throw new Error(r.text || `sin respuesta del panel ${paneId}`);
-    const parsed = extraerTools(r.text);
+    const familyResult = jsonFamilyEnabled.value
+      ? await processJSONFamily(r.text, {
+          requestId: `duo-${runId}-${paneId}-${iter}`,
+          origin: { relay: 'cloud-duo', surface: 'iframe', provider: paneId },
+          clientTools: ['panel_send'],
+        })
+      : { parsed: { calls: [], errors: [] }, entries: [] };
+    const parsed = familyResult.parsed || { calls: [], errors: [] };
     if (!parsed.calls.length && !parsed.errors.length) {
       // Si intentó operar la PC pero ninguna tool llegó a ejecutarse, una
       // frase como “archivo creado” no es evidencia. Dar una oportunidad de
@@ -132,17 +89,11 @@ async function turnoAgente({ paneId, prompt, primed, runId, cancelado, onChunk, 
           result = { ok: true, output: `Mensaje entregado a ${toPane === 'izq' ? 'panel1' : 'panel2'}.` };
           handoff = { toPane, message, fromPane: paneId };
         }
-      } else if (call.tool === 'forge_submit') {
-        try { result = await submitForge(call.args); }
-        catch (e) { result = { ok: false, is_error: true, output: e.message }; }
-      } else if (call.tool === 'view_describe' || call.tool === 'view_invoke') {
-        try {
-          const response = await postJSON(`/tools/${call.tool}/run`, { arguments: call.args });
-          result = { ...response, is_error: response.ok === false, output: JSON.stringify(response.result ?? response, null, 2) };
-        } catch (e) { result = { ok: false, is_error: true, output: e.message }; }
       } else {
-        try { result = await postJSON('/pi/cloud-tool', call); }
-        catch (e) { result = { ok: false, is_error: true, output: e.message }; }
+        const entry = (familyResult.entries || []).find(item =>
+          item.kind === 'tool_result' && item.call?.tool === call.tool &&
+          JSON.stringify(item.call?.args || {}) === JSON.stringify(call.args || {}));
+        result = entry?.result || { ok: false, is_error: true, output: 'JSON Family no devolvió el resultado.' };
       }
       if (result?.ok && !result?.is_error) toolsExitosas++;
       const outputCompleto = result?.output || result?.error || '(sin salida)';

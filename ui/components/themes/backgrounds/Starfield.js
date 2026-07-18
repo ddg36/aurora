@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 // Partículas estelares con explosiones suaves cada 2.5s.
 export class Starfield extends Component {
@@ -20,8 +20,9 @@ export class Starfield extends Component {
     const rand = (a, b) => a + Math.random() * (b - a);
 
     const resize = () => {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const makeStar = () => ({
@@ -89,7 +90,7 @@ export class Starfield extends Component {
           : `rgba(${ar},${ag},${ab},${p.life})`;
         ctx.fill();
       }
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     this._resize = resize;
@@ -102,7 +103,7 @@ export class Starfield extends Component {
   }
 
   componentWillUnmount() {
-    cancelAnimationFrame(this._raf);
+    cancelSceneFrame(this._raf);
     clearInterval(this._burstInterval);
     window.removeEventListener('resize', this._resize);
     this.accent.stop();

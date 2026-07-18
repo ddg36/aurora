@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 // Glitch — pantalla rota con artefactos digitales y scanlines.
 export class Glitch extends Component {
@@ -18,8 +18,9 @@ export class Glitch extends Component {
     let W, H, frame = 0;
 
     const resize = () => {
-      W = canvas.width  = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const drawScanlines = () => {
@@ -83,7 +84,7 @@ export class Glitch extends Component {
       ctx.fillStyle = `rgba(${ar},${ag},${ab},0.06)`;
       ctx.fillRect(0, lineY, W, 2);
 
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     this._resize = resize;
@@ -93,7 +94,7 @@ export class Glitch extends Component {
   }
 
   componentWillUnmount() {
-    cancelAnimationFrame(this._raf);
+    cancelSceneFrame(this._raf);
     window.removeEventListener('resize', this._resize);
     this.accent.stop();
   }

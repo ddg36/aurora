@@ -16,6 +16,9 @@ import base64
 import json
 import mimetypes
 import pathlib
+import os
+import sqlite3
+import subprocess
 import sys
 import time
 import urllib.parse
@@ -32,9 +35,12 @@ EXTENSION_ID = 'phofkcfbhpkgjaalofhcffabjfcgejpp'
 EXTENSION_PAGE = f'chrome-extension://{EXTENSION_ID}/newtab.html'
 LLM_HOSTS = (
     'gemini.google.com', 'chatgpt.com', 'chat.openai.com', 'claude.ai',
-    'grok.com', 'perplexity.ai', 'copilot.microsoft.com', 'kimi.moonshot.cn',
+    'grok.com', 'perplexity.ai', 'www.perplexity.ai', 'copilot.microsoft.com', 'kimi.moonshot.cn',
     'poe.com', 'you.com', 'chat.qwen.ai',
 )
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+VENV_PYTHON = ROOT / '.venv-linux/bin/python'
+DATABASE = ROOT / 'databases/aihub.db'
 
 WEB_CHAOS = {
     'landing': {
@@ -122,6 +128,18 @@ def open_target(url):
         return json.load(response)
 
 
+def navigate_target(item, url):
+    """Navega un target ya creado (Helium puede bloquear /json/new a extensiones)."""
+    ws = websocket.create_connection(item['webSocketDebuggerUrl'], timeout=5)
+    try:
+        response = call(ws, 'Page.navigate', {'url': url})
+        if 'error' in response:
+            raise RuntimeError(response['error'].get('message', str(response['error'])))
+    finally:
+        ws.close()
+    return item
+
+
 def wait_for_target(needle, timeout_s=15):
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -141,7 +159,22 @@ def llm_iframe_targets():
             host = urllib.parse.urlparse(item.get('url', '')).hostname or ''
         except ValueError:
             continue
-        if any(host == known or host.endswith('.' + known) for known in LLM_HOSTS):
+        if host in LLM_HOSTS:
+            result.append(item)
+    return result
+
+
+def llm_relay_targets():
+    """Targets conversacionales exactos; excluye analytics y subdominios auxiliares."""
+    result = []
+    for item in targets():
+        if item.get('type') not in {'iframe', 'page'} or not item.get('webSocketDebuggerUrl'):
+            continue
+        try:
+            host = urllib.parse.urlparse(item.get('url', '')).hostname or ''
+        except ValueError:
+            continue
+        if host in LLM_HOSTS:
             result.append(item)
     return result
 
@@ -156,6 +189,21 @@ def reload_context(item):
         return 'error' not in response
     finally:
         ws.close()
+
+
+def close_context(item):
+    """Cierra una página CDP sin depender de APIs HTTP no permitidas por Helium."""
+    ws = websocket.create_connection(item['webSocketDebuggerUrl'], timeout=5)
+    try:
+        try:
+            call(ws, 'Page.close')
+        except (OSError, websocket.WebSocketException):
+            pass
+    finally:
+        try:
+            ws.close()
+        except Exception:
+            pass
 
 
 def bring_to_front(item):
@@ -196,6 +244,14 @@ def full_reload(timeout_s=25):
     )
     time.sleep(0.75)
 
+    # La recarga no cierra las páginas chrome-extension:// ya abiertas. Dejarlas
+    # vivas y abrir otra creaba dos shells, dos Aurora y dos iframes Cloud. Sólo
+    # cerramos newtab.html (no el side panel) y luego creamos una única sesión.
+    for item in targets():
+        if item.get('type') == 'page' and item.get('url', '').startswith(extension_needle + 'newtab.html'):
+            close_context(item)
+    time.sleep(0.25)
+
     # Los iframes hijos normalmente mueren con la página de la extensión. Si
     # algún OOPIF LLM sobrevive, navegarlo fuerza la reinyección del content
     # script que Chrome acaba de registrar.
@@ -208,17 +264,42 @@ def full_reload(timeout_s=25):
         except (OSError, websocket.WebSocketException):
             failed_survivors.append(item.get('id'))
 
+    aurora_ids_before_open = {
+        item.get('id') for item in targets()
+        if AURORA in item.get('url', '') and item.get('webSocketDebuggerUrl')
+    }
     page = open_target(EXTENSION_PAGE)
-    aurora = wait_for_target(AURORA, timeout_s=min(timeout_s, 15))
+    # Helium a veces convierte una apertura CDP directa de chrome-extension://
+    # en ERR_BLOCKED_BY_CLIENT. Navegar el target recién creado por Page.navigate
+    # carga la misma URL correctamente y evita que --full-reload espere en vano.
+    navigate_target(page, EXTENSION_PAGE)
+    mount_deadline = time.monotonic() + min(timeout_s, 15)
+    aurora = None
+    while time.monotonic() < mount_deadline:
+        aurora = next((item for item in targets() if
+            AURORA in item.get('url', '')
+            and item.get('id') not in aurora_ids_before_open
+            and item.get('webSocketDebuggerUrl')
+        ), None)
+        if aurora:
+            break
+        time.sleep(0.2)
+    if not aurora:
+        raise RuntimeError('La nueva tab abrió, pero no montó su iframe Aurora')
 
     deadline = time.monotonic() + timeout_s
     clicked = False
     before_url = aurora.get('url', '')
+    before_aurora_targets = {
+        item.get('id'): item.get('url', '')
+        for item in targets()
+        if AURORA in item.get('url', '') and item.get('webSocketDebuggerUrl')
+    }
     while time.monotonic() < deadline:
         try:
             result = evaluate(
                 "(()=>{const b=document.querySelector('button[title*=\"hard reload\"]');b?.click();return {ok:!!b}})()",
-                timeout=5,
+                target_id=aurora.get('id'), timeout=5,
             )
             clicked = bool(result and result.get('ok'))
             if clicked:
@@ -234,9 +315,13 @@ def full_reload(timeout_s=25):
     remounted = False
     while time.monotonic() < deadline:
         matches = [t for t in targets() if AURORA in t.get('url', '') and t.get('webSocketDebuggerUrl')]
-        if matches and (matches[0].get('url') != before_url or '_r=' in matches[0].get('url', '')):
+        changed = next((item for item in matches if
+            item.get('id') not in before_aurora_targets
+            or item.get('url', '') != before_aurora_targets.get(item.get('id'), '')
+        ), None)
+        if changed:
             remounted = True
-            aurora = matches[0]
+            aurora = changed
             break
         time.sleep(0.25)
     return {
@@ -441,6 +526,114 @@ def start_lyra_job(prompt, timeout_ms, attachments, expect_cancel=False):
     return evaluate(expr), job_id
 
 
+def start_lyra_local_job(prompt, timeout_ms):
+    """Prueba el chatbox local Lyria → WebSocket → Pi RPC y sus eventos nativos."""
+    job_id = 'sol-' + uuid.uuid4().hex[:12]
+    config = js({'id': job_id, 'prompt': prompt, 'timeoutMs': timeout_ms})
+    expr = f"""
+      (()=>{{
+        const cfg={config};
+        const jobs=globalThis.__solDebugJobs ||= {{}};
+        const job=jobs[cfg.id]={{id:cfg.id,state:'starting',via:'lyria_local_ui',started:Date.now()}};
+        (async()=>{{
+          const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+          const visible=node=>!!node?.getClientRects?.().length;
+          const buttons=()=>[...document.querySelectorAll('button')];
+          const finish=(state,result)=>Object.assign(job,{{state,result,finished:Date.now()}});
+          try {{
+            const lyra=buttons().find(node=>
+              (node.title||node.ariaLabel||node.innerText||'').trim().toLowerCase()==='lyra');
+            lyra?.click();
+
+            let textarea=null;
+            const mountDeadline=Date.now()+8000;
+            while (Date.now()<mountDeadline && !textarea) {{
+              textarea=[...document.querySelectorAll('.composer-textarea')].find(visible);
+              if (!textarea) await sleep(100);
+            }}
+            if (!textarea) {{
+              finish('error',{{ok:false,reason:'lyria_local_ui_not_ready',lyraButton:!!lyra}});
+              return;
+            }}
+
+            // Este test jamás puede desviarse al proveedor Cloud. Si el pane
+            // persistido estaba activo, lo cierra usando el control real.
+            const cloudActive=buttons().find(node=>
+              visible(node)&&(node.title||'').startsWith('Clic derecho: opciones'));
+            if (cloudActive) {{
+              cloudActive.click();
+              const closeDeadline=Date.now()+5000;
+              while (Date.now()<closeDeadline && buttons().some(node=>
+                visible(node)&&(node.title||'').startsWith('Clic derecho: opciones'))) await sleep(80);
+            }}
+
+            const signals=await import('/ui/modules/lyra/scripts/chat/mensajes.js');
+            const wsDebug=await import('/ui/components/shared/lyra-ws.js');
+            if (signals.cargando.value) {{
+              finish('error',{{ok:false,reason:'lyria_local_busy'}});
+              return;
+            }}
+            wsDebug.clearPiEventTrace();
+            const historyStart=signals.historial.value.length;
+            textarea=[...document.querySelectorAll('.composer-textarea')].find(visible);
+            const composerRoot=textarea?.closest('.chat-input-area')||document;
+            const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;
+            setter.call(textarea,cfg.prompt);
+            textarea.dispatchEvent(new Event('input',{{bubbles:true}}));
+            textarea.focus();
+            await sleep(100);
+            const send=[...composerRoot.querySelectorAll('.composer-send-btn:not(.composer-send-btn--stop)')]
+              .find(visible);
+            if (!send || send.disabled) {{
+              finish('error',{{ok:false,reason:'lyria_local_send_unavailable',button:!!send,disabled:!!send?.disabled}});
+              return;
+            }}
+            send.click();
+            job.state='running';
+
+            let sawGenerating=false, sawStopButton=false, sawNative=false;
+            const deadline=Date.now()+cfg.timeoutMs;
+            while (Date.now()<deadline) {{
+              sawGenerating ||= !!signals.cargando.value;
+              sawStopButton ||= !!document.querySelector('.composer-send-btn--stop');
+              sawNative ||= wsDebug.getPiEventTrace(1).length>0;
+              if (sawGenerating && !signals.cargando.value) {{
+                await sleep(250);
+                const trace=wsDebug.getPiEventTrace(300);
+                const added=signals.historial.value.slice(historyStart);
+                const answer=[...added].reverse().find(message=>message.role==='assistant'&&message._via!=='direct-ai');
+                const text=String(answer?.content||'');
+                const starts=trace.filter(item=>item.type==='tool_execution_start');
+                const ends=trace.filter(item=>item.type==='tool_execution_end');
+                const startIds=starts.map(item=>item.toolCallId).filter(Boolean);
+                const endIds=ends.map(item=>item.toolCallId).filter(Boolean);
+                const correlated=startIds.every(id=>endIds.includes(id));
+                const protocolOk=trace.length>0&&trace.every(item=>item.protocolVersion===1&&item.runtime==='pi-rpc');
+                const ok=!!text.trim()&&sawNative&&protocolOk&&correlated;
+                finish('done',{{
+                  ok, reason:ok?'lyria_local_complete':'lyria_local_contract_failed', text,
+                  addedMessages:added.length,
+                  native:{{protocolOk,eventCount:trace.length,types:[...new Set(trace.map(item=>item.type))],
+                    toolStarts:starts,toolEnds:ends,correlated}},
+                  ui:{{sawGenerating,sawStopButton,cloudClosed:!buttons().some(node=>
+                    visible(node)&&(node.title||'').startsWith('Clic derecho: opciones'))}}
+                }});
+                return;
+              }}
+              await sleep(100);
+            }}
+            finish('error',{{ok:false,reason:'lyria_local_timeout',native:wsDebug.getPiEventTrace(300),
+              ui:{{sawGenerating,sawStopButton,generating:!!signals.cargando.value}}}});
+          }} catch(error) {{
+            finish('error',{{ok:false,reason:'lyria_local_exception',error:String(error?.stack||error)}});
+          }}
+        }})();
+        return cfg.id;
+      }})()
+    """
+    return evaluate(expr), job_id
+
+
 def poll_job(job_id, timeout_s, verbose=False):
     deadline = time.monotonic() + timeout_s + 5
     last_phase = None
@@ -458,18 +651,210 @@ def poll_job(job_id, timeout_s, verbose=False):
     return {'id': job_id, 'state': 'poll_timeout'}
 
 
+def run_contracts(timeout_s=60):
+    """Ejecuta las suites contractuales con el entorno propio del proyecto."""
+    if not VENV_PYTHON.exists():
+        raise RuntimeError(f'No existe el intérprete del proyecto: {VENV_PYTHON}')
+    env = {**os.environ, 'PYTHONPATH': str(ROOT / 'src')}
+    commands = [
+        ('json_family', [str(VENV_PYTHON), '-m', 'unittest', '-v', 'tests.test_json_family']),
+        ('relay_adapters', ['node', 'tests/test-relay-adapters.mjs']),
+        ('endpoint_registry', ['node', 'tests/test-endpoint-registry.mjs']),
+        ('relay_reinjector', ['node', 'tests/test-relay-reinjector.mjs']),
+        ('cloud_boundaries', ['node', 'tests/test-cloud-boundaries.mjs']),
+        ('provider_purity', ['node', 'tests/test-provider-purity.mjs']),
+        ('pi_turn_reducer', ['node', 'tests/test-pi-turn-reducer.mjs']),
+        ('cloud_tool_visual', ['node', 'scripts/test-cloud-tool-text.mjs']),
+    ]
+    suites = []
+    for name, command in commands:
+        try:
+            done = subprocess.run(
+                command, cwd=ROOT, env=env, text=True, capture_output=True,
+                timeout=max(5, timeout_s), check=False,
+            )
+            combined = (done.stdout + '\n' + done.stderr).strip().splitlines()
+            suites.append({
+                'name': name,
+                'ok': done.returncode == 0,
+                'exitCode': done.returncode,
+                'summary': combined[-1] if combined else 'sin salida',
+                'failureTail': combined[-12:] if done.returncode else [],
+            })
+        except subprocess.TimeoutExpired:
+            suites.append({'name': name, 'ok': False, 'error': 'timeout'})
+    return {
+        'ok': all(item.get('ok') for item in suites),
+        'python': str(VENV_PYTHON),
+        'suites': suites,
+    }
+
+
+def relay_doctor():
+    """Inventaría drivers, contexto y Endpoint Registry de cada superficie LLM."""
+    relay_targets = llm_relay_targets()
+    reports = []
+    expression = """(()=>{
+      const driver=globalThis.__auroraRelayV2?.findProvider?.(location);
+      const observe=driver?.observe;
+      const ds=document.documentElement.dataset;
+      let composer=false,send=false,stop=false,assistants=null,users=null;
+      try { composer=!!observe?.getInput?.(); } catch(_) {}
+      try { send=!!observe?.getSendControl?.(); } catch(_) {}
+      try { stop=!!observe?.isGenerating?.(); } catch(_) {}
+      try { assistants=observe?.getAssistantTurns?.()?.length ?? null; } catch(_) {}
+      try { users=observe?.getUserTurnCount?.() ?? null; } catch(_) {}
+      let context=null;
+      try { context=globalThis.__auroraRelaySurfaceContext?.()||null; } catch(_) {}
+      return {
+        host:location.hostname,driver:driver?.id||null,version:driver?.version||null,
+        capabilities:driver?.capabilities||null,bootstrap:ds.auroraCloudRelayBootstrap||null,
+        bootstrapDetail:ds.auroraCloudRelayBootstrapDetail||null,
+        core:globalThis.__auroraRelayInstance?.driverId||null,
+        capture:ds.auroraProviderRelay||null,captureDetail:ds.auroraProviderRelayDetail||null,
+        context,endpointRegistry:ds.auroraEndpointRegistry||null,
+        endpointRegistryDetail:ds.auroraEndpointRegistryDetail||null,
+        endpointId:ds.auroraEndpointId||null,
+        composer,send,stop,assistantTurns:assistants,userTurns:users,
+      };
+    })()"""
+    for frame in relay_targets:
+        try:
+            detail = evaluate(expression, target_id=frame.get('id'), timeout=8) or {}
+            # Una extensión recién recargada no reinjecta content scripts en tabs
+            # antiguas hasta su próxima navegación. No son endpoints activos aún.
+            if frame.get('type') == 'page' and detail.get('bootstrap') is None:
+                continue
+            architecture_ok = (
+                detail.get('bootstrap') == 'ready'
+                and detail.get('driver') == detail.get('core')
+                and detail.get('capture') not in {'unsupported', 'error', None}
+            )
+            reports.append({
+                'id': frame.get('id'), 'type': frame.get('type'), 'url': frame.get('url'),
+                'ok': architecture_ok, 'ready': architecture_ok and detail.get('composer'),
+                **detail,
+            })
+        except Exception as error:
+            reports.append({'id': frame.get('id'), 'type': frame.get('type'), 'url': frame.get('url'), 'ok': False, 'error': str(error)})
+    registry = {'ok': False, 'endpoints': [], 'error': 'Aurora Hub no disponible'}
+    try:
+        registry_response = evaluate("""new Promise(resolve => {
+          chrome.runtime.sendMessage({type:'AURORA_ENDPOINT_LIST'}, response => {
+            resolve(response || {ok:false,error:chrome.runtime.lastError?.message||'sin respuesta'});
+          });
+        })""", needle=EXTENSION_PAGE, timeout=8) or {}
+        registry = registry_response
+    except Exception as error:
+        registry = {'ok': False, 'endpoints': [], 'error': str(error)}
+    endpoints = registry.get('endpoints', [])
+    active_ids = {
+        item.get('endpointId') for item in endpoints
+        if item.get('state') not in {'offline', 'unknown'}
+    }
+    for report in reports:
+        endpoint = next((item for item in endpoints if
+            (report.get('endpointId') and item.get('endpointId') == report.get('endpointId'))
+            or str(item.get('conversationKey') or '').rstrip('/') == str(report.get('url') or '').rstrip('/')
+        ), None)
+        report['registryState'] = endpoint.get('state') if endpoint else None
+        report['registered'] = bool(endpoint and endpoint.get('endpointId') in active_ids)
+        architecture_ok = report.get('bootstrap') == 'ready' and report.get('driver') == report.get('core')
+        if endpoint and endpoint.get('state') in {'frozen', 'offline', 'unknown'}:
+            # Un mundo isolated anterior a chrome.runtime.reload() puede dejar
+            # datasets de diagnóstico obsoletos. Para tabs suspendidas, el
+            # Registry del service worker es la fuente autoritativa.
+            report['ok'] = architecture_ok
+            report['ready'] = False
+            report['deferred'] = endpoint.get('state')
+        elif report['registered']:
+            report['ok'] = architecture_ok
+            report['ready'] = architecture_ok and bool(report.get('composer'))
+    return {
+        'ok': bool(reports) and all(item.get('ok') for item in reports) and bool(registry.get('ok')),
+        'frames': reports,
+        'registry': registry,
+    }
+
+
+def relay_load(count, timeout_s=45):
+    """Contrato de choque: N endpoints generating invocados/resueltos/liberados en paralelo."""
+    count = max(10, int(count or 100))
+    env = {**os.environ, 'AURORA_RELAY_LOAD_COUNT': str(count)}
+    try:
+        done = subprocess.run(
+            ['node', 'tests/test-endpoint-registry.mjs'], cwd=ROOT, env=env,
+            text=True, capture_output=True, timeout=max(10, timeout_s), check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {'ok': False, 'sessions': count, 'error': 'timeout'}
+    lines = (done.stdout + '\n' + done.stderr).strip().splitlines()
+    return {
+        'ok': done.returncode == 0,
+        'sessions': count,
+        'parallelInvocations': count,
+        'state': 'generating',
+        'exitCode': done.returncode,
+        'summary': lines[-1] if lines else 'sin salida',
+        'failureTail': lines[-20:] if done.returncode else [],
+    }
+
+
+def json_family_run(request_id):
+    """Lee un run durable sin volcar base64 ni response_json completo."""
+    if not DATABASE.exists():
+        raise RuntimeError(f'No existe la base: {DATABASE}')
+    db = sqlite3.connect(DATABASE)
+    db.row_factory = sqlite3.Row
+    try:
+        row = db.execute(
+            """SELECT usuario_id,request_id,status,created_at,updated_at,completed_at,
+                      delivered_at,response_json FROM json_family_runs
+               WHERE request_id=? ORDER BY updated_at DESC LIMIT 1""",
+            (request_id,),
+        ).fetchone()
+    finally:
+        db.close()
+    if not row:
+        return {'ok': False, 'requestId': request_id, 'error': 'not_found'}
+    response = json.loads(row['response_json']) if row['response_json'] else {}
+    entries = []
+    for entry in response.get('entries') or []:
+        call_data = entry.get('call') if isinstance(entry, dict) else None
+        result = entry.get('result') if isinstance(entry, dict) else None
+        entries.append({
+            'kind': entry.get('kind') if isinstance(entry, dict) else None,
+            'tool': call_data.get('tool') if isinstance(call_data, dict) else None,
+            'isError': result.get('is_error') if isinstance(result, dict) else None,
+            'isImage': result.get('is_image') if isinstance(result, dict) else None,
+        })
+    return {
+        'ok': True, 'requestId': row['request_id'], 'userId': row['usuario_id'],
+        'status': row['status'], 'createdAt': row['created_at'], 'updatedAt': row['updated_at'],
+        'completedAt': row['completed_at'], 'acknowledged': bool(row['delivered_at']),
+        'kind': response.get('kind'), 'origin': response.get('origin'), 'entries': entries,
+    }
+
+
 def main():
     p = argparse.ArgumentParser(description='Acciones semánticas de debug para Aurora/Helium CDP :9222')
     actions = p.add_mutually_exclusive_group(required=True)
     actions.add_argument('--targets', action='store_true', help='listar targets CDP')
+    actions.add_argument('--contracts', action='store_true', help='ejecutar contratos Python/Node con .venv-linux')
+    actions.add_argument('--relay-doctor', action='store_true', help='diagnosticar driver/core/capturador de todos los iframes')
+    actions.add_argument('--relay-load', nargs='?', const=100, type=int, metavar='N', help='estresar N sesiones Relay concurrentes (mínimo 10)')
+    actions.add_argument('--reinject-relays', action='store_true', help='reconectar couriers sin recargar ni detener proveedores')
+    actions.add_argument('--json-family-run', metavar='REQUEST_ID', help='resumir un run durable sin volcar payloads grandes')
     actions.add_argument('--eval', metavar='JS', help='evaluar JavaScript en Aurora')
     actions.add_argument('--view', metavar='NOMBRE', help='abrir una vista por title/aria-label')
+    actions.add_argument('--lyra-cloud', action='store_true', help='abrir Lyra y activar su Cloud Backend sin confundir la tab Cloud')
     actions.add_argument('--click', metavar='TEXTO', help='click en botón por texto o title')
     actions.add_argument('--hard-reload', action='store_true', help='pulsar ↺ de Aurora')
     actions.add_argument('--full-reload', action='store_true', help='recargar extensión + nueva tab + hard reload')
     actions.add_argument('--background', action='store_true', help='llevar Aurora a segundo plano')
     actions.add_argument('--foreground', action='store_true', help='traer Aurora al frente')
     actions.add_argument('--lyra-send', metavar='PROMPT', help='E2E por el chatbox nativo de Lyra Cloud')
+    actions.add_argument('--lyra-local-send', metavar='PROMPT', help='E2E por chatbox Lyria local y Pi RPC nativo')
     actions.add_argument('--lyra-enter', metavar='PROMPT', help='escribir y pulsar Enter sin esperar resultado')
     actions.add_argument('--chaos-web', choices=tuple(WEB_CHAOS), help='escenario web complejo por Lyra Cloud')
     actions.add_argument('--cloud-ask', metavar='PROMPT', help='probar directamente el relay/iframe Cloud')
@@ -489,6 +874,40 @@ def main():
     p.add_argument('--verbose', action='store_true', help='mostrar fases internas durante el diagnóstico')
     a = p.parse_args()
 
+    if a.contracts:
+        result = run_contracts(a.timeout)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if not result.get('ok'):
+            raise SystemExit(1)
+        return
+    if a.relay_doctor:
+        result = relay_doctor()
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if not result.get('ok'):
+            raise SystemExit(1)
+        return
+    if a.relay_load is not None:
+        result = relay_load(a.relay_load, a.timeout)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if not result.get('ok'):
+            raise SystemExit(1)
+        return
+    if a.reinject_relays:
+        result = evaluate("""new Promise(resolve => {
+          chrome.runtime.sendMessage({type:'AURORA_RELAY_REINJECT',reason:'sol_debug'}, response => {
+            resolve(response || {ok:false,error:chrome.runtime.lastError?.message||'sin respuesta'});
+          });
+        })""", needle=EXTENSION_PAGE, timeout=max(12, a.timeout))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if not result or not result.get('ok'):
+            raise SystemExit(1)
+        return
+    if a.json_family_run:
+        result = json_family_run(a.json_family_run)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if not result.get('ok'):
+            raise SystemExit(1)
+        return
     if a.targets:
         for t in targets():
             print(t.get('type'), t.get('id'), t.get('url'))
@@ -509,6 +928,27 @@ def main():
         out = pathlib.Path(a.shot)
         out.write_bytes(base64.b64decode(r['result']['data']))
         print(out)
+        return
+    if a.lyra_cloud:
+        value = evaluate("""(async()=>{
+          const buttons=()=>[...document.querySelectorAll('button')];
+          const lyra=buttons().find(x=>(x.title||x.ariaLabel||x.innerText||'').trim().toLowerCase()==='lyra');
+          lyra?.click();
+          await new Promise(resolve=>setTimeout(resolve,120));
+          const toggle=buttons().find(x=>(x.title||'')==='Activar Cloud Backend');
+          toggle?.click();
+          const deadline=Date.now()+5000;
+          while(Date.now()<deadline){
+            const hole=document.querySelector('[data-llm-pane="cloud"]');
+            const active=buttons().find(x=>(x.title||'').startsWith('Clic derecho: opciones'));
+            if(hole&&active) return {ok:true,activated:!!toggle,rect:hole.getBoundingClientRect().toJSON()};
+            await new Promise(resolve=>setTimeout(resolve,100));
+          }
+          return {ok:false,error:lyra?'Cloud Backend no montó':'tab Lyra no encontrada'};
+        })()""", timeout=max(12, a.timeout))
+        print(json.dumps(value, ensure_ascii=False, indent=2))
+        if not value or not value.get('ok'):
+            raise SystemExit(1)
         return
     if a.view:
         value = evaluate(f"""(()=>{{
@@ -619,6 +1059,12 @@ def main():
                 'content': data_url(path),
             })
         _, job_id = start_lyra_job(a.lyra_send, int(a.timeout * 1000), attachments, expect_cancel=a.expect_cancel)
+        result = poll_job(job_id, a.timeout, verbose=a.verbose)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if result.get('state') != 'done' or result.get('result', {}).get('ok') is False:
+            raise SystemExit(1)
+    if a.lyra_local_send is not None:
+        _, job_id = start_lyra_local_job(a.lyra_local_send, int(a.timeout * 1000))
         result = poll_job(job_id, a.timeout, verbose=a.verbose)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if result.get('state') != 'done' or result.get('result', {}).get('ok') is False:

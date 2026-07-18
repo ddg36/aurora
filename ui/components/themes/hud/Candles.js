@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 // Candles — velas góticas en las 4 esquinas con llama animada y cera goteando.
 export class Candles extends Component {
@@ -34,8 +34,9 @@ export class Candles extends Component {
     }));
 
     const resize = () => {
-      W = canvas.width  = window.innerWidth;
-      H = canvas.height = window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const drawCandle = (c, ar, ag, ab) => {
@@ -138,7 +139,7 @@ export class Candles extends Component {
       ctx.clearRect(0, 0, W, H);
       const [ar, ag, ab] = this.accent.state?.rgb ?? this.accent.rgb ?? [220, 38, 38];
       for (const c of candles) drawCandle(c, ar, ag, ab);
-      this._raf = requestAnimationFrame(draw);
+      this._raf = sceneFrame(draw);
     };
 
     this._resize = resize;
@@ -148,7 +149,7 @@ export class Candles extends Component {
   }
 
   componentWillUnmount() {
-    cancelAnimationFrame(this._raf);
+    cancelSceneFrame(this._raf);
     window.removeEventListener('resize', this._resize);
     this.accent.stop();
   }

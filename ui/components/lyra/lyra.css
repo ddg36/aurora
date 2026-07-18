@@ -1,7 +1,7 @@
 /* LOCAL — indice de estilos de la view Local.
    Las piezas viven separadas para reducir blast radius al editar. */
 
-@import './lyra.messages.css';
+@import './lyra.messages.css?v=markdown-lists-1';
 @import './lyra.tools.css';
 @import './lyra.composer-cloud.css';
 @import './lyra.panels.css';

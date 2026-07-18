@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher } from '../lib.js';
+import { createAccentWatcher, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 // Sonar — pulso de sonar submarino rotando en esquina. Temática abismal.
 export class Sonar extends Component {
@@ -19,8 +19,9 @@ export class Sonar extends Component {
     const pulses = []; // { age: 0..1 }
 
     const resize = () => {
-      W = canvas.width  = canvas.offsetWidth  || window.innerWidth;
-      H = canvas.height = canvas.offsetHeight || window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const SIZE  = 110; // radio del sonar
@@ -29,7 +30,7 @@ export class Sonar extends Component {
 
     let raf;
     const draw = () => {
-      raf = requestAnimationFrame(draw);
+      raf = sceneFrame(draw);
       t++;
       ctx.clearRect(0, 0, W, H);
 
@@ -134,7 +135,7 @@ export class Sonar extends Component {
     draw();
     this._ro = new ResizeObserver(resize);
     this._ro.observe(canvas);
-    this._stop = () => { cancelAnimationFrame(raf); this._ro.disconnect(); };
+    this._stop = () => { cancelSceneFrame(raf); this._ro.disconnect(); };
   }
 
   componentWillUnmount() { this._stop?.(); this.accent.stop(); }

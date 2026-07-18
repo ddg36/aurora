@@ -61,49 +61,6 @@ function initAuroraBridge(frame, opts) {
   document.addEventListener('visibilitychange', () => reportarSuperficie('visibility'));
   window.addEventListener('pagehide', () => reportarSuperficie('pagehide'));
 
-  // ── Keep-alive anti-throttle ──────────────────────────────────
-  // Chrome estrangula los timers (setTimeout/Interval) de una TAB en segundo
-  // plano; con ellos se frena el iframe del LLM cloud → generación y detección
-  // se cuelgan. Una tab que reproduce audio queda EXENTA del throttle. Metemos
-  // un oscilador sub-audible (20Hz, ganancia casi nula): inaudible, pero marca
-  // la tab como "audible" y la mantiene viva aunque no esté enfocada.
-  let _audioKeepAlive = null;
-  function iniciarKeepAlive() {
-    if (_audioKeepAlive) return;
-    try {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) {
-        globalThis.__auroraKeepAlive = { supported: false, state: 'unavailable' };
-        return;
-      }
-      const ctx = new AC();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      gain.gain.value = 0.0015;         // inaudible para el humano, audible para Chrome
-      osc.frequency.value = 20;         // sub-audible
-      osc.type = 'sine';
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start();
-      _audioKeepAlive = ctx;
-      const reportar = () => {
-        globalThis.__auroraKeepAlive = {
-          supported: true, state: ctx.state, sampleRate: ctx.sampleRate,
-          updated: Date.now(), surface,
-        };
-      };
-      ctx.addEventListener?.('statechange', reportar);
-      reportar();
-      const resume = () => { if (ctx.state === 'suspended') ctx.resume(); };
-      resume();
-      // El autoplay puede quedar suspendido hasta el 1er gesto: lo reanudamos.
-      window.addEventListener('click', resume, true);
-      window.addEventListener('keydown', resume, true);
-    } catch (error) {
-      globalThis.__auroraKeepAlive = { supported: false, state: 'error', error: error?.message || String(error) };
-    }
-  }
-  iniciarKeepAlive();
-
   // ── Bridge logging (accesible via CDP desde background) ──────
   window.__aurora_bridgeLog = window.__aurora_bridgeLog || [];
   const _log = (type, detail) => {
@@ -308,7 +265,30 @@ function initAuroraBridge(frame, opts) {
     _llmFrames.clear();
   }
 
-  // `hidden` sólo esconde (visibility) sin tocar el src — así abrir el dropdown
+  function relayContextForPane(pane) {
+    const paneId = String(pane?.id || 'cloud');
+    return {
+      surface: String(pane?.surface || 'llmcloud'),
+      surfaceInstanceId: _surfaceInstanceId,
+      paneId,
+      channelId: `${_surfaceInstanceId}:${paneId}`,
+      role: pane?.role == null ? null : String(pane.role),
+      runId: pane?.runId == null ? null : String(pane.runId),
+      mode: 'embedded',
+    };
+  }
+
+  function bindRelayFrame(iframe) {
+    const context = iframe?.__auroraRelayContext;
+    if (!context || !iframe.contentWindow) return false;
+    try {
+      iframe.contentWindow.postMessage({ type: 'AURORA_RELAY_BIND', context }, '*');
+      _log('relay_bind', { surface: context.surface, paneId: context.paneId, channelId: context.channelId });
+      return true;
+    } catch (_) { return false; }
+  }
+
+  // `hidden` sólo esconde sin tocar el src — así abrir el dropdown
   // de Aurora, el modal Duo, o cambiar de TAB dentro de Aurora (salir de LLM
   // Cloud a otra vista) no recarga el LLM ni pierde un login/hilo en curso. El
   // caller (llmcloud.js) sigue mandando el mismo pane con hidden:true al
@@ -329,22 +309,27 @@ function initAuroraBridge(frame, opts) {
         f.style.cssText = 'position:absolute;border:none;display:block;background:#fff;pointer-events:auto;';
         _llmLayer.appendChild(f);
         _llmFrames.set(pane.id, f);
+        f.addEventListener('load', () => {
+          bindRelayFrame(f);
+          // El content script puede arrancar después del evento load.
+          setTimeout(() => bindRelayFrame(f), 350);
+          setTimeout(() => bindRelayFrame(f), 1200);
+        });
       }
+      f.__auroraRelayContext = relayContextForPane(pane);
       if (f.dataset.url !== pane.url) { f.dataset.url = pane.url; f.src = pane.url; }
+      else bindRelayFrame(f);
       const r = rectDesdeAurora(pane.rect);
       f.style.left = r.left + 'px';
       f.style.top = r.top + 'px';
       f.style.width = r.width + 'px';
       f.style.height = r.height + 'px';
-      // `visibility:hidden` se hereda dentro del iframe: Gemini desmonta el
-      // botón Send aunque el visibility shim reporte document.hidden=false.
-      // Mantenerlo renderizado con opacity 0 permite que el agente siga en
-      // background sin cubrir ni capturar clicks de la vista Aurora actual.
-      f.style.visibility = 'visible';
-      // Cero exacto activa optimizaciones de oclusión del renderer y Gemini
-      // deja de hidratar Send tras una navegación. Un alpha mínimo conserva
-      // composición/controles y es visualmente imperceptible detrás de Aurora.
-      f.style.opacity = hidden ? '0.001' : '1';
+      // No falsificar la visibilidad del proveedor. En modo embebido Aurora es
+      // mensajero: preserva la navegación, pero deja que el sitio aplique su
+      // ciclo de vida nativo. Para agentes persistentes se usan tabs gestionadas
+      // (Endpoint Registry), no hacks de composición dentro de un iframe.
+      f.style.visibility = hidden ? 'hidden' : 'visible';
+      f.style.opacity = hidden ? '0' : '1';
       f.style.pointerEvents = hidden ? 'none' : 'auto';
       f.setAttribute('aria-hidden', hidden ? 'true' : 'false');
     }
@@ -416,8 +401,10 @@ function initAuroraBridge(frame, opts) {
     // así que Aurora no puede hablarle directo. Reenviamos en ambos sentidos:
     // Respuestas del relay (origin = host del LLM) → Aurora.
     const t = e.data?.type;
-    if (t === 'AURORA_CLOUD_CHUNK' || t === 'AURORA_CLOUD_ANSWER' || t === 'AURORA_CLOUD_NEW_CHAT_ANSWER' || t === 'AURORA_CLOUD_READY' || t === 'AURORA_CLOUD_STATUS' || t === 'AURORA_CLOUD_RESETTING') {
-      const paneId = [..._llmFrames].find(([, iframe]) => iframe.contentWindow === e.source)?.[0] || e.data.__llmPane || 'cloud';
+    if (t === 'AURORA_CLOUD_CHUNK' || t === 'AURORA_CLOUD_ANSWER' || t === 'AURORA_CLOUD_NEW_CHAT_ANSWER' || t === 'AURORA_CLOUD_READY' || t === 'AURORA_CLOUD_STATUS' || t === 'AURORA_CLOUD_RESETTING' || t === 'AURORA_RELAY_BOUND') {
+      const matchedFrame = [..._llmFrames].find(([, iframe]) => iframe.contentWindow === e.source);
+      const paneId = matchedFrame?.[0] || e.data.__llmPane || 'cloud';
+      if (t === 'AURORA_CLOUD_READY' && matchedFrame?.[1]) bindRelayFrame(matchedFrame[1]);
       const forwarded = { ...e.data, __llmPane: paneId };
       if (t === 'AURORA_CLOUD_ANSWER' && e.data.requestId) {
         // Persistir primero; recién después entregar. Si storage falla, entregar

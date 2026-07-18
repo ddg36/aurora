@@ -1,35 +1,58 @@
-// UI/THEMES/LIB — Helpers para backgrounds y HUDs (class components).
+// UI/THEMES/LIB — Helpers compartidos para temas, backgrounds y HUDs.
 
-export function hexToRgb(hex) {
-  return [
-    parseInt(hex.slice(1, 3), 16),
-    parseInt(hex.slice(3, 5), 16),
-    parseInt(hex.slice(5, 7), 16),
-  ];
+export function hexToRgb(hex, fallback = [139, 92, 246]) {
+  const raw = String(hex || '').trim();
+  const short = /^#([\da-f])([\da-f])([\da-f])$/i.exec(raw);
+  if (short) return short.slice(1).map(x => parseInt(x + x, 16));
+  const full = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(raw);
+  if (full) return full.slice(1).map(x => parseInt(x, 16));
+  return [...fallback];
 }
 
-function mixRgb(a, b, t) {
-  return a.map((v, i) => Math.round(v + (b[i] - v) * t));
+export function mixRgb(a, b, t) {
+  const k = Math.max(0, Math.min(1, Number(t) || 0));
+  return a.map((v, i) => Math.round(v + (b[i] - v) * k));
 }
 
-function parseCssColor(raw, fallback = [139, 92, 246]) {
-  if (!raw) return fallback;
-  const colorMix = raw.match(/color-mix\(in\s+srgb,\s*([^,]+)\s+([\d.]+)%?,\s*([^)]+)\)/i);
+export function parseCssColor(raw, fallback = [139, 92, 246]) {
+  const value = String(raw || '').trim();
+  if (!value) return [...fallback];
+
+  // Hex debe comprobarse ANTES que los números sueltos. El parser anterior
+  // interpretaba #8b5cf6 como [8, 5, 6], apagando casi todos los fondos claros.
+  if (/^#[\da-f]{3}$/i.test(value) || /^#[\da-f]{6}$/i.test(value)) {
+    return hexToRgb(value, fallback);
+  }
+
+  const colorMix = value.match(/color-mix\(in\s+srgb,\s*([^,]+?)\s+([\d.]+)%?\s*,\s*([^)]+)\)/i);
   if (colorMix) {
     const a = parseCssColor(colorMix[1].trim(), fallback);
     const b = parseCssColor(colorMix[3].trim(), fallback);
-    const t = Math.max(0, Math.min(1, Number(colorMix[2]) / 100));
-    return mixRgb(a, b, t);
+    return mixRgb(a, b, Number(colorMix[2]) / 100);
   }
-  const nums = raw.match(/[\d.]+/g);
-  if (nums?.length >= 3) return [Math.round(+nums[0]), Math.round(+nums[1]), Math.round(+nums[2])];
-  if (raw.length === 7 && raw.startsWith('#')) return hexToRgb(raw);
-  return fallback;
+
+  const rgbMatch = value.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+  if (rgbMatch) return rgbMatch.slice(1, 4).map(n => Math.max(0, Math.min(255, Math.round(Number(n)))));
+
+  // Algunos navegadores exponen colores computados como "6 182 212".
+  const nums = value.match(/[\d.]+/g);
+  if (nums?.length >= 3) return nums.slice(0, 3).map(n => Math.max(0, Math.min(255, Math.round(Number(n)))));
+
+  return [...fallback];
 }
+
+let _themeColorCache = { key: '', value: null };
 
 export function readThemeColors() {
   try {
-    const cs = getComputedStyle(document.documentElement);
+    const root = document.documentElement;
+    const animated = root.dataset.tema === 'aurora';
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const revision = root.dataset.themeRevision || '';
+    const inlineStyle = root.getAttribute('style') || '';
+    const key = `${revision}|${root.dataset.tema || ''}|${root.dataset.themeMode || ''}|${inlineStyle}|${animated ? Math.floor(now / 80) : 0}`;
+    if (_themeColorCache.key === key && _themeColorCache.value) return _themeColorCache.value;
+    const cs = getComputedStyle(root);
     const accent = parseCssColor(
       cs.getPropertyValue('--aurora-accent').trim() || cs.getPropertyValue('--accent').trim(),
       [139, 92, 246],
@@ -43,74 +66,112 @@ export function readThemeColors() {
       || cs.getPropertyValue('--aurora-accent-glow').trim()
       || cs.getPropertyValue('--aurora-glow').trim()
       || `rgba(${accent[0]},${accent[1]},${accent[2]},.18)`;
-    return { accent, edge, edgeDim, glow };
+    const value = { accent, edge, edgeDim, glow };
+    _themeColorCache = { key, value };
+    return value;
   } catch (_) {
     return { accent: [139, 92, 246], edge: [139, 92, 246], edgeDim: [139, 92, 246], glow: 'rgba(139,92,246,.18)' };
   }
 }
 
-// ponytail: simplified accent watcher — single MutationObserver + setInterval fallback
+// Ajusta un canvas a su tamaño CSS real y conserva coordenadas lógicas.
+// Limitar DPR evita superficies 4K innecesarias en móviles/monitores retina.
+export function fitCanvas(canvas, ctx, { maxDpr = 2 } = {}) {
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width || window.innerWidth || 1));
+  const height = Math.max(1, Math.round(rect.height || window.innerHeight || 1));
+  const dpr = Math.max(1, Math.min(maxDpr, window.devicePixelRatio || 1));
+  const pixelWidth = Math.round(width * dpr);
+  const pixelHeight = Math.round(height * dpr);
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { width, height, dpr };
+}
+
+export function prefersReducedMotion() {
+  try { return matchMedia('(prefers-reduced-motion: reduce)').matches; }
+  catch (_) { return false; }
+}
+
+export function sceneQuality() {
+  // No congelar escenas por la preferencia global del SO. Aurora conserva
+  // movimiento suave y reduce densidad; sólo `data-motion=off` las detiene.
+  if (document.documentElement.dataset.motion === 'off') return 'still';
+  if (prefersReducedMotion()) return 'low';
+  if (esDispositivoLiviano()) return 'low';
+  try {
+    if ((navigator.hardwareConcurrency || 8) <= 4) return 'low';
+  } catch (_) {}
+  return 'high';
+}
+
+// Accent watcher compartido. Observa sólo html/body; la versión anterior
+// observaba `subtree:true`, por lo que cambios de clase dentro del chat podían
+// disparar lecturas de estilo sin relación con el tema.
 const _shared = (() => {
   const listeners = new Set();
-  let observer = null;
+  let observers = [];
   let interval = null;
+  let lastAnimatedRead = 0;
   const FALLBACK = '#8b5cf6';
 
   function readFromDOM() {
     try {
       const cs = getComputedStyle(document.documentElement);
-      const raw = (cs.getPropertyValue('--aurora-accent').trim()
-                || cs.getPropertyValue('--accent').trim());
+      const raw = cs.getPropertyValue('--aurora-accent').trim()
+        || cs.getPropertyValue('--accent').trim();
       if (!raw) return null;
-      if (raw.startsWith('rgb')) {
-        const nums = raw.match(/[\d.]+/g);
-        if (nums?.length >= 3) {
-          const rgb = [Math.round(+nums[0]), Math.round(+nums[1]), Math.round(+nums[2])];
-          const hex = '#' + rgb.map(n => n.toString(16).padStart(2, '0')).join('');
-          return { hex, rgb };
-        }
-      }
-      if (raw.length === 7 && raw.startsWith('#')) {
-        return { hex: raw, rgb: hexToRgb(raw) };
-      }
-    } catch (_) {}
-    return null;
+      const rgb = parseCssColor(raw, hexToRgb(FALLBACK));
+      const hex = '#' + rgb.map(n => n.toString(16).padStart(2, '0')).join('');
+      return { hex, rgb };
+    } catch (_) {
+      return null;
+    }
   }
 
   let state = readFromDOM() ?? { hex: FALLBACK, rgb: hexToRgb(FALLBACK) };
 
-  function read() {
+  function read(force = false) {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const animated = document.documentElement.dataset.tema === 'aurora';
+    if (!force && animated && now - lastAnimatedRead < 80) return state;
+    if (animated) lastAnimatedRead = now;
     const next = readFromDOM();
-    if (!next) return;
-    if (next.rgb[0] === state.rgb[0] && next.rgb[1] === state.rgb[1] && next.rgb[2] === state.rgb[2]) return;
+    if (!next) return state;
+    if (next.rgb[0] === state.rgb[0] && next.rgb[1] === state.rgb[1] && next.rgb[2] === state.rgb[2]) return state;
     state = next;
     for (const fn of listeners) fn(state);
+    return state;
   }
 
   function ensureObserver() {
-    if (observer) return;
-    observer = new MutationObserver(read);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme', 'data-tema', 'style', 'class'],
-      subtree: true,
-    });
-    // Fallback: poll every 2s in case MutationObserver misses CSS variable changes
-    interval = setInterval(read, 2000);
+    if (observers.length) return;
+    const options = { attributes: true, attributeFilter: ['data-theme', 'data-tema', 'data-theme-mode', 'style', 'class'] };
+    for (const node of [document.documentElement, document.body].filter(Boolean)) {
+      const observer = new MutationObserver(() => read(true));
+      observer.observe(node, options);
+      observers.push(observer);
+    }
+    interval = setInterval(() => read(true), 1200);
   }
 
   function teardownIfEmpty() {
     if (listeners.size > 0) return;
-    observer?.disconnect(); observer = null;
+    observers.forEach(o => o.disconnect());
+    observers = [];
     if (interval) { clearInterval(interval); interval = null; }
   }
 
   return {
-    get state() { return state; },
+    get state() { return read(false); },
+    sample() { return read(false); },
     subscribe(fn) {
       listeners.add(fn);
       ensureObserver();
-      read();
+      read(true);
     },
     unsubscribe(fn) {
       listeners.delete(fn);
@@ -119,12 +180,8 @@ const _shared = (() => {
   };
 })();
 
-// Los fondos animados (Hellfire, etc.) dibujan cientos de partículas por
-// frame en canvas 2D vía requestAnimationFrame sin parar — trivial en la
-// GPU de una PC, pero tira el framerate a 5-10fps en celulares (reportado
-// en vivo: "de 60fps en mi PC a 5fps en el celu" corriendo el mismo server
-// por LAN). pointer:coarse detecta touch-primary (celu/tablet) de forma
-// confiable, sin necesidad de parsear user-agent.
+// Los fondos animados dibujan muchas partículas por frame. En pantallas
+// táctiles o estrechas reducimos densidad; no depende de user-agent.
 export function esDispositivoLiviano() {
   try {
     return matchMedia('(pointer: coarse)').matches || window.innerWidth < 820;
@@ -137,12 +194,27 @@ export function createAccentWatcher(_defaultHex = '#8b5cf6') {
   const initial = _shared.state;
   const localState = { hex: initial.hex, rgb: initial.rgb };
   const onUpdate = (s) => { localState.hex = s.hex; localState.rgb = s.rgb; };
+  const sample = () => {
+    const s = _shared.sample();
+    localState.hex = s.hex;
+    localState.rgb = s.rgb;
+    return localState;
+  };
 
   return {
-    state: localState,
-    get rgb() { return localState.rgb; },
-    get hex() { return localState.hex; },
+    get state() { return sample(); },
+    get rgb() { return sample().rgb; },
+    get hex() { return sample().hex; },
     start() { _shared.subscribe(onUpdate); },
     stop()  { _shared.unsubscribe(onUpdate); },
   };
+}
+
+export function sceneFrame(callback) {
+  if (document.documentElement.dataset.motion === 'off') return 0;
+  return requestAnimationFrame(callback);
+}
+
+export function cancelSceneFrame(id) {
+  if (id) cancelAnimationFrame(id);
 }

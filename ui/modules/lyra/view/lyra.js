@@ -36,6 +36,9 @@ import { ParamsPanel } from './params-panel.js';
 import { ComandoOverlay } from './comando-overlay.js';
 import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 import { usePersistedState } from '../../../components/shared/persisted-state.js';
+import {
+  createPiTurnState, reducePiTurn, piTurnText, piResultText,
+} from '../scripts/chat/pi-turn-reducer.js';
 
 const Toast = () => globalThis.Toast || { show() {}, setStatus() {} };
 
@@ -307,7 +310,7 @@ export function Local({ active = true } = {}) {
       let value = code;
       if (value == null && path) {
         try {
-          const r = await postJSON('/pi/cloud-tool', { tool: 'read', args: { path } });
+          const r = await postJSON('/artifacts/read', { path });
           if (!r?.ok || r?.is_error) throw new Error(r?.output || r?.error || 'No se pudo leer el artefacto');
           value = r.output || '';
         } catch (err) {
@@ -432,6 +435,7 @@ export function Local({ active = true } = {}) {
     let respuesta = '';
     let thinking  = '';
     const trackIds = {};
+    let piTurn = createPiTurnState();
 
     // Agrega texto/thinking al último bloque si es del mismo tipo (acumula
     // la generación real en curso); si no, abre un bloque nuevo — igual que
@@ -455,6 +459,24 @@ export function Local({ active = true } = {}) {
         history: (opciones.history || historial.value.slice(-20, -1)).map(m => ({ role: m.role, content: m.content })),
         tools:   CANVAS_TOOLS,
         chat_id: chatActualId.value,
+        onPiEvent: (event, envelope) => {
+          piTurn = reducePiTurn(piTurn, envelope);
+          assistantMessageRef.current = { blocks: piTurn.blocks };
+          setAsistenteEnVivo(assistantMessageRef.current);
+          respuesta = piTurnText(piTurn, 'text');
+          thinking = piTurnText(piTurn, 'thinking');
+          streamingActual.value = respuesta;
+          thinkingActual.value = thinking;
+
+          // Actividad secundaria de Aurora, correlacionada por el ID oficial
+          // de Pi. Nunca por nombre: dos `read` paralelos son independientes.
+          if (event.type === 'tool_execution_start' && event.toolCallId) {
+            trackIds[event.toolCallId] = trackStart(event.toolName, event.args, { toolCallId: event.toolCallId });
+          } else if (event.type === 'tool_execution_end' && event.toolCallId) {
+            const output = piResultText(event.result);
+            trackEnd(trackIds[event.toolCallId], event.isError ? 'error' : 'ok', output.slice(0, 200));
+          }
+        },
         onToken: token => {
           respuesta += token;
           streamingActual.value = respuesta;
@@ -598,14 +620,25 @@ export function Local({ active = true } = {}) {
               partes.push(call);
               if (b.output == null) continue;
               const abre = b.isError ? `[tool_result:${b.name}${tid ? ':' + tid : ''}:error]` : `[tool_result:${b.name}${tid ? ':' + tid : ''}]`;
-              partes.push(`${call}\n${abre}\n${b.output}\n[/tool_result:${b.name}${tid ? ':' + tid : ''}]`);
+              partes.push(`${abre}\n${b.output}\n[/tool_result:${b.name}${tid ? ':' + tid : ''}]`);
             }
           }
           return partes.filter(Boolean).join('\n\n');
         };
-        const contenidoFinal = serializarBloques(assistantMessageRef.current.blocks);
-        agregarMensajeRico({ role: 'assistant', content: contenidoFinal, thinking: thinking || null });
-        await guardarMensaje(chatActualId.value, 'assistant', contenidoFinal);
+        const esPiNativo = piTurn.lastSeq > 0;
+        const estructura = esPiNativo ? {
+          protocolVersion: 1,
+          runtime: 'pi-rpc',
+          blocks: assistantMessageRef.current.blocks,
+        } : null;
+        // En v1 la estructura es la fuente visual y `contenido` queda limpio
+        // para FTS, voz y exportación. Los tags sólo sobreviven como fallback
+        // cuando Aurora se conecta temporalmente a un backend Pi legacy.
+        const contenidoFinal = esPiNativo
+          ? (piTurnText(piTurn, 'text').trim() || respuesta.trim())
+          : serializarBloques(assistantMessageRef.current.blocks);
+        agregarMensajeRico({ role: 'assistant', content: contenidoFinal, thinking: thinking || null, _piTurn: estructura });
+        await guardarMensaje(chatActualId.value, 'assistant', contenidoFinal, estructura);
       }
       await autoGuardar(historial.value, modeloSeleccionado.value);
       if (autoVoz.value && respuesta) {
@@ -878,7 +911,7 @@ export function Local({ active = true } = {}) {
         ultimo = clave;
         window.parent.postMessage({
           type: 'AURORA_LLM_PANES',
-          panes: [{ id: 'cloud', url: cloudUrl, rect: lastRect || { left: 0, top: 0, width: 1, height: 1 } }],
+          panes: [{ id: 'cloud', surface: 'lyria-cloud', url: cloudUrl, rect: lastRect || { left: 0, top: 0, width: 1, height: 1 } }],
           hidden: true,
         }, '*');
         return;
@@ -900,7 +933,7 @@ export function Local({ active = true } = {}) {
       ultimo = clave;
       window.parent.postMessage({
         type: 'AURORA_LLM_PANES',
-        panes: [{ id: 'cloud', url: cloudUrl, rect: lastRect }],
+        panes: [{ id: 'cloud', surface: 'lyria-cloud', url: cloudUrl, rect: lastRect }],
         hidden: false,
       }, '*');
     };
@@ -1450,8 +1483,8 @@ export function Local({ active = true } = {}) {
       `}
 
       <div class=${'cloud-panel ' + (cloudExpanded ? 'expanded' : cloudHidden ? 'hidden-mode' : 'mini') + (cloudVisible ? '' : ' cloud-panel-hidden')}
-        style=${cloudVisible && !cloudHidden && cloudHeight ? `height:${cloudHeight}px` : ''}>
-        ${cloudVisible && !cloudHidden && html`
+        style=${cloudVisible && !cloudHidden && !cloudExpanded && cloudHeight ? `height:${cloudHeight}px` : ''}>
+        ${cloudVisible && !cloudHidden && !cloudExpanded && html`
           <div class="cloud-resize-handle" title="Arrastrá para ajustar el alto" onPointerdown=${iniciarResizeCloud}></div>
         `}
         ${cloudVisible && html`

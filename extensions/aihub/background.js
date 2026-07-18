@@ -1,9 +1,149 @@
 // Aurora Hub — Background Service Worker
 importScripts('background/yt-history.js');
 importScripts('background/browser-cabin.js');
+importScripts('background/endpoint-registry.js');
+importScripts('background/relay-reinjector.js');
 // Bridge: chrome.* APIs → servidor Aurora :7779
 const AURORA    = 'http://localhost:7779';
 const AURORA_WS = 'ws://localhost:7779/ext/ws';
+const WORKSPACE_SURFACE_SETTING = 'aurora_workspace_surface_v1';
+const WORKSPACE_SURFACE_LOCAL   = 'aurora:workspace_surface_v1';
+const JSON_FAMILY_SETTING = 'json_family_enabled_v1';
+const JSON_FAMILY_LOCAL = 'aurora:json_family_enabled_v1';
+let _jsonFamilyEnabled = false;
+
+async function loadJsonFamilyState() {
+  const local = await chrome.storage.local.get([JSON_FAMILY_LOCAL]);
+  if (typeof local[JSON_FAMILY_LOCAL] === 'boolean') _jsonFamilyEnabled = local[JSON_FAMILY_LOCAL];
+  try {
+    await _ensureToken();
+    const response = await fetch(`${AURORA}/db/ajustes/${JSON_FAMILY_SETTING}`, { headers: _hdrs(), cache: 'no-store' });
+    if (response.ok) {
+      const data = await response.json();
+      if (data?.valor === 'true' || data?.valor === 'false') _jsonFamilyEnabled = data.valor === 'true';
+    }
+  } catch (_) {}
+  await chrome.storage.local.set({ [JSON_FAMILY_LOCAL]: _jsonFamilyEnabled });
+  return _jsonFamilyEnabled;
+}
+
+async function saveJsonFamilyState(enabled) {
+  _jsonFamilyEnabled = !!enabled;
+  await chrome.storage.local.set({ [JSON_FAMILY_LOCAL]: _jsonFamilyEnabled });
+  try {
+    await _ensureToken();
+    await fetch(`${AURORA}/db/ajustes/${JSON_FAMILY_SETTING}`, {
+      method: 'PUT', headers: _hdrs(), body: JSON.stringify({ valor: String(_jsonFamilyEnabled) }),
+    });
+  } catch (_) {}
+  const tabs = await chrome.tabs.query({});
+  const deliveries = [];
+  for (const tab of tabs) {
+    let frames = [];
+    try { frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id }) || []; }
+    catch (_) {}
+    if (!frames.length) frames = [{ frameId: 0 }];
+    for (const frame of frames) {
+      deliveries.push(chrome.tabs.sendMessage(tab.id, {
+        type: 'JSON_FAMILY_STATE', enabled: _jsonFamilyEnabled,
+      }, { frameId: frame.frameId }));
+    }
+  }
+  await Promise.allSettled(deliveries);
+  return _jsonFamilyEnabled;
+}
+
+async function processRelayCapture(msg) {
+  await _ensureToken();
+  const response = await fetch(`${AURORA}/json-family/process`, {
+    method: 'POST',
+    headers: _hdrs(),
+    body: JSON.stringify({
+      requestId: String(msg.requestId || ''),
+      text: String(msg.text || ''),
+      origin: msg.origin && typeof msg.origin === 'object' ? msg.origin : {},
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `JSON Family HTTP ${response.status}`);
+  return result;
+}
+
+async function acknowledgeRelayDelivery(requestId) {
+  await _ensureToken();
+  const response = await fetch(`${AURORA}/json-family/delivered`, {
+    method: 'POST', headers: _hdrs(), body: JSON.stringify({ requestId: String(requestId || '') }),
+  });
+  const result = await response.json().catch(() => ({}));
+  return { acknowledged: !!(response.ok && result.acknowledged), error: result.error || null };
+}
+
+async function snapshotProvider(sender) {
+  if (!sender.tab?.id && sender.tab?.id !== 0) throw new Error('El relay no pertenece a una pestaña viva.');
+  const execution = await chrome.scripting.executeScript({
+    target: { tabId: sender.tab.id, frameIds: [Number(sender.frameId || 0)] },
+    world: 'MAIN',
+    func: () => {
+      const relayV2 = globalThis.__auroraRelayV2;
+      const adapter = relayV2?.findProvider?.(location);
+      if (!adapter) return { ok: false, error: 'Provider Driver MAIN no disponible.' };
+      const observe = adapter.observe;
+      const turns = observe.getAssistantTurns?.() || [];
+      const assistant = observe.getLatestAssistant();
+      const raw = String(observe.readAssistant(assistant) || '').trim();
+      const codeNodes = [...(assistant?.querySelectorAll?.('pre code, pre') || [])];
+      const code = String(codeNodes.at(-1)?.innerText || codeNodes.at(-1)?.textContent || '').trim();
+      const text = code && /^\s*\{[\s\S]*"tool"\s*:/i.test(code)
+        ? `${raw}\n\n\`\`\`json\n${code}\n\`\`\`` : raw;
+      const context = globalThis.__auroraRelaySurfaceContext?.() || {
+        surface: window.top === window ? 'tab' : 'embedded-unknown',
+        surfaceInstanceId: null, paneId: null, channelId: null,
+        role: null, runId: null,
+        mode: window.top === window ? 'top-level' : 'embedded',
+        providerId: adapter.id,
+      };
+      const composerReady = Boolean(observe.getInput());
+      const generating = Boolean(observe.isGenerating());
+      return {
+        ok: true,
+        snapshot: {
+          adapter: adapter.id, version: adapter.version, provider: location.hostname,
+          conversation: `${location.origin}${observe.getConversationKey()}`,
+          capabilities: adapter.capabilities || {}, context,
+          composerReady, generating,
+          state: generating ? 'generating' : composerReady ? 'idle' : 'booting',
+          text, raw, turnId: observe.getTurnId?.(assistant) || '',
+          turnIndex: Math.max(0, turns.indexOf(assistant)),
+        },
+      };
+    },
+  });
+  return execution?.[0]?.result || { ok: false, error: 'El Provider Driver no devolvió snapshot.' };
+}
+
+async function deliverToOrigin(sender, delivery, endpointId = null) {
+  let tabId = sender.tab?.id;
+  let frameId = Number(sender.frameId || 0);
+  if (endpointId) {
+    const endpoint = await AuroraEndpointRegistry.resolve({ endpointId });
+    tabId = endpoint.tabId;
+    frameId = endpoint.frameId;
+  }
+  if (!tabId && tabId !== 0) throw new Error('El relay no pertenece a una pestaña viva.');
+  const target = { tabId, frameIds: [frameId] };
+  const execution = await chrome.scripting.executeScript({
+    target,
+    world: 'MAIN',
+    args: [delivery && typeof delivery === 'object' ? delivery : { text: String(delivery || '') }],
+    func: async payload => {
+      const transport = globalThis.__auroraProviderTransport;
+      if (typeof transport !== 'function') return { ok: false, error: 'transporte del proveedor no disponible' };
+      return await transport(payload);
+    },
+  });
+  const result = execution?.[0]?.result || { ok: false, error: 'el frame no devolvió confirmación' };
+  return { delivered: !!result.ok, ...result };
+}
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch(e => console.warn('[BG] sidePanel:', e));
@@ -38,6 +178,138 @@ function _hdrs() {
   const h = { 'Content-Type': 'application/json' };
   if (_auroraToken) h.Authorization = 'Bearer ' + _auroraToken;
   return h;
+}
+
+// ─── Workspace/superficie persistente ───────────────────────
+let _workspaceSurfaceCache = null;
+let _workspaceSurfaceQueue = Promise.resolve();
+
+function _parseWorkspaceSurface(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function _loadWorkspaceSurface(forceRemote = false) {
+  if (_workspaceSurfaceCache && !forceRemote) return _workspaceSurfaceCache;
+
+  const localResult = await chrome.storage.local.get([WORKSPACE_SURFACE_LOCAL]);
+  const local = _parseWorkspaceSurface(localResult[WORKSPACE_SURFACE_LOCAL]);
+  let remote = null;
+
+  try {
+    await _ensureToken();
+    const response = await fetch(`${AURORA}/db/ajustes/${WORKSPACE_SURFACE_SETTING}`, {
+      headers: _hdrs(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3000),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      remote = _parseWorkspaceSurface(data.valor);
+    }
+  } catch (_) {}
+
+  const localTs = Number(local?.updated_at || 0);
+  const remoteTs = Number(remote?.updated_at || 0);
+  _workspaceSurfaceCache = remoteTs >= localTs ? (remote || local) : local;
+  return _workspaceSurfaceCache;
+}
+
+async function _saveWorkspaceSurface(snapshot) {
+  _workspaceSurfaceCache = snapshot;
+  await chrome.storage.local.set({ [WORKSPACE_SURFACE_LOCAL]: snapshot });
+
+  try {
+    await _ensureToken();
+    const response = await fetch(`${AURORA}/db/ajustes/${WORKSPACE_SURFACE_SETTING}`, {
+      method: 'PUT',
+      headers: _hdrs(),
+      body: JSON.stringify({ valor: JSON.stringify(snapshot) }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!response.ok) throw new Error(`workspace HTTP ${response.status}`);
+  } catch (error) {
+    // El espejo local mantiene la recuperación disponible aunque el servidor
+    // estuviera apagado. El próximo anuncio vuelve a intentar sincronizarlo.
+    console.warn('[BG] workspace surface DB:', error?.message || String(error));
+  }
+}
+
+function _recordWorkspaceSurface(msg) {
+  const task = async () => {
+    const previous = (await _loadWorkspaceSurface()) || {};
+    const now = Number(msg.ts || Date.now());
+    const surface = msg.surface === 'sidepanel' ? 'sidepanel' : 'newtab';
+    const instanceId = String(msg.instanceId || `${surface}-unknown`);
+    const instances = { ...(previous.instances || {}) };
+
+    // Las instancias sin heartbeat/evento durante 24h ya no representan un
+    // documento vivo; se conserva sólo la configuración lógica del workspace.
+    const cutoff = now - 24 * 60 * 60 * 1000;
+    for (const [id, state] of Object.entries(instances)) {
+      if (Number(state?.seen_at || 0) < cutoff) delete instances[id];
+    }
+
+    instances[instanceId] = {
+      surface,
+      visible: !!msg.visible,
+      focused: !!msg.focused,
+      phase: String(msg.phase || 'state'),
+      seen_at: now,
+    };
+
+    const isActive = !!msg.focused || (
+      !!msg.visible && ['init', 'focus', 'visibility'].includes(String(msg.phase || ''))
+    );
+
+    const snapshot = {
+      version: 1,
+      preferred_surface: isActive ? surface : (previous.preferred_surface || surface),
+      last_surface: isActive ? surface : (previous.last_surface || surface),
+      last_instance_id: isActive ? instanceId : (previous.last_instance_id || instanceId),
+      last_active_at: isActive ? now : Number(previous.last_active_at || now),
+      instances,
+      updated_at: now,
+    };
+
+    await _saveWorkspaceSurface(snapshot);
+    return snapshot;
+  };
+
+  _workspaceSurfaceQueue = _workspaceSurfaceQueue.then(task, task);
+  return _workspaceSurfaceQueue;
+}
+
+async function restoreWorkspaceSurface(reason = 'startup') {
+  const snapshot = await _loadWorkspaceSurface(true);
+  const target = snapshot?.preferred_surface || snapshot?.last_surface;
+  if (!target) return { ok: true, restored: false, reason: 'no_snapshot' };
+
+  if (target === 'sidepanel') {
+    // Chrome exige gesto de usuario en algunos contextos para sidePanel.open().
+    // Dejamos el panel habilitado y con su ruta correcta: el primer click en la
+    // acción lo abre ya conectado al workspace persistido.
+    await chrome.sidePanel.setOptions({ path: 'sidepanel.html', enabled: true });
+    await chrome.storage.local.set({
+      'aurora:surface_restore_pending_v1': { surface: 'sidepanel', reason, ts: Date.now() },
+    });
+    return { ok: true, restored: true, surface: 'sidepanel', prepared: true };
+  }
+
+  const url = chrome.runtime.getURL('newtab.html');
+  const tabs = await chrome.tabs.query({});
+  const existing = tabs.find(tab => tab.url === url || tab.pendingUrl === url);
+  if (!existing) {
+    const created = await chrome.tabs.create({ url, active: true });
+    return { ok: true, restored: true, surface: 'newtab', tabId: created.id };
+  }
+  return { ok: true, restored: true, surface: 'newtab', tabId: existing.id, reused: true };
 }
 
 async function connectExtWs() {
@@ -233,6 +505,11 @@ setInterval(connectExtWs, 30000);
 // inyectar content_scripts. Reinyectar idempotentemente en ese frame permite
 // que cloud-relay retome el request persistido en sessionStorage.
 const CLOUD_RELAY_HOSTS = /(^|\.)(chatgpt\.com|chat\.openai\.com|gemini\.google\.com)$/;
+function relayAdapterFile(host) {
+  if (/(^|\.)(chatgpt\.com|chat\.openai\.com)$/.test(host)) return 'content-scripts/relay/providers/relay-chatgpt.js';
+  if (/(^|\.)gemini\.google\.com$/.test(host)) return 'content-scripts/relay/providers/relay-gemini.js';
+  return 'content-scripts/relay/providers/relay-generic.js';
+}
 chrome.webNavigation.onHistoryStateUpdated.addListener(async details => {
   let host = '';
   try { host = new URL(details.url).hostname; } catch { return; }
@@ -240,7 +517,8 @@ chrome.webNavigation.onHistoryStateUpdated.addListener(async details => {
   try {
     await chrome.scripting.executeScript({
       target: { tabId: details.tabId, frameIds: [details.frameId] },
-      files: ['content-scripts/cloud-relay.js'],
+      files: ['content-scripts/relay/relay-contract.js', 'content-scripts/relay/relay-utils.js', relayAdapterFile(host), 'content-scripts/relay/relay-core.js', 'content-scripts/cloud-relay.js'],
+      world: 'MAIN',
     });
   } catch (error) {
     console.debug('[BG] cloud relay SPA reinjection skipped:', error?.message || error);
@@ -354,6 +632,82 @@ chrome.runtime.onConnect.addListener(port => {
 
 // ─── MENSAJES ─────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+
+  if (msg.type === 'AURORA_RELAY_REINJECT') {
+    AuroraRelayReinjector.scan(msg.reason || 'message')
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'AURORA_ENDPOINT_HEARTBEAT') {
+    snapshotProvider(sender)
+      .then(result => {
+        if (!result?.ok) throw new Error(result?.error || 'provider_snapshot_failed');
+        return AuroraEndpointRegistry.heartbeat(sender, result.snapshot, msg.phase || 'heartbeat');
+      })
+      .then(endpoint => sendResponse({ ok: true, endpoint }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'AURORA_ENDPOINT_RELEASE') {
+    AuroraEndpointRegistry.release(sender, msg.reason || 'release')
+      .then(() => sendResponse({ ok: true }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'AURORA_ENDPOINT_LIST') {
+    AuroraEndpointRegistry.list()
+      .then(endpoints => sendResponse({ ok: true, endpoints }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'AURORA_ENDPOINT_RESOLVE') {
+    AuroraEndpointRegistry.resolve(msg.target || msg.endpointId)
+      .then(endpoint => sendResponse({ ok: true, endpoint }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'JSON_FAMILY_GET_STATE') {
+    loadJsonFamilyState().then(enabled => sendResponse({ ok: true, enabled }));
+    return true;
+  }
+
+  if (msg.type === 'JSON_FAMILY_SET_STATE') {
+    saveJsonFamilyState(msg.enabled).then(enabled => sendResponse({ ok: true, enabled }));
+    return true;
+  }
+
+  if (msg.type === 'AURORA_RELAY_PROCESS') {
+    processRelayCapture(msg)
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ ok: false, kind: 'transport_error', error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'AURORA_RELAY_SNAPSHOT') {
+    snapshotProvider(sender)
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'AURORA_RELAY_DELIVER') {
+    deliverToOrigin(sender, msg.delivery || msg.feedback, msg.endpointId || null)
+      .then(async result => {
+        if (!result.delivered) return sendResponse(result);
+        const ack = await acknowledgeRelayDelivery(msg.requestId).catch(error => ({
+          acknowledged: false, error: error?.message || String(error),
+        }));
+        sendResponse({ ...result, ...ack });
+      })
+      .catch(error => sendResponse({ delivered: false, error: error?.message || String(error) }));
+    return true;
+  }
 
   // ── LLM_SESSION_URL ────────────────────────────────────
   // session-sniffer.js (iframes de LLM cloud): persiste la última URL de
@@ -1557,6 +1911,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // ── WORKSPACE / SUPERFICIE ────────────────────────────────
+  if (msg.type === 'AURORA_SURFACE_STATE') {
+    _recordWorkspaceSurface(msg)
+      .then(snapshot => sendResponse({ ok: true, snapshot }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'AURORA_RESTORE_SURFACE') {
+    restoreWorkspaceSurface('explicit_request')
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
   // ── OPEN_SIDEPANEL ──────────────────────────────────────
   if (msg.type === 'OPEN_SIDEPANEL') {
     chrome.sidePanel.open({ windowId: msg.windowId }).catch(() => {});
@@ -1635,4 +2004,26 @@ chrome.runtime.onStartup.addListener(async () => {
       chrome.storage.local.remove(key);
     }
   });
+
+  try {
+    await restoreWorkspaceSurface('browser_startup');
+  } catch (error) {
+    console.warn('[BG] restore workspace startup:', error?.message || String(error));
+  }
+  AuroraRelayReinjector.scan('browser_startup')
+    .catch(error => console.warn('[BG] relay reinject startup:', error?.message || String(error)));
 });
+
+chrome.runtime.onInstalled.addListener(() => {
+  restoreWorkspaceSurface('extension_installed')
+    .catch(error => console.warn('[BG] restore workspace install:', error?.message || String(error)));
+  AuroraRelayReinjector.scan('extension_installed')
+    .catch(error => console.warn('[BG] relay reinject install:', error?.message || String(error)));
+});
+
+// También cubre el botón Reload de chrome://extensions: ese ciclo no siempre
+// dispara onStartup y los couriers isolated anteriores quedan invalidados.
+setTimeout(() => {
+  AuroraRelayReinjector.scan('worker_boot')
+    .catch(error => console.warn('[BG] relay reinject boot:', error?.message || String(error)));
+}, 500);

@@ -6,26 +6,140 @@
 # ══════════════════════════════════════════════════════
 
 import asyncio
+import json
 import logging
 
-from litestar import websocket, post
-from litestar.connection import WebSocket
+from litestar import get, websocket, post
+from litestar.connection import Request, WebSocket
+
+from db.connection import get_db
 
 from .bridge import PiBridge
-from .cloud_tools import ejecutar_tool
+from pi_tools import catalog as pi_tools_catalog
+from pi_tools import health as pi_tools_health
 
 log = logging.getLogger('aurora.pi')
 
+_cloud_turn_lock = asyncio.Lock()
+_TERMINAL_TURN_STATES = {'completed', 'cancelled', 'failed'}
 
-@post('/pi/cloud-tool')
-async def cloud_tool(data: dict) -> dict:
-    """El LLM de la nube pidió una tool básica (read/bash/edit/write). Se ejecuta
-    DIRECTO (sin LLM intermediario): instantáneo y fiable. Devuelve
-    {ok, output, is_error} para inyectar de vuelta al iframe."""
-    tool = str(data.get('tool') or '').strip()
-    if not tool:
-        return {'ok': False, 'error': "Falta 'tool'", 'is_error': True, 'output': ''}
-    return await ejecutar_tool(tool, data.get('args') or {})
+
+def _json_canon(value) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+
+
+def _json_dict(value: str | None, fallback=None):
+    try:
+        parsed = json.loads(value) if value else fallback
+        return parsed if isinstance(parsed, dict) else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
+@get('/tools/providers/pi/catalog')
+async def cloud_pi_catalog() -> dict:
+    """Catálogo vivo de la versión instalada de pi; fuente de verdad de @@."""
+    try:
+        result = await pi_tools_catalog()
+        return {'ok': True, **result, 'health': pi_tools_health()}
+    except Exception as exc:
+        return {'ok': False, 'provider': 'pi', 'tools': [], 'error': str(exc), 'health': pi_tools_health()}
+
+
+@post('/cloud-agent/turn/save')
+async def cloud_turn_save(data: dict, request: Request) -> dict:
+    uid = int(request.state.usuario_id)
+    turn_id = str(data.get('turnId') or '').strip()
+    if not turn_id:
+        return {'ok': False, 'error': 'Falta turnId'}
+    status = str(data.get('status') or 'prepared')
+    state = data.get('state')
+    state_json = _json_canon(state) if isinstance(state, dict) else None
+
+    async with _cloud_turn_lock:
+        db = await get_db()
+        await db.execute(
+            '''INSERT INTO cloud_agent_turns
+               (usuario_id, turn_id, conv_id, ai_id, url, pane_id, status, iteration,
+                request_id, prompt, next_prompt, state_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(usuario_id, turn_id) DO UPDATE SET
+                 conv_id=COALESCE(excluded.conv_id, cloud_agent_turns.conv_id),
+                 ai_id=COALESCE(excluded.ai_id, cloud_agent_turns.ai_id),
+                 url=COALESCE(excluded.url, cloud_agent_turns.url),
+                 pane_id=COALESCE(excluded.pane_id, cloud_agent_turns.pane_id),
+                 status=excluded.status,
+                 iteration=excluded.iteration,
+                 request_id=COALESCE(excluded.request_id, cloud_agent_turns.request_id),
+                 prompt=COALESCE(excluded.prompt, cloud_agent_turns.prompt),
+                 next_prompt=COALESCE(excluded.next_prompt, cloud_agent_turns.next_prompt),
+                 state_json=COALESCE(excluded.state_json, cloud_agent_turns.state_json),
+                 updated_at=unixepoch()''',
+            (
+                uid, turn_id, data.get('convId'), data.get('aiId'), data.get('url'),
+                data.get('paneId') or 'cloud', status, data.get('iteration', 0),
+                data.get('requestId'), data.get('prompt'), data.get('nextPrompt'), state_json,
+            ),
+        )
+        if status in _TERMINAL_TURN_STATES:
+            await db.execute(
+                '''UPDATE cloud_agent_turns
+                   SET completed_at=COALESCE(completed_at, unixepoch())
+                   WHERE usuario_id=? AND turn_id=?''',
+                (uid, turn_id),
+            )
+        else:
+            await db.execute(
+                'UPDATE cloud_agent_turns SET completed_at=NULL WHERE usuario_id=? AND turn_id=?',
+                (uid, turn_id),
+            )
+        await db.commit()
+    return {'ok': True, 'turnId': turn_id, 'status': status}
+
+
+@post('/cloud-agent/turn/recover')
+async def cloud_turn_recover(data: dict, request: Request) -> dict:
+    uid = int(request.state.usuario_id)
+    turn_id = str(data.get('turnId') or '').strip()
+    pane_id = str(data.get('paneId') or 'cloud')
+    db = await get_db()
+    if turn_id:
+        query = 'SELECT * FROM cloud_agent_turns WHERE usuario_id=? AND turn_id=?'
+        params = (uid, turn_id)
+    else:
+        query = (
+            "SELECT * FROM cloud_agent_turns WHERE usuario_id=? AND pane_id=? "
+            "AND status NOT IN ('completed','cancelled','failed') "
+            'ORDER BY updated_at DESC LIMIT 1'
+        )
+        params = (uid, pane_id)
+    async with db.execute(query, params) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return {'ok': True, 'turn': None}
+
+    turn = dict(row)
+    turn['state'] = _json_dict(turn.pop('state_json', None), {})
+    return {'ok': True, 'turn': turn}
+
+
+@post('/cloud-agent/turn/complete')
+async def cloud_turn_complete(data: dict, request: Request) -> dict:
+    uid = int(request.state.usuario_id)
+    turn_id = str(data.get('turnId') or '').strip()
+    if not turn_id:
+        return {'ok': False, 'error': 'Falta turnId'}
+    status = str(data.get('status') or 'completed')
+    async with _cloud_turn_lock:
+        db = await get_db()
+        await db.execute(
+            '''UPDATE cloud_agent_turns
+               SET status=?, updated_at=unixepoch(), completed_at=unixepoch()
+               WHERE usuario_id=? AND turn_id=?''',
+            (status, uid, turn_id),
+        )
+        await db.commit()
+    return {'ok': True, 'turnId': turn_id, 'status': status}
 
 
 @websocket('/lyra')
@@ -93,4 +207,6 @@ async def pi_ws(socket: WebSocket) -> None:
             bridge.chat_task.cancel()
 
 
-PI_ROUTES = [pi_ws, cloud_tool]
+PI_ROUTES = [
+    pi_ws, cloud_pi_catalog, cloud_turn_save, cloud_turn_recover, cloud_turn_complete,
+]

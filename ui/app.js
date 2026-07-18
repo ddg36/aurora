@@ -9,11 +9,11 @@ import { cargarTema } from './modules/ajustes/scripts/tema.js';
 
 import { aplicarTema } from './components/themes/manager.js';
 
-import { THEMES } from './components/themes/index.js?v=v2-visual-variants-2';
+import { THEMES } from './components/themes/index.js?v=v4-interface-hud-1';
 
-import { BACKGROUND_LOADERS } from './components/themes/backgrounds/loaders.js?v=v2-visual-variants-2';
+import { BACKGROUND_LOADERS } from './components/themes/backgrounds/loaders.js?v=v4-interface-hud-1';
 
-import { HUD_LOADERS } from './components/themes/hud/loaders.js?v=v2-visual-variants-2';
+import { HUD_LOADERS } from './components/themes/hud/loaders.js?v=v4-interface-hud-1';
 
 import { Footer } from './components/footer/footer.js';
 
@@ -48,7 +48,7 @@ aurora:       () => import('./modules/aurora/view/aurora.js?v=v2-control-center-
 
 productividad: () => import('./modules/productividad/view/productividad.js?v=v2-productividad-1'),
 
-lyra:         () => import('./modules/lyra/view/lyra.js?v=v2-clean-ui-15'),
+lyra:         () => import('./modules/lyra/view/lyra.js?v=v2-keepalive-1'),
 
 llmcloud:     () => import('./modules/llmcloud/view/llmcloud.js?v=v2-clean-ui-15'),
 
@@ -76,7 +76,7 @@ webnavigator: () => import('./modules/webnavigator/view/web-navigator.js?v=v2-cl
 
 stylecatalog: () => import('./modules/stylecatalog/view/stylecatalog.js?v=v2-clean-ui-14'),
 
-ajustes:      () => import('./modules/ajustes/view/ajustes.js?v=v2-visual-variants-2'),
+ajustes:      () => import('./modules/ajustes/view/ajustes.js?v=v4-interface-hud-1'),
 
 };
 
@@ -90,72 +90,69 @@ return Object.values(mod || {}).find(v => typeof v === 'function') || null;
 
 }
 
-async function loadOverlay(loaders, id, mode, setComp) {
-
-if (!id || id === 'none') {
-
-setComp(null);
-
-return;
-
-}
-
-const loader = loaders[id];
-
-if (!loader) {
-
-setComp(null);
-
-return;
-
-}
-
-const mod = await loader(mode);
-
-const comp = pickComponent(mod);
-
-setComp(() => comp);
-
+async function resolveOverlay(loaders, id, mode) {
+  if (!id || id === 'none') return null;
+  const loader = loaders[id];
+  if (!loader) return null;
+  const mod = await loader(mode);
+  return pickComponent(mod);
 }
 
 function Background() {
+  const [Comp, setComp] = useState(null);
+  const [mode, setMode] = useState(themeMode.value);
 
-const [Comp, setComp] = useState(null);
+  useEffect(() => {
+    let request = 0;
+    let alive = true;
+    const load = async () => {
+      const current = ++request;
+      try {
+        const next = await resolveOverlay(BACKGROUND_LOADERS, background.value, themeMode.value);
+        if (alive && current === request) setComp(() => next);
+      } catch (err) {
+        if (alive && current === request) {
+          console.error('[Aurora] background load failed', background.value, err);
+          setComp(null);
+        }
+      }
+    };
+    load();
+    const offBg = background.subscribe(load);
+    const offMode = themeMode.subscribe(value => setMode(value));
+    return () => { alive = false; request++; offBg(); offMode(); };
+  }, []);
 
-useEffect(() => {
-
-const load = () => loadOverlay(BACKGROUND_LOADERS, background.value, themeMode.value, setComp).catch(console.error);
-
-load();
-const offBg = background.subscribe(load);
-const offMode = themeMode.subscribe(load);
-
-return () => { offBg(); offMode(); };
-
-}, []);
-
-return Comp ? h(Comp, {}) : null;
-
+  return Comp ? h(Comp, { mode }) : null;
 }
 
 function Hud() {
+  const [Comp, setComp] = useState(null);
+  let mode = themeMode.value;
 
-const [Comp, setComp] = useState(null);
+  useEffect(() => {
+    let request = 0;
+    let alive = true;
+    const load = async () => {
+      const current = ++request;
+      mode = themeMode.value;
+      try {
+        const next = await resolveOverlay(HUD_LOADERS, hud.value, mode);
+        if (alive && current === request) setComp(() => next);
+      } catch (err) {
+        if (alive && current === request) {
+          console.error('[Aurora] HUD load failed', hud.value, err);
+          setComp(null);
+        }
+      }
+    };
+    load();
+    const offHud = hud.subscribe(load);
+    const offMode = themeMode.subscribe(load);
+    return () => { alive = false; request++; offHud(); offMode(); };
+  }, []);
 
-useEffect(() => {
-
-const load = () => loadOverlay(HUD_LOADERS, hud.value, themeMode.value, setComp).catch(console.error);
-
-load();
-const offHud = hud.subscribe(load);
-const offMode = themeMode.subscribe(load);
-
-return () => { offHud(); offMode(); };
-
-}, []);
-
-return Comp ? h(Comp, {}) : null;
-
+  return Comp ? h(Comp, { mode }) : null;
 }
 
 function ModuleView({ tabId }) {
@@ -207,6 +204,50 @@ return h(Mod, {});
 
 }
 
+// Lyra mantiene conversaciones, controles locales y el pane Cloud en memoria.
+// El router anterior desmontaba todo el componente al visitar Home u otra view;
+// al volver se recreaban hooks, se recargaba el historial y se perdía la sesión
+// visual del iframe. Se carga sólo tras la primera visita, pero desde entonces
+// permanece montada y recibe `active=false` cuando queda detrás de otra vista.
+function PersistentLyraView({ active }) {
+  const [visited, setVisited] = useState(active);
+  const [Mod, setMod] = useState(null);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    if (active) setVisited(true);
+  }, [active]);
+
+  useEffect(() => {
+    if (!visited || Mod || err) return;
+    MODULE_LOADERS.lyra()
+      .then(mod => {
+        const picked = pickComponent(mod);
+        if (!picked) throw new Error('El módulo Lyra no exporta componente Preact');
+        setMod(() => picked);
+      })
+      .catch(e => {
+        console.error('[Aurora] persistent Lyra load failed', e);
+        setErr('Error cargando "lyra": ' + (e?.message || String(e)));
+      });
+  }, [visited, Mod, err]);
+
+  if (!visited) return null;
+  return h(
+    'section',
+    {
+      class: 'flex-1 min-w-0 min-h-0 flex flex-col',
+      style: active ? '' : 'display:none',
+      'aria-hidden': active ? 'false' : 'true',
+    },
+    err
+      ? h('div', { class: 'p-8 text-center opacity-60 whitespace-pre-wrap' }, err)
+      : Mod
+        ? h(Mod, { active })
+        : h('div', { class: 'p-8 text-center opacity-40' }, 'Cargando...'),
+  );
+}
+
 function UserSwitcherMount() {
 
 const [abierto, setAbierto] = useState(userSwitcherAbierto.value);
@@ -245,6 +286,8 @@ function NavBar({ tab }) {
       class: iconButtonClass(tab === t.id, 'rounded-md w-full h-9 flex-shrink-0 text-xs'),
       title: t.label,
       'aria-label': t.label,
+      'aria-current': tab === t.id ? 'page' : undefined,
+      'aria-pressed': tab === t.id ? 'true' : 'false',
     },
       h('span', {
         class: 'flex-shrink-0 flex items-center justify-center',
@@ -317,7 +360,7 @@ h(
 // real vía flexbox siempre, y var(--aurora-rail-w) (declarada una sola vez
 // en CSS) es la única referencia que cualquier vista necesita para no
 // chocar contra él.
-{ class: 'relative z-10 flex flex-row h-screen min-h-0' },
+{ class: 'aurora-ui-shell relative z-10 flex flex-row h-screen min-h-0' },
 
 h(
   'div',
@@ -339,7 +382,12 @@ h(
   // en vivo: "casi todas las views" se ven cortadas del lado derecho en un
   // celular, no porque falte flex-wrap sino porque el contenedor padre
   // nunca se restringe al ancho real disponible).
-  h('main', { class: 'flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col' }, h(ModuleView, { tabId: tab })),
+  h(
+    'main',
+    { class: 'flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col' },
+    h(PersistentLyraView, { active: tab === 'lyra' }),
+    tab !== 'lyra' ? h(ModuleView, { tabId: tab }) : null,
+  ),
 
   h('div', { class: 'flex-shrink-0' }, h(Footer, {})),
 ),

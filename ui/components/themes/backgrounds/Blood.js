@@ -1,6 +1,6 @@
 const { html } = globalThis;
 const { Component, createRef } = globalThis.preact;
-import { createAccentWatcher, esDispositivoLiviano } from '../lib.js';
+import { createAccentWatcher, esDispositivoLiviano, fitCanvas, sceneFrame, cancelSceneFrame} from '../lib.js';
 
 const TAU = Math.PI * 2;
 
@@ -19,8 +19,9 @@ export class Blood extends Component {
     let W = 0, H = 0, t = 0, waves, cells, drips;
 
     const resize = () => {
-      W = canvas.width = canvas.offsetWidth || window.innerWidth;
-      H = canvas.height = canvas.offsetHeight || window.innerHeight;
+      const size = fitCanvas(canvas, ctx);
+      W = size.width;
+      H = size.height;
     };
 
     const makeWave = () => ({
@@ -142,7 +143,7 @@ export class Blood extends Component {
     };
 
     const draw = () => {
-      const raf = requestAnimationFrame(draw);
+      const raf = sceneFrame(draw);
       t += .012;
       const [r, g, b] = this.accent.rgb ?? [127, 0, 0];
       const dark = [Math.max(0, Math.round(r * .10)), Math.max(0, Math.round(g * .05)), Math.max(0, Math.round(b * .08))];
@@ -178,7 +179,7 @@ export class Blood extends Component {
     draw();
     this._ro = new ResizeObserver(() => { init(); });
     this._ro.observe(canvas);
-    this._stop = () => { cancelAnimationFrame(this._raf); this._ro.disconnect(); };
+    this._stop = () => { cancelSceneFrame(this._raf); this._ro.disconnect(); };
   }
 
   componentWillUnmount() {

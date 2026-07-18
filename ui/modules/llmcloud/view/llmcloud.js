@@ -79,7 +79,7 @@ export default function LLMCloud() {
       if (!a?.path) return;
       setArtefacto(a); setArtefactoContenido(''); setArtefactoError('');
       try {
-        const r = await postJSON('/pi/cloud-tool', { tool: 'read', args: { path: a.path } });
+        const r = await postJSON('/artifacts/read', { path: a.path });
         if (!r?.ok || r?.is_error) throw new Error(r?.output || r?.error || 'No se pudo leer');
         setArtefactoContenido(r.output || '');
       } catch (err) { setArtefactoError(err?.message || String(err)); }
@@ -178,18 +178,31 @@ export default function LLMCloud() {
         if (!el) return;
         const r = el.getBoundingClientRect();
         if (r.width < 2 || r.height < 2) return; // aún sin layout: no reportar rect en cero
-        panes.push({ id: lado, url: src, rect: { left: r.left, top: r.top, width: r.width, height: r.height } });
+        panes.push({ id: lado, surface: 'llmcloud', url: src, rect: { left: r.left, top: r.top, width: r.width, height: r.height } });
       };
       add('izq', izq, srcIzq);
       if (split) add('der', der, srcDer);
       panesRef.current = panes;
       window.parent.postMessage({ type: 'AURORA_LLM_PANES', panes, hidden: !!artefacto }, '*');
     };
-    // Doble rAF: el primero deja que el placeholder tenga tamaño real antes de
-    // medir (si no, el rect llega en cero y no se monta el iframe → estrellas).
+    // Doble rAF deja terminar el layout en primer plano. No puede ser el único
+    // disparador: Chrome pausa rAF en tabs de fondo y entonces los placeholders
+    // existen pero la extensión nunca recibe AURORA_LLM_PANES hasta que alguien
+    // redimensiona la ventana. El timeout y ResizeObserver cubren ese caso.
     const raf = requestAnimationFrame(() => requestAnimationFrame(report));
+    const timer = setTimeout(report, 80);
+    const observed = [...document.querySelectorAll('[data-llm-pane]')];
+    const resizeObserver = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(report)
+      : null;
+    observed.forEach(el => resizeObserver?.observe(el));
     window.addEventListener('resize', report);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', report); };
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', report);
+    };
   }, [izq, der, srcIzq, srcDer, split, duoAbierto, artefacto, actividadTools.length, urls, extCaps]);
 
   // Elección desde el menú dibujado por la extensión.

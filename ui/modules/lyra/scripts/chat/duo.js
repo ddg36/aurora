@@ -8,7 +8,7 @@
 // ponytail: sin persistencia del duo — es efímero por diseño; si se quiere
 // guardar la charla, va a cloud_mensajes con un flag 'duo'.
 
-import { historial, cargando, cloudGenerando } from './mensajes.js';
+import { historial, cargando, cloudGenerando, agregarMensajeRico } from './mensajes.js';
 import { askCloud } from '../../../../components/shared/cloud-ask.js';
 
 const WS_URL = `ws://${location.hostname}:7779/lyra?token=${encodeURIComponent(localStorage.getItem('aurora_token') || '')}`;
@@ -47,17 +47,22 @@ function turnoPi(ws, { message, model, history, onToken }) {
   });
 }
 
-// Reemplaza el último mensaje del historial (placeholder en vivo del turno).
-function actualizarUltimo(patch) {
+function actualizarMensaje(uiId, patch) {
+  if (!uiId) return false;
   const arr = historial.value;
-  if (!arr.length) return;
-  historial.value = [...arr.slice(0, -1), { ...arr[arr.length - 1], ...patch }];
+  const i = arr.findIndex(m => m._uiId === uiId);
+  if (i < 0) return false;
+  historial.value = [...arr.slice(0, i), { ...arr[i], ...patch, _uiId: uiId }, ...arr.slice(i + 1)];
+  return true;
 }
 
-function quitarUltimoVacio() {
+function quitarMensajeVacio(uiId) {
+  if (!uiId) return false;
   const arr = historial.value;
-  const last = arr[arr.length - 1];
-  if (last?.role === 'assistant' && !(last.content || '').trim()) historial.value = arr.slice(0, -1);
+  const msg = arr.find(m => m._uiId === uiId);
+  if (!msg || msg.role !== 'assistant' || (msg.content || '').trim()) return false;
+  historial.value = arr.filter(m => m._uiId !== uiId);
+  return true;
 }
 
 export function crearDuoLyraCloud() {
@@ -79,29 +84,36 @@ export function crearDuoLyraCloud() {
 
     for (let ronda = 0; ronda < maxRondas && !cancelado; ronda++) {
       if (quien === 'local') {
-        historial.value = [...historial.value, { role: 'assistant', content: '', ts: Date.now() }];
+        const placeholder = agregarMensajeRico({ role: 'assistant', content: '' });
+        const uiId = placeholder?._uiId;
         let resp;
         try {
-          resp = await turnoPi(ws, { message: mensaje, model, history: [...histPi], onToken: t => actualizarUltimo({ content: t }) });
-        } catch (e) { quitarUltimoVacio(); onError?.(e.message); break; }
+          resp = await turnoPi(ws, {
+            message: mensaje,
+            model,
+            history: [...histPi],
+            onToken: t => actualizarMensaje(uiId, { content: t }),
+          });
+        } catch (e) { quitarMensajeVacio(uiId); onError?.(e.message); break; }
         if (cancelado) break;
-        actualizarUltimo({ content: resp });
+        actualizarMensaje(uiId, { content: resp });
         histPi.push({ role: 'user', content: mensaje });
         histPi.push({ role: 'assistant', content: resp });
         mensaje = resp;
         quien = 'cloud';
       } else {
-        historial.value = [...historial.value, { role: 'assistant', content: '', _via: 'duo-external', ts: Date.now() }];
+        const placeholder = agregarMensajeRico({ role: 'assistant', content: '', _via: 'duo-external' });
+        const uiId = placeholder?._uiId;
         let resp;
         cloudGenerando.value = true;
         try {
-          const r = await askCloud(iframe, mensaje, { onChunk: t => actualizarUltimo({ content: t }) });
+          const r = await askCloud(iframe, mensaje, { onChunk: t => actualizarMensaje(uiId, { content: t }) });
           if (!r.ok) throw new Error(r.text || 'sin respuesta de la nube');
           resp = r.text || '(sin respuesta de la nube)';
-        } catch (e) { quitarUltimoVacio(); onError?.(e.message); break; }
+        } catch (e) { quitarMensajeVacio(uiId); onError?.(e.message); break; }
         finally { cloudGenerando.value = false; }
         if (cancelado) break;
-        actualizarUltimo({ content: resp });
+        actualizarMensaje(uiId, { content: resp });
         mensaje = resp;
         quien = 'local';
       }

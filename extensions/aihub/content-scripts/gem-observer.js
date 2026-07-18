@@ -5,6 +5,9 @@
 ;(function () {
   'use strict'
 
+  // Guard: chrome.runtime no está disponible en todos los contextos.
+  if (!chrome?.runtime) return;
+
   if (window.__GEM_OBSERVER_STARTED__) return
   window.__GEM_OBSERVER_STARTED__ = true
   document.documentElement.dataset.gemObserver = '1'

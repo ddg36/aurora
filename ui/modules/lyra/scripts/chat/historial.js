@@ -1,8 +1,30 @@
 import { signal } from '../../../../store.js';
 import { BASE, hdrs } from '../../../../components/shared/api.js';
 
-export const chats        = signal([]);
-export const chatActualId = signal(null);
+export const chats = signal([]);
+
+const CHAT_ACTUAL_STORAGE = 'aurora_lyra_chat_actual_id';
+
+function leerChatActual() {
+  try {
+    const raw = localStorage.getItem(CHAT_ACTUAL_STORAGE);
+    return raw == null ? null : JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export const chatActualId = signal(leerChatActual());
+
+// Todas las rutas que cambian de conversación escriben este signal; centralizar
+// acá la persistencia evita que alguna acción (crear, borrar, seleccionar) quede
+// sin guardar. El ID conserva su tipo original para no romper backends numéricos.
+chatActualId.subscribe(id => {
+  try {
+    if (id == null) localStorage.removeItem(CHAT_ACTUAL_STORAGE);
+    else localStorage.setItem(CHAT_ACTUAL_STORAGE, JSON.stringify(id));
+  } catch (_) {}
+});
 
 function normalizeTimestamp(value) {
   const n = Number(value || Date.now());
@@ -44,6 +66,11 @@ export async function cargarChats() {
       chats.value = (Array.isArray(rows) ? rows : [])
         .map(c => normalizeChat(c))
         .filter(Boolean);
+
+      // Restaurar el último chat sólo si todavía pertenece a la lista actual.
+      // Si fue eliminado desde otra instancia, caer al más reciente disponible.
+      const actualExiste = chats.value.some(c => String(c.id) === String(chatActualId.value));
+      if (!actualExiste) chatActualId.value = chats.value[0]?.id ?? null;
     }
   } catch {}
 }
