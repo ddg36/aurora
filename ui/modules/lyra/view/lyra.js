@@ -1032,6 +1032,22 @@ export function Local({ active = true } = {}) {
     try { window.parent.postMessage({ type: 'AURORA_LLM_PANES', panes: [] }, '*'); } catch (_) {}
   }, []);
 
+  // El panel cloud en modo Full (.llama-view.cloud-expanded .cloud-panel.expanded)
+  // se ancla con bottom:<altura del composer> para no taparlo — antes un
+  // valor fijo (116px) que quedó desincronizado del alto real del composer
+  // (creció con la fila de botones nuevos: mide ~134px), tapando el botón
+  // toggle Cloud. Ahora sigue el alto real vía ResizeObserver + CSS var.
+  useEffect(() => {
+    const el = document.querySelector('.chat-input-area');
+    const root = document.querySelector('.llama-view');
+    if (!el || !root) return;
+    const aplicar = () => root.style.setProperty('--composer-h', `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    aplicar();
+    const ro = new ResizeObserver(aplicar);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const elegirCloudAi = useCallback((aiId, urlOverride) => {
     const url = urlOverride || AI_URLS[aiId] || '';
     setCloudAiId(aiId);
