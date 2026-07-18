@@ -35,7 +35,12 @@
     getNewUserTurnIds: () => [],
     findAssistantAfterUserIds: () => null,
     getTextNode: bestTextNode,
-    readAssistant: turn => (bestTextNode(turn)?.innerText || '').trim(),
+    // Markdown fiel del DOM, no innerText plano — ver relay-chatgpt.js.
+    readAssistant: turn => {
+      const node = bestTextNode(turn);
+      const domToMarkdown = globalThis.__auroraRelayV2?.utils?.domToMarkdown;
+      return (domToMarkdown ? domToMarkdown(node) : (node?.innerText || '')).trim();
+    },
     getTurnId: turn => turn?.getAttribute?.('data-turn-id') || turn?.id || '',
     isGenerating: () => Boolean(stopControl()),
     isComplete: turn => Boolean(turn && first(SELECTORS.complete, turn)),

@@ -49,7 +49,14 @@
       return user ? turns.filter(turn => user.compareDocumentPosition(turn) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1) || null : null;
     },
     getTextNode: bestTextNode,
-    readAssistant: turn => (bestTextNode(turn)?.innerText || '').trim(),
+    // Markdown fiel del DOM, no innerText plano: ChatGPT arma cada punto de
+    // una lista como <ol> separado con `start` (invisible al texto plano) y
+    // renderiza negrita/código/headings que innerText degrada a texto suelto.
+    readAssistant: turn => {
+      const node = bestTextNode(turn);
+      const domToMarkdown = globalThis.__auroraRelayV2?.utils?.domToMarkdown;
+      return (domToMarkdown ? domToMarkdown(node) : (node?.innerText || '')).trim();
+    },
     getTurnId: turn => turn?.getAttribute?.('data-message-id') || turn?.getAttribute?.('data-turn-id') || turn?.id || '',
     isGenerating: () => Boolean(visibleStop()),
     isComplete: () => false,

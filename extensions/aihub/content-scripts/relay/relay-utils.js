@@ -72,5 +72,74 @@
     }));
   }
 
-  relay.utils = Object.freeze({ sleep, waitFor, fingerprint, dispatchEnter, dataUrlToFile, normalizeAttachments, pasteFiles });
+  // Reconstruye markdown fiel desde el DOM renderizado (código, negrita,
+  // cursiva, headings, listas, tablas, enlaces) — un readAssistant basado en
+  // innerText pierde toda esa estructura: negrita sin asteriscos, código sin
+  // fences, y listas numeradas SIN el número real (el navegador lo pinta por
+  // CSS/list-style, invisible al texto plano).
+  function domToMarkdown(root) {
+    if (!root) return '';
+    const out = [];
+    function walk(node) {
+      if (node.nodeType === Node.TEXT_NODE) { out.push(node.textContent); return; }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'button' || tag === 'script' || tag === 'style' || node.getAttribute('aria-hidden') === 'true') return;
+      if (tag === 'pre') {
+        const code = node.querySelector('code'); const target = code || node;
+        const m = (target.className || '').match(/language-([\w+#-]+)/i);
+        const txt = (target.innerText || target.textContent || '').replace(/\n+$/, '');
+        out.push('\n\n```' + (m ? m[1] : '') + '\n' + txt + '\n```\n\n'); return;
+      }
+      if (tag === 'code') { out.push('`' + (node.innerText || node.textContent || '') + '`'); return; }
+      const h = { h1: '\n\n# ', h2: '\n\n## ', h3: '\n\n### ', h4: '\n\n#### ', h5: '\n\n##### ', h6: '\n\n###### ' }[tag];
+      if (h) { out.push(h); node.childNodes.forEach(walk); out.push('\n\n'); return; }
+      if (tag === 'p' || tag === 'div') { node.childNodes.forEach(walk); out.push('\n\n'); return; }
+      if (tag === 'br') { out.push('\n'); return; }
+      if (tag === 'hr') { out.push('\n\n---\n\n'); return; }
+      if (tag === 'strong' || tag === 'b') { out.push('**'); node.childNodes.forEach(walk); out.push('**'); return; }
+      if (tag === 'em' || tag === 'i') { out.push('*'); node.childNodes.forEach(walk); out.push('*'); return; }
+      if (tag === 'a') { out.push('['); node.childNodes.forEach(walk); out.push('](' + (node.getAttribute('href') || '') + ')'); return; }
+      if (tag === 'ul' || tag === 'ol') {
+        out.push('\n'); const ordered = tag === 'ol'; let i = 1;
+        for (const li of node.children) {
+          if (li.tagName?.toLowerCase() !== 'li') continue;
+          out.push(ordered ? `${i}. ` : '- ');
+          for (const child of li.childNodes) {
+            if (child.nodeType === Node.TEXT_NODE && !child.textContent?.trim()) continue;
+            const childTag = child.nodeType === Node.ELEMENT_NODE ? child.tagName.toLowerCase() : '';
+            if (childTag === 'p' || childTag === 'div') child.childNodes.forEach(walk);
+            else walk(child);
+          }
+          out.push('\n'); i++;
+        }
+        out.push('\n'); return;
+      }
+      node.childNodes.forEach(walk);
+    }
+    walk(root);
+    // ChatGPT (y otros) generan cada punto de una lista como un <ol>/<ul>
+    // SEPARADO (uno por ítem, cortado por su párrafo de explicación), usando
+    // el atributo HTML `start` para que el navegador los numere en secuencia
+    // — invisible al recorrer el DOM elemento por elemento. Sin esto, cada
+    // <ol> aislado reinicia en "1." acá también. Se detecta la secuencia de
+    // marcadores numerados consecutivos (con párrafos intercalados, sin
+    // heading/bullet que corte) y se renumera en el texto ya generado.
+    const md = out.join('').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
+    const lineas = md.split('\n');
+    let contador = 0, dentroDeLista = false;
+    for (let idx = 0; idx < lineas.length; idx++) {
+      const m = lineas[idx].match(/^(\s*)(\d+)\.(\s+)/);
+      if (m) {
+        contador = dentroDeLista ? contador + 1 : 1;
+        dentroDeLista = true;
+        lineas[idx] = lineas[idx].replace(/^(\s*)(\d+)\.(\s+)/, `${m[1]}${contador}.${m[3]}`);
+        continue;
+      }
+      if (dentroDeLista && (/^\s*#{1,6}\s/.test(lineas[idx]) || /^\s*[-*•]\s/.test(lineas[idx]))) dentroDeLista = false;
+    }
+    return lineas.join('\n');
+  }
+
+  relay.utils = Object.freeze({ sleep, waitFor, fingerprint, dispatchEnter, dataUrlToFile, normalizeAttachments, pasteFiles, domToMarkdown });
 })();
