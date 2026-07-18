@@ -592,10 +592,26 @@ function startAuroraRelayCore(injectedAdapter) {
         // El observer global sólo vigila la transición del control Stop. Antes
         // llamaba leer() por CADA mutación de body (incluido el montaje de código),
         // duplicando el trabajo del observer del turno y provocando stutters.
-        // El botón Send/Stop vive dentro del compositor. Observar su padre
-        // inmediato permite detectar reemplazos del <form> sin recorrer las
-        // respuestas, sidebar, bloques de código ni el resto del documento.
-        const siteRoot = getInput()?.parentElement || document.body;
+        // El botón Send/Stop vive dentro del compositor, pero no necesariamente
+        // en el padre INMEDIATO del input (verificado en ChatGPT actual: el
+        // ancestro común real está 3 niveles arriba). Observar un contenedor
+        // que no incluya al botón deja siteObsCallbacks en 0 para siempre —
+        // el cierre nunca usa el camino rápido (650ms) y cae al fallback lento
+        // (mínimo 12s + FIN_IDLE), el retraso percibido al terminar de
+        // responder. Subir hasta encontrar el ancestro que SÍ contenga ambos
+        // (input + control Stop/Send), acotado a pocos niveles para seguir
+        // siendo más chico que document.body.
+        const siteRoot = (() => {
+          const input = getInput();
+          const control = observe.getStopControl?.() || observe.getSendControl?.({ visible: false });
+          if (!input) return document.body;
+          if (!control) return input.parentElement || document.body;
+          let node = input;
+          for (let hops = 0; hops < 8 && node; hops++, node = node.parentElement) {
+            if (node.contains(control)) return node;
+          }
+          return document.body;
+        })();
         let stopPresente = Boolean(observe.isGenerating());
         vioGenerando = stopPresente;
         trace('stop_observer_root', {
