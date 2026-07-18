@@ -62,6 +62,15 @@ const AI_URLS = {
 const AI_LABELS = { gemini: 'Gemini', chatgpt: 'ChatGPT', claude: 'Claude', perplexity: 'Perplexity', custom: 'Custom' };
 const AI_ICONOS = { gemini: '◇', chatgpt: '◉', claude: '✶', perplexity: '⊕', custom: '🌐' };
 
+// SVG monocromo, mismo lenguaje visual que NavBar/Footer (nav-tabs.js,
+// footer/registry.js): viewBox 14x14, stroke currentColor — nunca glifos
+// Unicode (▾/◻/∧ se veían inconsistentes, y el ◻ se confundía con un botón
+// de Stop). Ciclo mini→oculto→expandido: cada ícono representa la ACCIÓN
+// (qué va a pasar al clickear), no el estado actual.
+const ICON_OCULTAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c1.3-2.3 3.2-3.5 5-3.5s3.7 1.2 5 3.5c-1.3 2.3-3.2 3.5-5 3.5S3.3 9.3 2 7z"/><circle cx="7" cy="7" r="1.6"/><line x1="2" y1="12" x2="12" y2="2"/></svg>';
+const ICON_MOSTRAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c1.3-2.3 3.2-3.5 5-3.5s3.7 1.2 5 3.5c-1.3 2.3-3.2 3.5-5 3.5S3.3 9.3 2 7z"/><circle cx="7" cy="7" r="1.6"/></svg>';
+const ICON_COLAPSAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,5 7,9 11,5"/></svg>';
+
 function AvatarSlot({ avatar, side }) {
   if (!avatar) return null;
   const mood = avatar.mood ?? 'neutral';
@@ -1582,10 +1591,11 @@ export function Local({ active = true } = {}) {
             >☁ ${cloudVisible ? cloudAiLabel : 'Cloud'}</button>
             ${cloudVisible && html`
               <button
-                style="background:transparent;border:none;border-left:1px solid rgba(255,255,255,0.2);cursor:pointer;padding:0 6px;height:100%;color:inherit;font-size:10px;display:flex;align-items:center"
+                style="background:transparent;border:none;border-left:1px solid rgba(255,255,255,0.2);cursor:pointer;padding:0 6px;height:100%;color:inherit;display:flex;align-items:center"
                 onClick=${cycleCloudPanel}
                 title=${cloudExpanded ? 'Full → Mini' : cloudHidden ? 'Oculto → Full' : 'Mini → Oculto'}
-              >${cloudExpanded ? '∧' : cloudHidden ? '◻' : '∨'}</button>
+                dangerouslySetInnerHTML=${{ __html: cloudExpanded ? ICON_COLAPSAR : cloudHidden ? ICON_MOSTRAR : ICON_OCULTAR }}
+              ></button>
             `}
           </div>
           <button
