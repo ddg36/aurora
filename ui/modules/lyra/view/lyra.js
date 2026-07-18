@@ -81,6 +81,16 @@ const ICON_MIC_STOP = '<svg width="14" height="14" viewBox="0 0 14 14" fill="non
 const ICON_ENVIAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="12" x2="7" y2="2"/><polyline points="3,6 7,2 11,6"/></svg>';
 const ICON_DETENER = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/></svg>';
 
+// Header y acciones de cada mensaje: 📋/✎/↻/🔊/📌/📍/🔇 — mismo problema,
+// mismo tratamiento (SVG monocromo 14x14).
+const ICON_COPIAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="7" height="8" rx="1"/><path d="M2.5 9.5v-6a1 1 0 011-1h5"/></svg>';
+const ICON_NOTA = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2h6l3 3v7a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z"/><path d="M9 2v3h3"/></svg>';
+const ICON_REGENERAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7a4.5 4.5 0 018-2.7M11.5 7a4.5 4.5 0 01-8 2.7"/><polyline points="10,1.5 10.5,4.3 7.7,4"/><polyline points="4,12.5 3.5,9.7 6.3,10"/></svg>';
+const ICON_HABLAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.5h2.3L7.5 3v8L4.3 8.5H2z"/><path d="M9.5 5a3 3 0 010 4M11 3.5a5 5 0 010 7"/></svg>';
+const ICON_MUDO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.5h2.3L7.5 3v8L4.3 8.5H2z"/><line x1="9.5" y1="4.5" x2="12.5" y2="9.5"/><line x1="12.5" y1="4.5" x2="9.5" y2="9.5"/></svg>';
+const ICON_FIJAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h4l-.5 4.5L11 8H3l2.5-1.5z"/><line x1="7" y1="8" x2="7" y2="12.5"/></svg>';
+const ICON_FIJADO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h4l-.5 4.5L11 8H3l2.5-1.5z"/><line x1="7" y1="8" x2="7" y2="12.5"/></svg>';
+
 function AvatarSlot({ avatar, side }) {
   if (!avatar) return null;
   const mood = avatar.mood ?? 'neutral';
@@ -1250,13 +1260,15 @@ export function Local({ active = true } = {}) {
                       class=${'msg-pin-btn' + (estaFijado(msg) ? ' fijado' : '')}
                       onClick=${() => togglePin(msg)}
                       title=${estaFijado(msg) ? 'Desfijar mensaje' : 'Fijar mensaje'}
-                    >${estaFijado(msg) ? '📌' : '📍'}</button>
+                      dangerouslySetInnerHTML=${{ __html: estaFijado(msg) ? ICON_FIJADO : ICON_FIJAR }}
+                    ></button>
                   `}
                   <button
                     class="msg-speak-btn"
                     onClick=${() => hablar(msg.content)}
                     title="Releer mensaje"
-                  >🔊</button>
+                    dangerouslySetInnerHTML=${{ __html: ICON_HABLAR }}
+                  ></button>
                 </div>
                 ${msg._toolVisual
                   ? html`<${ToolVisualCard} visual=${msg._toolVisual} />`
@@ -1337,10 +1349,10 @@ export function Local({ active = true } = {}) {
                   </div>
                 `}
                 ${!esPiTool && html`<div class=${quickActionsClass}>
-                    <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles">📋 Copiar</button>
-                    <button class=${actionChipClass} onClick=${() => añadirANotas(msg.content)} title="Añadir a notas">✎ A notas</button>
-                    <button class=${actionChipClass} onClick=${() => reformularRespuesta(regenerarRespuesta, msg)} title="Regenerar respuesta">↻ Regenerar</button>
-                    <button class=${actionChipClass} onClick=${() => leerMensaje(msg.content)} title="Leer mensaje">🔊 Leer</button>
+                    <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles"><span dangerouslySetInnerHTML=${{ __html: ICON_COPIAR }}></span> Copiar</button>
+                    <button class=${actionChipClass} onClick=${() => añadirANotas(msg.content)} title="Añadir a notas"><span dangerouslySetInnerHTML=${{ __html: ICON_NOTA }}></span> A notas</button>
+                    <button class=${actionChipClass} onClick=${() => reformularRespuesta(regenerarRespuesta, msg)} title="Regenerar respuesta"><span dangerouslySetInnerHTML=${{ __html: ICON_REGENERAR }}></span> Regenerar</button>
+                    <button class=${actionChipClass} onClick=${() => leerMensaje(msg.content)} title="Leer mensaje"><span dangerouslySetInnerHTML=${{ __html: ICON_HABLAR }}></span> Leer</button>
                   </div>`}
               </div>
             `;
@@ -1358,14 +1370,15 @@ export function Local({ active = true } = {}) {
                 <span class="role">${rolLabelFinal}</span>
                 <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
                 ${(msg.content || '').trim() && html`
-                  <button class="msg-pin-btn" onClick=${() => copiarMensaje(msg.content)} title="Copiar mensaje">📋</button>
+                  <button class="msg-pin-btn" onClick=${() => copiarMensaje(msg.content)} title="Copiar mensaje" dangerouslySetInnerHTML=${{ __html: ICON_COPIAR }}></button>
                 `}
                 ${msg.id && html`
                   <button
                     class=${'msg-pin-btn' + (estaFijado(msg) ? ' fijado' : '')}
                     onClick=${() => togglePin(msg)}
                     title=${estaFijado(msg) ? 'Desfijar mensaje' : 'Fijar mensaje'}
-                  >${estaFijado(msg) ? '📌' : '📍'}</button>
+                    dangerouslySetInnerHTML=${{ __html: estaFijado(msg) ? ICON_FIJADO : ICON_FIJAR }}
+                  ></button>
                 `}
               </div>
               <div class="message-content"
@@ -1625,7 +1638,8 @@ export function Local({ active = true } = {}) {
             class=${'btn-tts ' + (ttsEnabled ? controlBtnActive : controlBtnIdle)}
             onClick=${toggleAutoVoz}
             title=${ttsEnabled ? 'Desactivar voz' : 'Activar voz'}
-          >${ttsEnabled ? '🔊' : '🔇'}</button>
+            dangerouslySetInnerHTML=${{ __html: ttsEnabled ? ICON_HABLAR : ICON_MUDO }}
+          ></button>
         </div>
 
         ${cloudMenu && html`
