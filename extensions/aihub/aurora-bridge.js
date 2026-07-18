@@ -324,12 +324,16 @@ function initAuroraBridge(frame, opts) {
       f.style.top = r.top + 'px';
       f.style.width = r.width + 'px';
       f.style.height = r.height + 'px';
-      // No falsificar la visibilidad del proveedor. En modo embebido Aurora es
-      // mensajero: preserva la navegación, pero deja que el sitio aplique su
-      // ciclo de vida nativo. Para agentes persistentes se usan tabs gestionadas
-      // (Endpoint Registry), no hacks de composición dentro de un iframe.
-      f.style.visibility = hidden ? 'hidden' : 'visible';
-      f.style.opacity = hidden ? '0' : '1';
+      // visibility:hidden / opacity:0 congelan requestAnimationFrame dentro
+      // del iframe (verificado: con cualquiera de los dos, rAF no dispara NI
+      // UNA VEZ; sin ellos, ~33fps normales). ChatGPT anima su streaming vía
+      // rAF — con el panel "oculto" así, el turno queda con el DOM vacío
+      // para siempre (el <div> de streaming nunca se pinta), aunque
+      // document.hidden del iframe siga en false (esa API sólo mide la tab
+      // top, no visibility/opacity de un iframe embebido — el sitio no tiene
+      // forma de notar ni compensar esto). El tamaño ya lo hace invisible al
+      // ojo (rect llega en ~1px cuando hidden), así que ocultar por tamaño
+      // + pointer-events:none alcanza sin pagar el freeze de rAF.
       f.style.pointerEvents = hidden ? 'none' : 'auto';
       f.setAttribute('aria-hidden', hidden ? 'true' : 'false');
     }
