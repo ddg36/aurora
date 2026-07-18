@@ -194,7 +194,10 @@ async def pi_ws(socket: WebSocket) -> None:
                 await bridge.reset(msg)
 
             elif tipo == 'status':
-                await bridge.enviar_estado('status')
+                await bridge.enviar_estado('status', msg.get('chat_id'))
+
+            elif tipo == 'session_audit':
+                await bridge.auditar_sesion(msg.get('chat_id'))
 
             elif tipo == 'hub_action_result':
                 log.info('hub_action_result ignorado con engine pi')

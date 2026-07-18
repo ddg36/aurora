@@ -68,6 +68,54 @@ async function auroraJson(path: string, init: RequestInit = {}, timeoutMs = 120_
   return await res.json();
 }
 
+type ForgePackage = {
+  name: string;
+  version: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+  permissions?: string[];
+  risk?: "low" | "medium" | "high";
+  requires_approval?: boolean;
+  status?: string;
+  docs?: string;
+  timeout?: number;
+};
+
+type ForgeSyncResult = {
+  active: ForgePackage[];
+  changed: ForgePackage[];
+  removedAliases: string[];
+};
+
+const FORGE_PACKAGE_RE = /^forge\.[a-z][a-z0-9_]{2,47}$/;
+const FORGE_VERSION_RE = /^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/;
+
+/** Alias compatible con providers; el nombre canónico forge.* queda en details. */
+export function forgeToolAlias(name: string): string {
+  if (!FORGE_PACKAGE_RE.test(name)) throw new Error(`Nombre Forge inválido: ${name}`);
+  return `forge_${name.slice("forge.".length)}`;
+}
+
+function activeForgePackages(payload: any): ForgePackage[] {
+  return (Array.isArray(payload?.packages) ? payload.packages : [])
+    .filter((pkg: any) => pkg?.status === "active")
+    .filter((pkg: any) => FORGE_PACKAGE_RE.test(String(pkg?.name || "")))
+    .filter((pkg: any) => FORGE_VERSION_RE.test(String(pkg?.version || "")))
+    .filter((pkg: any) => pkg?.input_schema?.type === "object");
+}
+
+function forgeResultContent(json: any): Array<any> {
+  if (Array.isArray(json?.content)) {
+    const safe = json.content.filter((item: any) =>
+      (item?.type === "text" && typeof item.text === "string") ||
+      (item?.type === "image" && typeof item.data === "string" && typeof item.mimeType === "string")
+    );
+    if (safe.length) return safe;
+  }
+  if (typeof json?.text === "string") return [{ type: "text", text: json.text }];
+  return [{ type: "text", text: JSON.stringify(json?.data ?? json, null, 2) }];
+}
+
 async function ytTranscript(timestamps: boolean): Promise<string> {
   const data = await extCmd("capture_youtube", { type: timestamps ? "withTimestamps" : "withoutTimestamps" }, 30);
   if (!data?.content) throw new Error(data?.error || "Sin transcript disponible");
@@ -84,6 +132,112 @@ async function pageCapture(): Promise<string> {
 }
 
 export default function (pi: ExtensionAPI) {
+  const registeredForgeVersions = new Map<string, string>();
+  let forgeSyncInFlight: Promise<ForgeSyncResult> | null = null;
+
+  const registerForgeTool = (pkg: ForgePackage): boolean => {
+    const alias = forgeToolAlias(pkg.name);
+    if (registeredForgeVersions.get(alias) === pkg.version) return false;
+
+    const permissions = Array.isArray(pkg.permissions) ? pkg.permissions : [];
+    const versioned = `${pkg.name}@${pkg.version}`;
+
+    pi.registerTool({
+      name: alias,
+      label: `${pkg.name} · v${pkg.version}`,
+      description: `${pkg.description} Capacidad Tool Forge aprobada y activa (${versioned}).`,
+      promptSnippet: `${pkg.description} [${versioned}]`,
+      promptGuidelines: [
+        `Use ${alias} directamente cuando necesite la capacidad ${pkg.name}; no use aurora_forge_run si ${alias} está disponible.`,
+      ],
+      parameters: Type.Unsafe(pkg.input_schema || { type: "object", properties: {} }),
+      executionMode: "sequential",
+      async execute(_toolCallId, params, signal, onUpdate, ctx) {
+        const detailsBase = {
+          forge: { name: pkg.name, version: pkg.version, alias },
+          risk: pkg.risk || "low",
+          permissions,
+        };
+
+        let endpoint = "run";
+        const payload: Record<string, unknown> = { arguments: params || {} };
+        if (pkg.requires_approval) {
+          onUpdate?.({
+            content: [{ type: "text", text: `Esperando aprobación humana para ${versioned}…` }],
+            details: { ...detailsBase, phase: "awaiting_approval" },
+          });
+          const approved = await ctx.ui.confirm(
+            "Tool Forge — aprobación requerida",
+            [
+              `Ejecutar ${versioned}`,
+              `Riesgo: ${pkg.risk || "high"}`,
+              `Permisos: ${permissions.join(", ") || "ninguno"}`,
+              `Argumentos: ${JSON.stringify(params || {})}`,
+            ].join("\n"),
+          );
+          if (!approved) throw new Error(`Diego rechazó la ejecución de ${versioned}.`);
+          endpoint = "approve-run";
+          payload.confirmation = `RUN ${pkg.name}`;
+        }
+
+        onUpdate?.({
+          content: [{ type: "text", text: `Ejecutando ${versioned} en Bubblewrap…` }],
+          details: { ...detailsBase, phase: "running" },
+        });
+        const json = await auroraJson(`/tools/${encodeURIComponent(pkg.name)}/${endpoint}`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+          signal,
+        }, Math.max(10_000, Number(pkg.timeout || 120) * 1000 + 5_000));
+        if (!json?.ok) {
+          if (json?.approval_required) throw new Error(`Aprobación humana requerida para ${versioned}.`);
+          throw new Error(json?.error || `${versioned} falló`);
+        }
+        return {
+          content: forgeResultContent(json),
+          details: { ...detailsBase, phase: "completed", result: json },
+        };
+      },
+    });
+    registeredForgeVersions.set(alias, pkg.version);
+    return true;
+  };
+
+  const syncForgeTools = async (): Promise<ForgeSyncResult> => {
+    if (forgeSyncInFlight) return forgeSyncInFlight;
+    forgeSyncInFlight = (async () => {
+      const json = await auroraJson("/tools/forge/packages");
+      if (!json?.ok) throw new Error(json?.error || "No se pudo leer Tool Forge");
+
+      const active = activeForgePackages(json);
+      const currentAliases = new Set(active.map(pkg => forgeToolAlias(pkg.name)));
+      const removedAliases = [...registeredForgeVersions.keys()].filter(alias => !currentAliases.has(alias));
+      const changed = active.filter(registerForgeTool);
+
+      for (const alias of removedAliases) registeredForgeVersions.delete(alias);
+
+      const activeNames = new Set(pi.getActiveTools());
+      let activeSetChanged = false;
+      for (const alias of removedAliases) {
+        if (activeNames.delete(alias)) activeSetChanged = true;
+      }
+      for (const alias of currentAliases) {
+        if (!activeNames.has(alias)) {
+          activeNames.add(alias);
+          activeSetChanged = true;
+        }
+      }
+      if (activeSetChanged) pi.setActiveTools([...activeNames]);
+
+      return { active, changed, removedAliases };
+    })();
+    try {
+      return await forgeSyncInFlight;
+    } finally {
+      forgeSyncInFlight = null;
+    }
+  };
+
   // ── tools ───────────────────────────────────────────
 
   pi.registerTool({
@@ -197,41 +351,79 @@ export default function (pi: ExtensionAPI) {
     name: "aurora_forge_list",
     label: "Tool Forge — capacidades",
     description:
-      "Lista las herramientas construidas por el colectivo Cloud, probadas, aprobadas y activas en Aurora. " +
-      "Usar cuando necesites una capacidad que no aparece entre tus tools habituales.",
+      "Lista las capacidades Tool Forge aprobadas y activas, incluyendo su alias directo dentro de Pi. " +
+      "Las capacidades aparecen automáticamente como tools forge_* sin reiniciar la sesión.",
     parameters: Type.Object({}),
     async execute() {
-      const json = await auroraJson("/tools");
-      const tools = (json.tools || []).filter((tool: any) => (tool.tags || []).includes("forge"));
-      const text = tools.length
-        ? tools.map((tool: any) => `${tool.name} — ${tool.description}\n  args: ${JSON.stringify(tool.input_schema)}${tool.requires_approval ? "\n  requiere aprobación por ejecución" : ""}`).join("\n\n")
+      const { active } = await syncForgeTools();
+      const text = active.length
+        ? active.map(pkg => {
+            const alias = forgeToolAlias(pkg.name);
+            return `${alias} → ${pkg.name}@${pkg.version} — ${pkg.description}\n  args: ${JSON.stringify(pkg.input_schema)}${pkg.requires_approval ? "\n  requiere aprobación humana por ejecución" : ""}`;
+          }).join("\n\n")
         : "(no hay herramientas Forge activas todavía)";
-      return { content: [{ type: "text", text }], details: { tools } };
+      return {
+        content: [{ type: "text", text }],
+        details: { packages: active },
+      };
     },
   });
 
   pi.registerTool({
     name: "aurora_forge_run",
-    label: "Tool Forge — ejecutar",
+    label: "Tool Forge — ejecutar por nombre",
     description:
-      "Ejecuta una herramienta activa creada por Tool Forge. Primero usa aurora_forge_list para conocer " +
-      "el nombre exacto y su contrato. Sólo admite nombres forge.* y respeta permisos/aprobaciones de Aurora.",
+      "Fallback para ejecutar una capacidad activa por su nombre canónico forge.*. " +
+      "Preferí la tool forge_* directa cuando aparezca en el catálogo de Pi.",
     parameters: Type.Object({
-      name: Type.String({ description: "Nombre exacto forge.*" }),
+      name: Type.String({ description: "Nombre canónico exacto forge.*" }),
       arguments: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Argumentos según el contrato" })),
     }),
-    async execute(_id, params) {
-      if (!/^forge\.[a-z][a-z0-9_]{2,47}$/.test(params.name)) throw new Error("Nombre Forge inválido");
-      const json = await auroraJson(`/tools/${encodeURIComponent(params.name)}/run`, {
-        method: "POST",
-        body: JSON.stringify({ arguments: params.arguments || {} }),
-      });
-      if (!json.ok) {
-        if (json.approval_required) throw new Error("La herramienta requiere aprobación humana para esta ejecución.");
-        throw new Error(json.error || "La herramienta Forge falló");
+    executionMode: "sequential",
+    async execute(_id, params, signal, onUpdate, ctx) {
+      const { active } = await syncForgeTools();
+      const pkg = active.find(item => item.name === params.name);
+      if (!pkg) throw new Error(`Capacidad Forge no activa: ${params.name}`);
+
+      const versioned = `${pkg.name}@${pkg.version}`;
+      let endpoint = "run";
+      const payload: Record<string, unknown> = { arguments: params.arguments || {} };
+      if (pkg.requires_approval) {
+        onUpdate?.({
+          content: [{ type: "text", text: `Esperando aprobación humana para ${versioned}…` }],
+          details: { phase: "awaiting_approval", package: pkg },
+        });
+        const approved = await ctx.ui.confirm(
+          "Tool Forge — aprobación requerida",
+          [
+            `Ejecutar ${versioned}`,
+            `Riesgo: ${pkg.risk || "high"}`,
+            `Permisos: ${(pkg.permissions || []).join(", ") || "ninguno"}`,
+            `Argumentos: ${JSON.stringify(params.arguments || {})}`,
+          ].join("\n"),
+        );
+        if (!approved) throw new Error(`Diego rechazó la ejecución de ${versioned}.`);
+        endpoint = "approve-run";
+        payload.confirmation = `RUN ${pkg.name}`;
       }
-      const text = json.text || JSON.stringify(json.data ?? json, null, 2);
-      return { content: [{ type: "text", text }], details: json };
+
+      onUpdate?.({
+        content: [{ type: "text", text: `Ejecutando ${versioned} en Bubblewrap…` }],
+        details: { phase: "running", package: pkg },
+      });
+      const json = await auroraJson(`/tools/${encodeURIComponent(pkg.name)}/${endpoint}`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+        signal,
+      }, Math.max(10_000, Number(pkg.timeout || 120) * 1000 + 5_000));
+      if (!json?.ok) {
+        if (json?.approval_required) throw new Error(`Aprobación humana requerida para ${versioned}.`);
+        throw new Error(json?.error || `${versioned} falló`);
+      }
+      return {
+        content: forgeResultContent(json),
+        details: { phase: "completed", package: pkg, result: json },
+      };
     },
   });
 
@@ -298,6 +490,43 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  // Sincronización Pi-native: una activación en Toolkit se incorpora antes
+  // del siguiente turno y registerTool refresca el registry sin reiniciar Pi.
+  pi.on("session_start", async (_event, ctx) => {
+    try {
+      const { active } = await syncForgeTools();
+      if (active.length) {
+        ctx.ui.notify(`Tool Forge: ${active.length} capacidad(es) activa(s) incorporadas`, "info");
+      }
+    } catch (err: any) {
+      ctx.ui.notify(`Tool Forge no pudo sincronizarse: ${err.message}`, "warning");
+    }
+  });
+
+  pi.on("before_agent_start", async event => {
+    try {
+      const { changed, removedAliases } = await syncForgeTools();
+      if (!changed.length && !removedAliases.length) return;
+
+      const added = changed.map(pkg =>
+        `- ${forgeToolAlias(pkg.name)} → ${pkg.name}@${pkg.version}: ${pkg.description}`
+      );
+      const removed = removedAliases.map(alias => `- ${alias} fue desactivada`);
+      return {
+        systemPrompt: [
+          event.systemPrompt,
+          "",
+          "[Tool Forge — capacidades sincronizadas en caliente]",
+          ...added,
+          ...removed,
+          "Use las tools forge_* directamente por su alias Pi; Aurora conserva versión, permisos, evidencia y aprobación humana.",
+        ].join("\n"),
+      };
+    } catch (err) {
+      console.warn("aurora-tools: sync Forge falló", err);
+    }
+  });
+
   // ── flags: inyectan contexto al arrancar ────────────
 
   pi.registerFlag("aurora-yt-transcript", {
@@ -335,6 +564,21 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── comandos manuales ───────────────────────────────
+
+  pi.registerCommand("forge-refresh", {
+    description: "Sincroniza las capacidades Tool Forge activas con el registry de Pi",
+    handler: async (_args, ctx) => {
+      try {
+        const { active, changed, removedAliases } = await syncForgeTools();
+        ctx.ui.notify(
+          `Tool Forge: ${active.length} activa(s), ${changed.length} incorporada(s)/actualizada(s), ${removedAliases.length} desactivada(s)`,
+          "info",
+        );
+      } catch (err: any) {
+        ctx.ui.notify(`Tool Forge no pudo sincronizarse: ${err.message}`, "warning");
+      }
+    },
+  });
 
   pi.registerCommand("aurora-yt", {
     description: "Trae el transcript del video de YouTube abierto y lo agrega al contexto",

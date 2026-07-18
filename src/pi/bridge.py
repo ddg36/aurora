@@ -44,6 +44,13 @@ _EVENTOS_PI_UI = {
     'auto_retry_start', 'auto_retry_end',
 }
 
+_PI_RPC_CAPABILITIES = (
+    'prompt', 'steer', 'follow_up', 'abort', 'new_session',
+    'get_state', 'get_messages', 'get_entries', 'get_tree',
+    'get_session_stats', 'switch_session', 'fork', 'clone',
+    'compact', 'set_model', 'set_thinking_level',
+)
+
 # Config PERSISTIDA de pi real (settings-manager.js — se guarda directo en
 # settings.json, sin RPC, mismo mecanismo que auth.json/scoped-models.json).
 # (id, ruta anidada, tipo, valores válidos, default si no está en el archivo,
@@ -329,26 +336,26 @@ def _texto_resultado(result) -> str:
     return json.dumps(result or {}, ensure_ascii=False)[:2000]
 
 
-async def _asegurar_sesion(proceso: PiProceso, chat_id) -> bool:
-    """Carga/crea la sesión pi del chat. Devuelve True si la sesión es nueva."""
+async def _asegurar_sesion(proceso: PiProceso, chat_id) -> dict:
+    """Carga/crea la sesión Pi autoritativa y describe la recuperación usada."""
     global _sesion_cargada
     clave = (proceso.generacion, str(chat_id))
     if chat_id is not None and _sesion_cargada == clave:
-        return False
+        return {'new': False, 'recovery': 'already_active'}
 
     if chat_id is None:
         # one-shot (toolkit/chain): sesión efímera, siempre limpia
         await proceso.pedir({'type': 'new_session'})
         _sesion_cargada = (proceso.generacion, object())
-        return True
+        return {'new': True, 'recovery': 'ephemeral'}
 
     mapa = _cargar_mapa()
-    ruta = mapa.get(str(chat_id))
-    if ruta and pathlib.Path(ruta).exists():
-        resp = await proceso.pedir({'type': 'switch_session', 'sessionPath': ruta})
+    ruta_anterior = mapa.get(str(chat_id))
+    if ruta_anterior and pathlib.Path(ruta_anterior).exists():
+        resp = await proceso.pedir({'type': 'switch_session', 'sessionPath': ruta_anterior})
         if resp.get('success') and not (resp.get('data') or {}).get('cancelled'):
             _sesion_cargada = clave
-            return False
+            return {'new': False, 'recovery': 'switch_session', 'sessionPath': ruta_anterior}
 
     await proceso.pedir({'type': 'new_session'})
     estado = await proceso.pedir({'type': 'get_state'})
@@ -357,7 +364,11 @@ async def _asegurar_sesion(proceso: PiProceso, chat_id) -> bool:
         mapa[str(chat_id)] = ruta
         _guardar_mapa(mapa)
     _sesion_cargada = clave
-    return True
+    return {
+        'new': True,
+        'recovery': 'missing_session_file' if ruta_anterior else 'unmapped_chat',
+        'sessionPath': ruta,
+    }
 
 
 class PiBridge:
@@ -377,9 +388,11 @@ class PiBridge:
         await self.socket.send_text(json.dumps(payload, ensure_ascii=False))
 
     async def _enviar_session_stats(self):
-        """Corre en su propia task — ver comentario en agent_end sobre por
-        qué NO puede llamarse con `await` directo desde ahí (auto-deadlock
-        del loop lector de stdout). Sólo pide stats si el proceso YA está
+        """Se ejecuta después de liberar el callback de agent_end.
+
+        No puede llamarse con `await` desde el lector de eventos porque eso
+        bloquearía la misma stdout que debe devolver la respuesta RPC. Sólo
+        pide stats si el proceso YA está
         vivo — nunca dispara un spawn nuevo solo para esto (dato meramente
         informativo, no vale la pena/el riesgo de levantar un engine)."""
         proceso = get_proceso()
@@ -391,6 +404,61 @@ class PiBridge:
                 await self.send({'type': 'session_stats', 'stats': resp_stats.get('data') or {}})
         except Exception as exc:
             log.warning('get_session_stats tras agent_end: %s', exc)
+
+    async def _session_context(self, proceso: PiProceso) -> dict:
+        """Snapshot pequeño de autoridad Pi; nunca replica mensajes en SQLite."""
+        estado_resp, entries_resp = await asyncio.gather(
+            proceso.pedir({'type': 'get_state'}, timeout=10),
+            proceso.pedir({'type': 'get_entries'}, timeout=10),
+        )
+        estado = estado_resp.get('data') or {}
+        entries = entries_resp.get('data') or {}
+        lista_entries = entries.get('entries') or []
+        ultimo_usuario = next((
+            entry for entry in reversed(lista_entries)
+            if entry.get('type') == 'message'
+            and (entry.get('message') or {}).get('role') == 'user'
+        ), None)
+        return {
+            'sessionId': estado.get('sessionId') or '',
+            'sessionPath': estado.get('sessionFile') or '',
+            'sessionName': estado.get('sessionName') or '',
+            'leafId': entries.get('leafId'),
+            'entryCount': len(lista_entries),
+            'lastUserEntryId': (ultimo_usuario or {}).get('id'),
+            'messageCount': estado.get('messageCount', 0),
+            'pendingMessageCount': estado.get('pendingMessageCount', 0),
+            'isStreaming': bool(estado.get('isStreaming')),
+            'isCompacting': bool(estado.get('isCompacting')),
+        }
+
+    async def _enviar_session_snapshot(self, proceso: PiProceso):
+        try:
+            await self.send({'type': 'pi_session_snapshot', **await self._session_context(proceso)})
+        except Exception as exc:
+            log.warning('snapshot de sesión Pi: %s', exc)
+        await self._enviar_session_stats()
+
+    async def _preparar_regeneracion(self, proceso: PiProceso, chat_id, user_entry_id):
+        """Ramifica antes del mensaje user oficial; no duplica memoria.
+
+        Pi runtimeHost.fork(position='before') acepta exclusivamente un entry
+        de rol user. El leaf que existía antes del prompt sirve para auditar
+        linaje, pero NO es un argumento válido de fork.
+        """
+        global _sesion_cargada
+        if not user_entry_id:
+            raise RuntimeError('Falta userEntryId oficial de Pi para regenerar sin duplicar memoria')
+        resp = await proceso.pedir({'type': 'fork', 'entryId': str(user_entry_id)}, timeout=60)
+        if not resp.get('success') or (resp.get('data') or {}).get('cancelled'):
+            raise RuntimeError(resp.get('error') or 'Pi no pudo preparar la regeneración')
+        estado = await proceso.pedir({'type': 'get_state'}, timeout=10)
+        ruta = (estado.get('data') or {}).get('sessionFile')
+        if chat_id is not None and ruta:
+            mapa = _cargar_mapa()
+            mapa[str(chat_id)] = ruta
+            _guardar_mapa(mapa)
+            _sesion_cargada = (proceso.generacion, str(chat_id))
 
     # ── eventos pi → UI ───────────────────────────────
 
@@ -507,34 +575,11 @@ class PiBridge:
                 # pi seguía reintentando en silencio 2 veces más de fondo.
                 self._error_pendiente = None  # este intento no cuenta — viene otro
                 return
-            if self._error_pendiente:
-                await self.send({'type': 'error', 'message': self._error_pendiente})
-                self._error_pendiente = None
-            # fin.set() SIEMPRE debe correr, pase lo que pase con el socket:
-            # si el send() de abajo tira (socket muerto — reload, tab cerrada,
-            # red cortada) y esto quedara después, _lock_streaming (GLOBAL,
-            # compartido por TODO el server) queda tomado para siempre y
-            # ningún chat de ningún usuario vuelve a andar hasta reiniciar.
+            # Liberar manejar_chat antes de cualquier RPC adicional. Ese
+            # coroutine consulta estado/entries/stats y recién entonces manda
+            # `done`; consultar Pi desde este callback auto-bloquearía el
+            # mismo lector stdout que debe recibir la respuesta.
             self.fin.set()
-            try:
-                await self.send({'type': 'done'})
-            except Exception as exc:
-                log.warning('no se pudo mandar done (socket muerto?): %s', exc)
-            # Contador de tokens de la sesión estilo footer.js de pi real
-            # (↑input ↓output, costo, % de contexto) — best-effort, informativo.
-            # CLAVE: tiene que ir en una task aparte, nunca `await` acá adentro.
-            # evento_pi corre DENTRO del propio loop lector de stdout
-            # (PiProceso._leer_stdout → _despachar → on_event, todo in-line,
-            # ver proceso.py) — un pedir() esperado en el mismo lugar sería un
-            # auto-deadlock real: pedir() sólo se resuelve cuando ese MISMO
-            # loop lee la línea de respuesta, pero el loop está bloqueado acá
-            # esperando esa respuesta. No sólo este pedido se cuelga para
-            # siempre — el lector completo deja de leer CUALQUIER línea más,
-            # rompiendo el motor compartido para todos los chats futuros
-            # (encontrado en vivo: session_stats nunca llegaba y el test
-            # siguiente se colgaba). asyncio.create_task() lo desacopla del
-            # loop lector para que pueda seguir leyendo mientras esto espera.
-            asyncio.create_task(self._enviar_session_stats())
 
         elif tipo == 'queue_update':
             await self.send({'type': 'queue_update',
@@ -640,7 +685,24 @@ class PiBridge:
             try:
                 await proceso.ensure()
                 await self._fijar_modelo(proceso, msg.get('model'))
-                nueva = await _asegurar_sesion(proceso, msg.get('chat_id'))
+                session_load = await _asegurar_sesion(proceso, msg.get('chat_id'))
+                nueva = session_load['new']
+
+                retry = msg.get('retry') if isinstance(msg.get('retry'), dict) else None
+                if retry is not None:
+                    await self._preparar_regeneracion(
+                        proceso, msg.get('chat_id'), retry.get('userEntryId')
+                    )
+                    nueva = False
+
+                turn_parent = await self._session_context(proceso)
+                await self.send({
+                    'type': 'pi_turn_context',
+                    'parentEntryId': turn_parent.get('leafId'),
+                    'sessionId': turn_parent.get('sessionId'),
+                    'sessionPath': turn_parent.get('sessionPath'),
+                    'recovery': session_load.get('recovery'),
+                })
 
                 texto, imagenes = _extraer_contenido(msg.get('message'))
                 system = (msg.get('system') or '').strip()
@@ -675,6 +737,13 @@ class PiBridge:
                         await self.send({'type': 'done'})
                         return
                 await self.fin.wait()
+                await self._enviar_session_snapshot(proceso)
+                if self._error_pendiente:
+                    error = self._error_pendiente
+                    self._error_pendiente = None
+                    await self.send({'type': 'error', 'message': error})
+                else:
+                    await self.send({'type': 'done'})
             except asyncio.CancelledError:
                 try:
                     await asyncio.wait_for(proceso.enviar({'type': 'abort'}), 5)
@@ -1070,7 +1139,15 @@ class PiBridge:
                             await avisar('Importación cancelada.')
                             return
                         parent_session = _leer_parent_session(origen)
-                        destino = pathlib.Path(config.SESSION_DIR) / f'imported-{int(time.time())}-{origen.name}'
+                        # SESSION_DIR puede ser None (y debe serlo por defecto:
+                        # Pi elige ~/.pi/agent/sessions). Derivar el directorio
+                        # desde la sesión activa evita inventar otra autoridad.
+                        estado_actual = await proceso.pedir({'type': 'get_state'})
+                        archivo_actual = (estado_actual.get('data') or {}).get('sessionFile')
+                        if not archivo_actual:
+                            await avisar('Pi no expuso un sessionFile persistido para importar.')
+                            return
+                        destino = pathlib.Path(archivo_actual).parent / f'imported-{int(time.time())}-{origen.name}'
                         shutil.copy(origen, destino)
                         resp = await proceso.pedir({'type': 'switch_session', 'sessionPath': str(destino)})
                         if not resp.get('success'):
@@ -1202,6 +1279,51 @@ class PiBridge:
             _guardar_mapa(mapa)
             _sesion_cargada = (proceso.generacion, str(chat_id))
 
+    async def auditar_sesion(self, chat_id):
+        """Ejercita contratos RPC de sesión sin exponer contenido sensible."""
+        if _lock_streaming.locked():
+            await self.send({'type': 'pi_session_audit', 'ok': False, 'error': 'Pi está generando'})
+            return
+        proceso = get_proceso()
+        async with _lock_streaming:
+            try:
+                await proceso.ensure()
+                load = await _asegurar_sesion(proceso, chat_id)
+                state_1 = (await proceso.pedir({'type': 'get_state'}, timeout=10)).get('data') or {}
+                messages = (await proceso.pedir({'type': 'get_messages'}, timeout=10)).get('data') or {}
+                entries = (await proceso.pedir({'type': 'get_entries'}, timeout=10)).get('data') or {}
+                tree = (await proceso.pedir({'type': 'get_tree'}, timeout=10)).get('data') or {}
+                stats = (await proceso.pedir({'type': 'get_session_stats'}, timeout=10)).get('data') or {}
+                path = state_1.get('sessionFile')
+                switched = None
+                state_2 = state_1
+                if path:
+                    switched = await proceso.pedir({'type': 'switch_session', 'sessionPath': path}, timeout=30)
+                    state_2 = (await proceso.pedir({'type': 'get_state'}, timeout=10)).get('data') or {}
+                entries_2 = (await proceso.pedir({'type': 'get_entries'}, timeout=10)).get('data') or {}
+                result = {
+                    'runtime': 'pi-rpc', 'protocolVersion': 1,
+                    'piVersion': config.PI_VERSION,
+                    'recovery': load.get('recovery'),
+                    'sessionId': state_2.get('sessionId') or '',
+                    'sessionPath': state_2.get('sessionFile') or '',
+                    'messageCount': len(messages.get('messages') or []),
+                    'entryCount': len(entries.get('entries') or []),
+                    'treeRoots': len(tree.get('tree') or []),
+                    'leafId': entries_2.get('leafId'),
+                    'statsKeys': sorted(stats.keys()),
+                    'switchPreservedSession': bool(
+                        path and switched and switched.get('success')
+                        and state_1.get('sessionId') == state_2.get('sessionId')
+                        and entries.get('leafId') == entries_2.get('leafId')
+                    ),
+                    'commands': ['get_state', 'get_messages', 'get_entries', 'get_tree',
+                                 'get_session_stats', 'switch_session'],
+                }
+                await self.send({'type': 'pi_session_audit', 'ok': True, 'result': result})
+            except Exception as exc:
+                await self.send({'type': 'pi_session_audit', 'ok': False, 'error': str(exc)})
+
     async def manejar_cycle_model(self):
         """Alt+M: cicla /scoped-models si hay favoritos guardados; si no, cicla
         entre todos los disponibles (cycle_model nativo — pi no expone RPC
@@ -1270,23 +1392,37 @@ class PiBridge:
             _sesion_cargada = (proceso.generacion, str(chat_id))
         await self.enviar_estado('session_init')
 
-    async def enviar_estado(self, tipo: str):
+    async def enviar_estado(self, tipo: str, chat_id=None):
         try:
             proceso = get_proceso()
             await proceso.ensure()
+            if chat_id is not None and not _lock_streaming.locked():
+                await _asegurar_sesion(proceso, chat_id)
             resp = await proceso.pedir({'type': 'get_state'})
             data = resp.get('data') or {}
         except Exception as exc:
             log.warning('pi get_state: %s', exc)
-            await self.send({'type': 'error', 'message': f'pi no disponible: {exc}'})
+            await self.send({
+                'type': tipo,
+                'session_id': '', 'session_path': '', 'session_name': 'pi',
+                'runtime': 'pi-rpc', 'protocol_version': 1,
+                'adapter_version': config.VERSION, 'pi_version': config.PI_VERSION,
+                'capabilities': [], 'degraded': True,
+                'error': f'Pi no disponible: {exc}',
+            })
             return
         payload = {
             'type': tipo,
             'session_id': data.get('sessionId') or '',
             'session_path': data.get('sessionFile') or '',
-            'version': config.VERSION,
+            'session_name': data.get('sessionName') or 'pi',
+            'runtime': 'pi-rpc',
+            'protocol_version': 1,
+            'adapter_version': config.VERSION,
+            'pi_version': config.PI_VERSION,
+            'capabilities': list(_PI_RPC_CAPABILITIES),
+            'degraded': False,
         }
         if tipo == 'session_init':
-            payload['session_name'] = data.get('sessionName') or 'pi'
             payload['workspace'] = config.CWD
         await self.send(payload)

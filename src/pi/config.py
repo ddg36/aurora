@@ -2,6 +2,7 @@
 #  PI CONFIG — Constantes desde config/llm.toml. Solo datos.
 # ══════════════════════════════════════════════════════
 
+import json
 import pathlib
 import platform
 import tomllib
@@ -51,5 +52,17 @@ AURORA_DATA_DIR = str(PROJECT_ROOT / 'databases')
 
 CWD = _pi.get('cwd', str(PROJECT_ROOT))
 EXTRA_ARGS = list(_pi.get('extra_args', []))
+
+
+def _pi_version() -> str:
+    try:
+        resolved = pathlib.Path(PI_BIN).expanduser().resolve()
+        package_json = resolved.parents[1] / 'package.json'
+        return str(json.loads(package_json.read_text(encoding='utf-8')).get('version') or '')
+    except (OSError, ValueError, IndexError):
+        return ''
+
+
+PI_VERSION = _pi_version()
 
 TIMEOUT_CMD = float(_pi.get('timeout_cmd', 30))

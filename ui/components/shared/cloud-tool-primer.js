@@ -6,6 +6,7 @@ import { getPiToolCatalog } from './pi-tool-catalog.js';
 const INTRO = [
   'Hola :) En ESTE chat Aurora puede ejecutar herramientas reales en la PC del usuario.',
   'Cuando necesites una, terminá tu turno con un único objeto {"tool":"NOMBRE","args":{...}} dentro de un bloque ```json completo. Nada después del bloque.',
+  'MUY IMPORTANTE: emití ese bloque únicamente en la respuesta normal y visible del chat, como respuesta final del turno. Nunca lo pongas en razonamiento, comentarios, progreso, contenido desplegable/oculto (por ejemplo «Worked for…») ni en ningún canal interno, porque Aurora no debe ejecutar JSON oculto.',
   'Aurora lo ejecutará y te devolverá el resultado real en el siguiente mensaje. No afirmes que una acción ocurrió antes de recibir ese resultado.',
   'Si no necesitás herramientas, respondé normalmente. Si una falla, leé el error, corregí los argumentos y reintentá.',
   '',

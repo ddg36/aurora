@@ -634,6 +634,78 @@ def start_lyra_local_job(prompt, timeout_ms):
     return evaluate(expr), job_id
 
 
+def start_lyra_regenerate_job(timeout_ms):
+    """Regenera la última respuesta Pi y comprueba que se ramificó la sesión."""
+    job_id = 'sol-' + uuid.uuid4().hex[:12]
+    expr = f"""
+      (()=>{{
+        const id={js(job_id)};
+        const jobs=globalThis.__solDebugJobs ||= {{}};
+        const job=jobs[id]={{id,state:'starting',via:'lyria_regenerate_ui',started:Date.now()}};
+        (async()=>{{
+          const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+          const visible=node=>!!node?.getClientRects?.().length;
+          const finish=(state,result)=>Object.assign(job,{{state,result,finished:Date.now()}});
+          try {{
+            const signals=await import('/ui/modules/lyra/scripts/chat/mensajes.js');
+            if (signals.cargando.value) {{
+              finish('error',{{ok:false,reason:'lyria_local_busy'}});
+              return;
+            }}
+            const before=[...signals.historial.value];
+            const original=[...before].reverse().find(message=>
+              message.role==='assistant' && message._piTurn?.sessionPath);
+            if (!original) {{
+              finish('error',{{ok:false,reason:'no_structured_pi_answer'}});
+              return;
+            }}
+            const expectedUserEntry=original._piTurn.userEntryId ?? null;
+            const beforePath=original._piTurn.sessionPath;
+            const controls=[...document.querySelectorAll('button[title="Regenerar respuesta"]')].filter(visible);
+            const button=controls.at(-1);
+            if (!button) {{
+              finish('error',{{ok:false,reason:'regenerate_control_missing'}});
+              return;
+            }}
+            button.click();
+            const startDeadline=Date.now()+8000;
+            while(Date.now()<startDeadline && !signals.cargando.value) await sleep(80);
+            if (!signals.cargando.value) {{
+              finish('error',{{ok:false,reason:'regenerate_not_started'}});
+              return;
+            }}
+            job.state='running';
+            const deadline=Date.now()+{timeout_ms};
+            while(Date.now()<deadline && signals.cargando.value) await sleep(100);
+            if (signals.cargando.value) {{
+              finish('error',{{ok:false,reason:'regenerate_timeout'}});
+              return;
+            }}
+            await sleep(250);
+            const regenerated=[...signals.historial.value].reverse().find(message=>
+              message.role==='assistant' && message._piTurn?.sessionPath);
+            const afterPath=regenerated?._piTurn?.sessionPath||'';
+            const actualUserEntry=regenerated?._piTurn?.userEntryId ?? null;
+            const ok=!!regenerated && !!afterPath && afterPath!==beforePath
+              && !!expectedUserEntry && !!actualUserEntry && actualUserEntry!==expectedUserEntry
+              && !!String(regenerated.content||'').trim();
+            finish('done',{{
+              ok,reason:ok?'pi_regenerate_forked':'pi_regenerate_contract_failed',
+              originalUserEntryId:expectedUserEntry,regeneratedUserEntryId:actualUserEntry,
+              beforePath,afterPath,
+              sessionForked:!!afterPath&&afterPath!==beforePath,
+              text:String(regenerated?.content||''),
+            }});
+          }} catch(error) {{
+            finish('error',{{ok:false,reason:'regenerate_exception',error:String(error?.stack||error)}});
+          }}
+        }})();
+        return id;
+      }})()
+    """
+    return evaluate(expr), job_id
+
+
 def poll_job(job_id, timeout_s, verbose=False):
     deadline = time.monotonic() + timeout_s + 5
     last_phase = None
@@ -664,6 +736,8 @@ def run_contracts(timeout_s=60):
         ('cloud_boundaries', ['node', 'tests/test-cloud-boundaries.mjs']),
         ('provider_purity', ['node', 'tests/test-provider-purity.mjs']),
         ('pi_turn_reducer', ['node', 'tests/test-pi-turn-reducer.mjs']),
+        ('pi_session_authority', ['node', 'tests/test-pi-session-authority.mjs']),
+        ('forge_pi_dynamic', [str(pathlib.Path.home() / '.bun/bin/bun'), 'tests/test-forge-pi-dynamic.mjs']),
         ('cloud_tool_visual', ['node', 'scripts/test-cloud-tool-text.mjs']),
     ]
     suites = []
@@ -800,6 +874,45 @@ def relay_load(count, timeout_s=45):
     }
 
 
+def pi_session_doctor(timeout_s=45):
+    """Audita la sesión Pi activa usando el mismo WebSocket que Lyria."""
+    expression = """(async()=>{
+      const buttons=()=>[...document.querySelectorAll('button')];
+      const visible=node=>!!node?.getClientRects?.().length;
+      const lyra=buttons().find(node=>
+        (node.title||node.ariaLabel||node.innerText||'').trim().toLowerCase()==='lyra');
+      lyra?.click();
+      const deadline=Date.now()+8000;
+      while(Date.now()<deadline && ![...document.querySelectorAll('.composer-textarea')].some(visible)) {
+        await new Promise(resolve=>setTimeout(resolve,100));
+      }
+      const [{auditPiSession},{chatActualId}]=await Promise.all([
+        import('/ui/components/shared/lyra-ws.js'),
+        import('/ui/modules/lyra/scripts/chat/historial.js'),
+      ]);
+      if (chatActualId.value == null) {
+        return {ok:false,error:'Lyria no tiene una conversación activa'};
+      }
+      return await auditPiSession(chatActualId.value);
+    })()"""
+    response = evaluate(expression, timeout=max(35, timeout_s)) or {}
+    result = response.get('result') if response.get('ok') else None
+    if not isinstance(result, dict):
+        return response
+    required = {
+        'get_state', 'get_messages', 'get_entries', 'get_tree',
+        'get_session_stats', 'switch_session',
+    }
+    result['ok'] = bool(
+        result.get('runtime') == 'pi-rpc'
+        and result.get('protocolVersion') == 1
+        and result.get('sessionPath')
+        and required.issubset(set(result.get('commands') or []))
+        and result.get('switchPreservedSession')
+    )
+    return result
+
+
 def json_family_run(request_id):
     """Lee un run durable sin volcar base64 ni response_json completo."""
     if not DATABASE.exists():
@@ -843,6 +956,7 @@ def main():
     actions.add_argument('--contracts', action='store_true', help='ejecutar contratos Python/Node con .venv-linux')
     actions.add_argument('--relay-doctor', action='store_true', help='diagnosticar driver/core/capturador de todos los iframes')
     actions.add_argument('--relay-load', nargs='?', const=100, type=int, metavar='N', help='estresar N sesiones Relay concurrentes (mínimo 10)')
+    actions.add_argument('--pi-session-doctor', action='store_true', help='auditar autoridad, continuidad y switch de la sesión Pi activa')
     actions.add_argument('--reinject-relays', action='store_true', help='reconectar couriers sin recargar ni detener proveedores')
     actions.add_argument('--json-family-run', metavar='REQUEST_ID', help='resumir un run durable sin volcar payloads grandes')
     actions.add_argument('--eval', metavar='JS', help='evaluar JavaScript en Aurora')
@@ -855,6 +969,7 @@ def main():
     actions.add_argument('--foreground', action='store_true', help='traer Aurora al frente')
     actions.add_argument('--lyra-send', metavar='PROMPT', help='E2E por el chatbox nativo de Lyra Cloud')
     actions.add_argument('--lyra-local-send', metavar='PROMPT', help='E2E por chatbox Lyria local y Pi RPC nativo')
+    actions.add_argument('--lyra-regenerate-last', action='store_true', help='regenerar la última respuesta Pi y verificar fork de memoria')
     actions.add_argument('--lyra-enter', metavar='PROMPT', help='escribir y pulsar Enter sin esperar resultado')
     actions.add_argument('--chaos-web', choices=tuple(WEB_CHAOS), help='escenario web complejo por Lyra Cloud')
     actions.add_argument('--cloud-ask', metavar='PROMPT', help='probar directamente el relay/iframe Cloud')
@@ -888,6 +1003,12 @@ def main():
         return
     if a.relay_load is not None:
         result = relay_load(a.relay_load, a.timeout)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if not result.get('ok'):
+            raise SystemExit(1)
+        return
+    if a.pi_session_doctor:
+        result = pi_session_doctor(a.timeout)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if not result.get('ok'):
             raise SystemExit(1)
@@ -1065,6 +1186,12 @@ def main():
             raise SystemExit(1)
     if a.lyra_local_send is not None:
         _, job_id = start_lyra_local_job(a.lyra_local_send, int(a.timeout * 1000))
+        result = poll_job(job_id, a.timeout, verbose=a.verbose)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if result.get('state') != 'done' or result.get('result', {}).get('ok') is False:
+            raise SystemExit(1)
+    if a.lyra_regenerate_last:
+        _, job_id = start_lyra_regenerate_job(int(a.timeout * 1000))
         result = poll_job(job_id, a.timeout, verbose=a.verbose)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if result.get('state') != 'done' or result.get('result', {}).get('ok') is False:

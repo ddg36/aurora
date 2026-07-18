@@ -61,6 +61,7 @@ function _setOnline(online) {
 export function onSessionInfo(cb) {
   _sessionInfoCb = cb;
   if (_lastSessionInfo) cb(_lastSessionInfo);
+  return () => { if (_sessionInfoCb === cb) _sessionInfoCb = null; };
 }
 
 // setWidget de pi (extensiones) puede llegar en cualquier momento, incluso
@@ -108,12 +109,28 @@ function _connectInternal() {
     ws.addEventListener('message', ev => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
-      if ((msg.type === 'session_init' || msg.type === 'status') && msg.session_id) {
+      if (msg.type === 'session_init' || msg.type === 'status') {
         _lastSessionInfo = {
           session_id:   msg.session_id,
           session_name: msg.session_name,
           session_path: msg.session_path,
           workspace:    msg.workspace,
+          runtime:      msg.runtime,
+          protocolVersion: msg.protocol_version,
+          adapterVersion: msg.adapter_version,
+          piVersion:    msg.pi_version,
+          capabilities: msg.capabilities || [],
+          degraded:     Boolean(msg.degraded),
+          error:        msg.error || '',
+        };
+        _sessionInfoCb?.(_lastSessionInfo);
+      } else if (msg.type === 'pi_session_snapshot') {
+        _lastSessionInfo = {
+          ...(_lastSessionInfo || {}),
+          session_id: msg.sessionId || '',
+          session_name: msg.sessionName || _lastSessionInfo?.session_name || '',
+          session_path: msg.sessionPath || '',
+          degraded: false,
         };
         _sessionInfoCb?.(_lastSessionInfo);
       }
@@ -160,20 +177,23 @@ export function getConnectionState() {
 }
 
 export async function sendToLyra({
-  message, images, model, system = '', history = [], tools = [], pure_system = false, chat_id = null,
+  message, images, model, system = '', pure_system = false, chat_id = null, retry = null,
   onPiEvent, onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
   onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
-  onSessionStats, onHubAction, onConfirmRequest, onCommandResult
+  onSessionStats, onTurnContext, onSessionSnapshot, onHubAction, onConfirmRequest, onCommandResult
 }) {
   const ws = await connectLyra();
   return new Promise((resolve, reject) => {
     _handlers = {
       onPiEvent, onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
       onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
-      onSessionStats, onHubAction, onConfirmRequest, onCommandResult, resolve, reject,
+      onSessionStats, onTurnContext, onSessionSnapshot, onHubAction, onConfirmRequest, onCommandResult, resolve, reject,
       _piNativeSeen: false,
     };
-    const payload = { type: 'chat', message, model, system, history, tools, pure_system, chat_id };
+    // Pi SessionManager es la única memoria del modelo. El historial SQLite y
+    // las definiciones visuales de Aurora nunca cruzan este transporte local.
+    const payload = { type: 'chat', message, model, system, pure_system, chat_id };
+    if (retry) payload.retry = retry;
     if (images && images.length > 0) {
       payload.message = [
         { type: 'text', text: message },
@@ -199,11 +219,16 @@ export function enviarSteer(message, chat_id, images = []) {
         ...images.map(img => ({ type: 'image_url', image_url: { url: img } })),
       ]
     : message;
-  _ws?.send(JSON.stringify({ type: 'chat', message: contenido, chat_id, system: '', history: [], tools: [] }));
+  _ws?.send(JSON.stringify({ type: 'chat', message: contenido, chat_id, system: '' }));
 }
 
 export function resetLyraSession() {
   _ws?.send(JSON.stringify({ type: 'reset' }));
+}
+
+export async function refreshPiStatus(chatId = null) {
+  const ws = await connectLyra();
+  ws.send(JSON.stringify({ type: 'status', chat_id: chatId }));
 }
 
 // Tras fork/clone/import: el frontend ya creó el chat Aurora nuevo — esto
@@ -264,13 +289,32 @@ export function fetchCommands() {
   });
 }
 
+export function auditPiSession(chatId) {
+  return new Promise(async resolve => {
+    try {
+      const ws = await connectLyra();
+      const handler = ev => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type !== 'pi_session_audit') return;
+          ws.removeEventListener('message', handler);
+          resolve(msg);
+        } catch {}
+      };
+      ws.addEventListener('message', handler);
+      ws.send(JSON.stringify({ type: 'session_audit', chat_id: chatId }));
+      setTimeout(() => { ws.removeEventListener('message', handler); resolve({ ok: false, error: 'timeout' }); }, 30000);
+    } catch (error) { resolve({ ok: false, error: String(error?.message || error) }); }
+  });
+}
+
 function _dispatch(msg) {
   if (msg.type === 'pi_event') _tracePiEvent(msg);
   if (!_handlers) return;
   const {
     onPiEvent, onToken, onThinking, onToolCall, onToolResult, onToolProgress, onMessageStart, onMessageEnd,
     onAgentStart, onAgentEnd, onQueueUpdate, onSessionInfo, onThinkingLevel, onCompactionStart, onCompactionEnd,
-    onSessionStats, onHubAction, onConfirmRequest, onCommandResult, resolve, reject
+    onSessionStats, onTurnContext, onSessionSnapshot, onHubAction, onConfirmRequest, onCommandResult, resolve, reject
   } = _handlers;
   switch (msg.type) {
     case 'pi_event':
@@ -300,6 +344,8 @@ function _dispatch(msg) {
       tokensAfter: msg.tokens_after, summary: msg.summary,
     }); break;
     case 'session_stats':  onSessionStats?.(msg.stats || {}); break;
+    case 'pi_turn_context': onTurnContext?.(msg); break;
+    case 'pi_session_snapshot': onSessionSnapshot?.(msg); break;
     case 'hub_action_request':
       if (onHubAction) {
         onHubAction(msg.name, msg.args || {}, (output, imageB64) => {

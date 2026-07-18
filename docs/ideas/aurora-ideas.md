@@ -1678,7 +1678,7 @@ Renombrar todos los archivos, directorios, variables, funciones, clases, imports
 
 ## 19. Lyria Chat como frontend web nativo de Pi
 
-**Estado:** 🟡 Implementación avanzada — 19A/19B/19C/19D verificadas; 19E pendiente
+**Estado:** 🟢 Núcleo Pi-native implementado y verificado; cierre visual pendiente
 **Dependencias:** Pi instalado + Bun (o Node compatible), RPC oficial de Pi
 **No depende de:** JSON Family para el runtime local; JSON Family pertenece al
 camino de LLMs cloud de las Épicas 16A/16B.
@@ -1823,13 +1823,119 @@ desde `estructura_json`.
 
 #### 19E — Pi como autoridad de sesión
 
-- [ ] Auditar `get_state`, `get_messages`, `get_entries`, `get_tree`,
+- [x] Auditar `get_state`, `get_messages`, `get_entries`, `get_tree`,
   `get_session_stats` y `switch_session`.
-- [ ] Clasificar comandos: RPC nativo, adaptación web, Aurora propio o
+- [x] Clasificar comandos: RPC nativo, adaptación web, Aurora propio o
   emulación frágil a eliminar.
-- [ ] Mostrar versión/runtime/capacidades y degradación clara si Pi falta.
+- [x] Mostrar versión/runtime/capacidades y degradación clara si Pi falta.
 
-#### 19F — Host AgentSession directo, sólo experimental
+Clasificación resultante:
+
+| Categoría | Comandos / responsabilidades |
+|---|---|
+| RPC Pi directo | `/new`, `/compact`, `/model`, thinking y colas de `/settings`, `/name`, `/session`, `/tree`, `/fork`, `/clone`, `/export` |
+| RPC + adaptación web | `/resume` (sidebar + `switch_session`), `/copy` (texto Pi + clipboard web), `/import`, `/share`, favoritos de `/scoped-models` |
+| Producto Aurora | `/trust`, `/hotkeys`, `/changelog`; metadata de chats, favoritos y UI en SQLite/JSON |
+| Adaptación host explícita | `/reload` y `/quit` actúan sobre el proceso Pi compartido con confirmación; `/login` y `/logout` usan el almacén oficial `~/.pi/agent/auth.json` |
+
+Se eliminó del transporte local el `history` de SQLite y el catálogo de
+tools del navegador: ninguno vuelve a entrar al contexto del modelo. La
+regeneración ya no repite un prompt sobre la memoria completa. Conserva el
+`userEntryId` oficial del turno y llama `fork` antes de reenviar el texto.
+
+Validación real (2026-07-17):
+
+- `SOL-debug-tools --pi-session-doctor` ejercitó los seis comandos de lectura
+  y cambio de sesión sobre Pi 0.80.6. `switch_session` conservó `sessionId` y
+  `leafId`; 16 mensajes y 18 entries siguieron disponibles sin imprimir su
+  contenido.
+- `--lyra-local-send` completó el ciclo por el chatbox nativo con envelopes
+  `pi_event` v1, Stop real y Cloud cerrado.
+- `--lyra-regenerate-last` detectó primero el bug `Invalid entry ID for
+  forking`: Aurora pasaba el leaf anterior, pero Pi exige el entry del mensaje
+  user. Corregido el contrato, regenerar creó una sesión JSONL distinta,
+  conservó el contexto previo y generó nuevos IDs de user/assistant.
+- La cabecera de Lyria muestra `Pi 0.80.6 · RPC v1`, capacidades y sesión;
+  si el proceso no arranca conserva un estado rojo `Pi no disponible` incluso
+  cuando no existe `session_id`.
+- Suite `test-pi-session-authority.mjs` prohíbe reintroducir `history/tools`,
+  fork por un ID no-user, RPC dentro del callback `agent_end` o degradación
+  invisible.
+
+#### 19E.1 — Tool Forge como catálogo nativo de Pi
+
+- [x] Convertir nombres canónicos `forge.*` a aliases provider-safe `forge_*`.
+- [x] Registrar cada manifest activo con su propio JSON Schema mediante
+  `pi.registerTool()`, no como argumentos de un dispatcher genérico.
+- [x] Sincronizar en `session_start` y `before_agent_start`, sin `/reload` ni
+  reinicio del servidor para cambios posteriores de activación.
+- [x] Re-registrar upgrades sobre el mismo alias y retirar del conjunto activo
+  las capacidades desactivadas o sustituidas por rollback.
+- [x] Preservar `AbortSignal`, updates parciales, `content[]`, versión, riesgo,
+  permisos y resultado backend en `details`.
+- [x] Exigir `ctx.ui.confirm()` y luego `approve-run` con `RUN forge.nombre`
+  para manifests sensibles; el wrapper de compatibilidad no crea un bypass.
+
+Validación: `test-forge-pi-dynamic.mjs` ejercita registro inicial, hot-sync antes
+del turno, ejecución directa, aprobación humana, upgrade sobre el mismo alias,
+desactivación y `/forge-refresh`. Las suites backend de Tool Forge y Forge Build
+siguen pasando junto a los contratos Pi de reducer y autoridad de sesión.
+
+#### 19F — Estados operativos estructurados
+
+**Estado:** 🟡 Pendiente para cerrar la épica
+
+Pi ya emite los eventos necesarios, pero retry, compaction y queue todavía no
+están completamente integrados al modelo visual estructurado.
+
+##### Retry
+
+Usar `auto_retry_start`, `auto_retry_end` y `agent_end.willRetry` como un estado
+propio del runtime:
+
+```js
+{
+  type: 'retry',
+  status: 'waiting | running | success | failed',
+  attempt,
+  maxAttempts,
+  delay,
+  error
+}
+```
+
+No insertar `🔄 Reintentando…` dentro del texto del assistant.
+
+##### Compaction
+
+Representar `compaction_start` y `compaction_end` con:
+
+```text
+reason
+aborted
+error
+tokensBefore
+tokensAfter
+summary
+```
+
+La compactación es estado del runtime, no una respuesta del modelo.
+
+##### Queue
+
+Representar `queue_update.steering` y `queue_update.followUp` como una cola
+estructurada del composer o del turno, incluyendo el modo
+`one-at-a-time | all`.
+
+Pendiente:
+
+- [ ] Retry como estado visual propio.
+- [ ] Compaction como estado visual propio y recuperable.
+- [ ] Steering/follow-up como cola estructurada.
+- [ ] Recuperación `interrupted/cancelled` después de reload.
+- [ ] Tests unitarios y E2E para retry, compaction y queue.
+
+#### 19G — Host AgentSession directo, sólo experimental
 
 Comparar un host Bun que importe la API pública de Pi frente al RPC actual para
 múltiples sesiones o APIs no expuestas. No sustituye RPC hasta demostrar mejor
@@ -1843,9 +1949,12 @@ compatibilidad, aislamiento y recuperación.
 - [x] Resultados parciales/finales actualizan la misma tarjeta.
 - [x] Imágenes, `content[]`, `details` y errores sobreviven bridge → reducer →
   persistencia estructurada y reload.
-- [ ] Compaction/retry/queue tienen estados propios, no texto artificial.
+- [ ] Retry tiene estado visual estructurado, no texto artificial.
+- [ ] Compaction tiene estado visual estructurado y recuperable.
+- [ ] Steering/follow-up tienen estado de cola estructurado.
+- [ ] Existen pruebas E2E de retry, compaction y queue.
 - [x] Persistencia/reload reconstruyen el mismo árbol visual.
-- [ ] Pi es autoridad agentic; Aurora conserva experiencia y metadata web.
+- [x] Pi es autoridad agentic; Aurora conserva experiencia y metadata web.
 
 <details>
 <summary>Hipótesis original descartada (se conserva como registro histórico)</summary>

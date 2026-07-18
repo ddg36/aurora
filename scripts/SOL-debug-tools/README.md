@@ -29,6 +29,8 @@ python3 scripts/SOL-debug-tools/sol-debug.py --background
 python3 scripts/SOL-debug-tools/sol-debug.py --foreground
 python3 scripts/SOL-debug-tools/sol-debug.py --lyra-send 'Respondé OK'
 python3 scripts/SOL-debug-tools/sol-debug.py --lyra-local-send 'Usa read y responde OK' --timeout 120
+python3 scripts/SOL-debug-tools/sol-debug.py --pi-session-doctor --timeout 45
+python3 scripts/SOL-debug-tools/sol-debug.py --lyra-regenerate-last --timeout 120
 python3 scripts/SOL-debug-tools/sol-debug.py --lyra-send 'Leé el archivo' --file /tmp/x.txt
 python3 scripts/SOL-debug-tools/sol-debug.py --cloud-ask 'Respondé OK' --pane izq
 python3 scripts/SOL-debug-tools/sol-debug.py --new-chat --pane izq
@@ -47,8 +49,8 @@ python3 scripts/SOL-debug-tools/sol-debug.py --cloud-ask 'Respondé OK' --verbos
 ## Contratos y diagnóstico
 
 - `--contracts`: ejecuta las suites canónicas de JSON Family, Relay Family,
-  Endpoint Registry, Relay Reinjector, frontera Cloud, pureza del proveedor y
-  visuales de tools. La
+  Endpoint Registry, Relay Reinjector, frontera Cloud, pureza del proveedor,
+  autoridad de sesión Pi, Tool Forge → tools Pi dinámicas y visuales de tools. La
   frontera falla si reaparece un dispatcher directo que evite JSON Family. Usa
   siempre `.venv-linux/bin/python`, nunca el Python del sistema, y devuelve un
   resumen único con exit code por suite.
@@ -84,6 +86,14 @@ en `tests/` para que también puedan ejecutarse en CI.
   `Lyria → WebSocket → Pi RPC`. También exige envelopes `pi_event` v1 y
   correlaciona cada `tool_execution_start/end` por el `toolCallId` oficial,
   sin guardar outputs extensos ni imágenes base64 en la traza.
+- `--pi-session-doctor`: audita la conversación Lyria activa contra el RPC
+  real de Pi (`get_state/messages/entries/tree/session_stats`) y comprueba que
+  un `switch_session` conserva exactamente la sesión y su leaf. No imprime el
+  contenido de los mensajes ni reejecuta tools.
+- `--lyra-regenerate-last`: pulsa el control real de la última respuesta Pi,
+  espera el ciclo completo y exige que el nuevo turno conserve el entry padre
+  pero viva en un `sessionPath` ramificado. Detecta regeneraciones que sólo
+  repiten el prompt sobre la memoria anterior.
 - `--cloud-ask`: prueba de componente. Entra directamente por `askCloud`; sirve
   para aislar relay e iframes en la vista Cloud (`--pane izq|der|cloud`). No se
   considera una prueba suficiente de la interfaz de Lyra.

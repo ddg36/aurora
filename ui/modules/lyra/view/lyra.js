@@ -18,7 +18,7 @@ import {
   grabando, transcribiendo, autoVoz, vozSeleccionada, voces,
   cargarVoces, setVoz, toggleAutoVoz, iniciarGrabacion, detenerGrabacion, hablar, detenerVoz,
 } from '../scripts/voz/voz.js';
-import { canvasDoc, canvasVisible, CANVAS_TOOLS, toggleCanvas, canvasWrite, handleHubAction, cargarCanvas } from '../scripts/canvas/canvas.js';
+import { canvasDoc, canvasVisible, toggleCanvas, canvasWrite, handleHubAction, cargarCanvas } from '../scripts/canvas/canvas.js';
 import {
   renderizarContenido, scrollAlFondo, estaCercaDelFondo, inicializarEventosCodigo,
 } from '../scripts/chat/renderizar.js';
@@ -27,7 +27,7 @@ import { copiarMensaje, añadirANotas, reformularRespuesta, leerMensaje } from '
 import { exportarChatPDF } from '../scripts/chat/exportar-pdf.js';
 import { comandosPi, cargarComandos, filtrarComandos, iconoComando } from '../scripts/chat/comandos.js';
 import { HERRAMIENTAS_SISTEMA, promptParaHerramienta } from '../scripts/chat/herramientas.js';
-import { sendToLyra, fetchModels, connectLyra, cancelarMensaje, enviarSteer, onWidgetUpdate, cycleModel, linkSession } from '../../../components/shared/lyra-ws.js';
+import { sendToLyra, fetchModels, connectLyra, cancelarMensaje, enviarSteer, onWidgetUpdate, onSessionInfo as subscribeSessionInfo, refreshPiStatus, cycleModel, linkSession } from '../../../components/shared/lyra-ws.js';
 import { CanvasPanel } from '../../../components/lyra.views/canvas.js';
 import { nexusOnline } from '../../../store.js';
 import { getJSON, postJSON, patchJSON } from '../../../components/shared/api.js';
@@ -181,6 +181,12 @@ export function Local({ active = true } = {}) {
     return sig ? sig.subscribe(upd) : undefined;
   }, []);
 
+  // El proceso Pi es compartido: al cambiar/restaurar chat hay que pedir el
+  // estado de ESA sesión, no mostrar la que casualmente quedó activa antes.
+  useEffect(() => {
+    if (chatIdVal != null) refreshPiStatus(chatIdVal).catch(() => {});
+  }, [chatIdVal]);
+
   useEffect(() => registerAIView({
     id: 'canvas',
     description: 'Canvas visual de Lyra para mostrar, editar y previsualizar código o texto.',
@@ -245,6 +251,7 @@ export function Local({ active = true } = {}) {
   const [widgets, setWidgets]                       = useState({});
   const [comandoOverlay, setComandoOverlay]         = useState(null); // {comando, interactive, data, aplicando}
   const [sessionStats, setSessionStats]             = useState(null); // get_session_stats — estilo footer.js de pi
+  const [piInfo, setPiInfo]                         = useState(null);
   const [ultimoTps, setUltimoTps]                   = useState(null); // tok/s del último turno — no existe en pi, agregado propio
   const [forgeTools, setForgeTools]                 = useState([]);
   const assistantMessageRef                          = useRef(asistenteEnVivo);
@@ -301,6 +308,7 @@ export function Local({ active = true } = {}) {
     window.addEventListener('aurora:forge-changed', refreshForge);
     connectLyra().catch(() => {});
     onWidgetUpdate(setWidgets);
+    const unsubscribePiInfo = subscribeSessionInfo(setPiInfo);
     getJSON('/db/ajustes/avatar').then(d => {
       if (d?.valor) try { setAvatar(JSON.parse(d.valor)); } catch {}
     }).catch(() => {});
@@ -327,6 +335,7 @@ export function Local({ active = true } = {}) {
     return () => {
       document.removeEventListener('lyra:canvas', onCanvasEvent);
       window.removeEventListener('aurora:forge-changed', refreshForge);
+      unsubscribePiInfo();
     };
   }, []);
 
@@ -436,6 +445,8 @@ export function Local({ active = true } = {}) {
     let thinking  = '';
     const trackIds = {};
     let piTurn = createPiTurnState();
+    let piTurnContext = null;
+    let piSessionSnapshot = null;
 
     // Agrega texto/thinking al último bloque si es del mismo tipo (acumula
     // la generación real en curso); si no, abre un bloque nuevo — igual que
@@ -456,9 +467,8 @@ export function Local({ active = true } = {}) {
         images:  imagenesDataUrl,
         model:   modeloSeleccionado.value,
         system:  instruccion.value,
-        history: (opciones.history || historial.value.slice(-20, -1)).map(m => ({ role: m.role, content: m.content })),
-        tools:   CANVAS_TOOLS,
         chat_id: chatActualId.value,
+        retry: opciones.retry || null,
         onPiEvent: (event, envelope) => {
           piTurn = reducePiTurn(piTurn, envelope);
           assistantMessageRef.current = { blocks: piTurn.blocks };
@@ -561,6 +571,8 @@ export function Local({ active = true } = {}) {
           }
         },
         onSessionStats: stats => setSessionStats(stats),
+        onTurnContext: context => { piTurnContext = context; },
+        onSessionSnapshot: snapshot => { piSessionSnapshot = snapshot; },
         onCommandResult: async (comandoNombre, interactive, data) => {
           const esNuevaSesion = (comandoNombre === 'fork' || comandoNombre === 'clone' || comandoNombre === 'import') && data.sessionPath;
           if (esNuevaSesion) {
@@ -629,6 +641,11 @@ export function Local({ active = true } = {}) {
         const estructura = esPiNativo ? {
           protocolVersion: 1,
           runtime: 'pi-rpc',
+          parentEntryId: piTurnContext?.parentEntryId ?? null,
+          userEntryId: piSessionSnapshot?.lastUserEntryId ?? null,
+          sessionId: piSessionSnapshot?.sessionId || piTurnContext?.sessionId || '',
+          sessionPath: piSessionSnapshot?.sessionPath || piTurnContext?.sessionPath || '',
+          leafId: piSessionSnapshot?.leafId || null,
           blocks: assistantMessageRef.current.blocks,
         } : null;
         // En v1 la estructura es la fuente visual y `contenido` queda limpio
@@ -672,6 +689,10 @@ export function Local({ active = true } = {}) {
       Toast().setStatus('⚠ No encontré el mensaje anterior del usuario');
       return;
     }
+    if (!msg._piTurn?.userEntryId) {
+      Toast().show('Este mensaje es legacy; regeneralo desde una sesión Pi nueva o usá /fork.', 'warning', 3500);
+      return;
+    }
     const userMsg = historial.value[userIdx];
     const eliminados = historial.value.slice(idx);
     historial.value = historial.value.slice(0, idx);
@@ -680,7 +701,7 @@ export function Local({ active = true } = {}) {
     }
     await enviarMensaje({
       message: userMsg.content,
-      history: historial.value.slice(0, userIdx),
+      retry: { userEntryId: msg._piTurn.userEntryId },
       skipUserAppend: true,
       skipUserSave: true,
     });
@@ -1077,6 +1098,17 @@ export function Local({ active = true } = {}) {
         `}
         ${statsTexto && html`
           <span class="text-[10px] text-aurora-text-dim px-1.5 font-mono whitespace-nowrap" title="Tokens de esta sesión (como el footer de pi) · tok/s del último turno">${statsTexto}</span>
+        `}
+        ${piInfo && html`
+          <span
+            class=${'text-[10px] px-1.5 py-0.5 rounded border font-mono whitespace-nowrap ' +
+              (piInfo.degraded
+                ? 'text-aurora-error border-aurora-error/40'
+                : 'text-aurora-success border-aurora-success/30')}
+            title=${piInfo.degraded
+              ? piInfo.error
+              : `Pi ${piInfo.piVersion || '?'} · ${piInfo.runtime} v${piInfo.protocolVersion} · sesión ${piInfo.session_id || 'nueva'} · ${piInfo.capabilities?.length || 0} capacidades`}
+          >${piInfo.degraded ? 'Pi no disponible' : `Pi ${piInfo.piVersion || ''} · RPC v${piInfo.protocolVersion || 1}`}</span>
         `}
         <span class=${'text-[10px] px-1.5 ' + (lyraOnline ? 'text-aurora-success' : 'text-aurora-error')} title=${lyraOnline ? 'Lyra online' : 'Lyra offline'}>●</span>
       </div>

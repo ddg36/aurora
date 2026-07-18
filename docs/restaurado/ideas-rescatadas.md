@@ -189,8 +189,21 @@ puede entregar un draft y solicitar sus tests. Cada paquete `forge.*@semver` es
 inmutable, se ejecuta mediante JSON stdin/stdout dentro de Bubblewrap, declara
 permisos y riesgo, conserva evidencia por caso y requiere confirmación humana
 exacta antes de instalarse. Hay activación, upgrade, rollback y aprobación por
-ejecución para capacidades sensibles. Las tools activas aparecen dinámicamente
-en Lyra y en el registry sin reiniciar el servidor.
+ejecución para capacidades sensibles.
+
+Desde 2026-07-17, cada paquete activo también se registra como una **tool nativa
+de Pi** mediante un alias compatible con providers: `forge.nombre` →
+`forge_nombre`. La extensión sincroniza en `session_start` y antes de cada turno,
+por lo que una activación, upgrade, rollback o desactivación hecha en Toolkit se
+refleja en el catálogo del modelo sin reiniciar Aurora ni depender del wrapper
+genérico. El contrato JSON del manifest se convierte directamente en el schema
+de la tool; versión, riesgo, permisos y resultado estructurado sobreviven en
+`details`. Las capacidades sensibles abren la confirmación humana de Pi y sólo
+después usan `approve-run` con la frase exacta exigida por el servidor.
+
+`aurora_forge_list` y `aurora_forge_run` permanecen como compatibilidad y
+rescate; la ruta preferida para Lyra es llamar directamente `forge_*`. El comando
+`/forge-refresh` permite forzar una sincronización manual de diagnóstico.
 
 **Evidencia E2E:** `forge.text_metrics@1.0.2` fue producido por el borde Cloud y
 superó 3/3 casos (texto simple, multilínea y vacío). Las versiones 1.0.0/1.0.1
