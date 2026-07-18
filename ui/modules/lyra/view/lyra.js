@@ -213,6 +213,14 @@ export function Local({ active = true } = {}) {
     const startY = e.clientY;
     const startH = panel?.getBoundingClientRect().height || 420;
     let finalH = startH;
+    const handle = e.currentTarget;
+    // Sin pointer capture, si el cursor se desliza rápido fuera del handle
+    // (hacia el iframe/shield del panel, pegado al borde donde vive el
+    // handle) el navegador puede dejar de despachar pointermove a este
+    // listener — el resize solo "agarraba" en un sentido según qué lado
+    // tuviera el iframe debajo. setPointerCapture ata los eventos al handle
+    // pase lo que pase bajo el cursor durante el drag.
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
     const onMove = (ev) => {
       // Abajo (default): el panel crece "hacia arriba" (borde inferior fijo,
       // pegado al composer) — arrastrar hacia arriba agranda.
@@ -222,13 +230,14 @@ export function Local({ active = true } = {}) {
       finalH = Math.max(140, Math.min(window.innerHeight * 0.9, startH + delta));
       if (panel) panel.style.height = finalH + 'px';   // imperativo: liso y sin tocar la DB
     };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
+    const onUp = (ev) => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      try { handle.releasePointerCapture(ev.pointerId); } catch (_) {}
       setCloudHeight(Math.round(finalH));   // persistir a DB una sola vez
     };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
   }, [setCloudHeight]);
   // El proveedor Cloud es una preferencia, no estado efímero de la vista.
   // Antes cada hard reload volvía silenciosamente a Gemini aunque el usuario
