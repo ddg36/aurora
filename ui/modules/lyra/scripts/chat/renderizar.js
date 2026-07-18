@@ -184,13 +184,29 @@ function renderBloqueTexto(texto) {
       const tag = numerada ? 'ol' : 'ul';
       const re = numerada ? RE_NUMERADA : RE_BULLET;
       const items = [];
+      // Estilo típico del LLM: "1. Título" solo, seguido de un párrafo de
+      // explicación en líneas siguientes, y recién después "2. ...". Sin
+      // esto cada "N." caía en su propio <ol> de un ítem y el navegador
+      // reiniciaba la numeración en 1 (bug real: "1. 1. 1." en vez de
+      // "1. 2. 3."). Una vez detectado ese patrón (confirmado por un "N."
+      // posterior), se sigue tratando así hasta que la lista termine.
+      let esteEstilo = false;
       while (i < lineas.length) {
         const m = lineas[i].match(re);
-        if (!m) break;
-        items.push(`<li>${inline(m[1])}</li>`);
-        i++;
+        if (m) { items.push(inline(m[1])); i++; continue; }
+        if (!lineas[i].trim() && items.length) { i++; continue; }
+        if (items.length && lineas[i].trim() && !RE_ENCABEZADO.test(lineas[i]) &&
+            !(lineas[i].includes('|') && lineas[i + 1] && SEPARADOR_TABLA.test(lineas[i + 1]))) {
+          const siguienteEsItem = lineas.slice(i + 1).some(l => re.test(l));
+          if (!esteEstilo && !siguienteEsItem) break;
+          if (siguienteEsItem) esteEstilo = true;
+          items[items.length - 1] += `<br>${inline(lineas[i])}`;
+          i++;
+          continue;
+        }
+        break;
       }
-      html.push(`<${tag} class="md-list">${items.join('')}</${tag}>`);
+      html.push(`<${tag} class="md-list">${items.map(it => `<li>${it}</li>`).join('')}</${tag}>`);
       continue;
     }
 

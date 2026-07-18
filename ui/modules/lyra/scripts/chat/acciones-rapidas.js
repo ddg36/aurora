@@ -9,17 +9,11 @@ const NOTAS_CHAT = `${NOTAS_ROOT}/chat-notas.md`;
 
 export async function copiarMensaje(texto) {
   if (!texto) return;
-
-  const textoPlano = texto
-    .replace(/```[\s\S]*?```/g, '[código]')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/^#+\s+/gm, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const ok = await copiarTexto(textoPlano);
+  // Markdown original, sin transformar: código, negrita, listas y saltos de
+  // línea intactos — lo que el usuario ve renderizado es el mismo texto que
+  // se pega en otro lado. Antes se aplastaba a una sola línea de texto plano
+  // (\s+ -> ' '), lo que rompía bloques de código y fusionaba listas numeradas.
+  const ok = await copiarTexto(texto);
   Toast().setStatus(ok ? '◉ Copiado al portapapeles' : '⚠ Error al copiar');
 }
 
