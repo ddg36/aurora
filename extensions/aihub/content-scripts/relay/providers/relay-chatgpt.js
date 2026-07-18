@@ -35,10 +35,11 @@
     'ruby', 'php', 'kotlin', 'swift', 'plaintext', 'text',
   ]);
   const chatgptLangLabel = preEl => {
-    const firstBtn = preEl.querySelector('button');
+    // El div del label trae un <svg> decorativo antes del texto ("Python"),
+    // así que NO es un nodo hoja — filtrar por "sin hijos" lo excluía siempre.
+    // Comparar el textContent completo (incluye el texto vacío del svg + el
+    // nombre) contra la lista conocida, sin exigir estructura.
     for (const el of preEl.querySelectorAll('div, span')) {
-      if (el.children.length !== 0) continue;
-      if (firstBtn && (el.compareDocumentPosition(firstBtn) & Node.DOCUMENT_POSITION_FOLLOWING) === 0) break;
       const texto = (el.textContent || '').trim().toLowerCase();
       if (CHATGPT_LANG_LABELS.has(texto)) return texto === 'golang' ? 'go' : texto;
     }
