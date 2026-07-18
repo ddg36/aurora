@@ -14,8 +14,7 @@ from .parser import parse_final
 
 
 JSON_FAMILY_CONTINUATION = (
-    "Continuá desde estos resultados reales. Si necesitás otra tool, emití el bloque final "
-    "```json como un mensaje normal del chat, visible para el usuario y separado de cualquier thinking, progreso o estado; no lo escribas dentro del razonamiento interno. Recordá esta regla durante toda la conversación. Si terminaste, continuá respondiendo como mensaje normal sin emitir JSON."
+    "Continue from these real results. Need another tool? Send one final visible ```json block, never hidden reasoning. Otherwise answer normally."
 )
 
 

@@ -4,24 +4,13 @@
 
 import { askCloud, detenerCloud, nuevaConversacionCloud } from '../../../components/shared/cloud-ask.js';
 import { processJSONFamily } from '../../../components/shared/json-family-client.js';
-import { processNexusV2 } from '../../../components/shared/nexus-v2-client.js';
 import { getCloudToolPrimer } from '../../../components/shared/cloud-tool-primer.js';
-import { getNexusToolPrimer } from '../../../components/shared/nexus-tool-primer.js';
 import { jsonFamilyEnabled, initJSONFamilyState } from '../../../components/shared/json-family-state.js';
-import { nexusV2Enabled, initNexusV2State } from '../../../components/shared/nexus-v2-state.js';
 
 const MAX_ITER = 100;
 const MAX_TOOL_FEEDBACK = 8 * 1024;
 
 async function processDuoToolProtocol(text, options) {
-  if (nexusV2Enabled.value) {
-    const nexus = await processNexusV2(text, {
-      ...options,
-      requestId: `nexus-${options.requestId}`,
-      origin: { ...(options.origin || {}), protocol: 'nexus-v2' },
-    });
-    if (nexus?.kind !== 'not_tool' || nexus?.nexus?.detected) return nexus;
-  }
   if (jsonFamilyEnabled.value) {
     return processJSONFamily(text, {
       ...options,
@@ -33,21 +22,17 @@ async function processDuoToolProtocol(text, options) {
 }
 
 function parsedDuoResult(result) {
-  return result?.protocol === 'nexus-v2'
-    ? (result.nexus || { calls: [], errors: [] })
-    : (result?.parsed || { calls: [], errors: [] });
+  return result?.parsed || { calls: [], errors: [] };
 }
 
 async function turnoAgente({ paneId, prompt, primed, runId, cancelado, onChunk, onTool }) {
-  await Promise.all([initJSONFamilyState(), initNexusV2State()]);
+  await initJSONFamilyState();
   const panelPropio = paneId === 'izq' ? 'panel1' : 'panel2';
   const marco = `[AURORA_DUO_RUN:${runId}] Esta es una ejecución nueva y aislada. ` +
     `Vos sos ${panelPropio}. Ignorá objetivos, paths y resultados de ejecuciones Duo anteriores. ` +
     'Sólo cuenta la evidencia producida dentro de este RUN. Para hablar con el otro panel debés usar panel_send.';
-  const protocol = nexusV2Enabled.value ? 'nexus-v2' : jsonFamilyEnabled.value ? 'json-family' : null;
-  const primer = primed || !protocol ? '' : protocol === 'nexus-v2'
-    ? await getNexusToolPrimer({ collaboration: true })
-    : await getCloudToolPrimer({ collaboration: true });
+  const protocol = jsonFamilyEnabled.value ? 'json-family' : null;
+  const primer = primed || !protocol ? '' : await getCloudToolPrimer({ collaboration: true });
   let siguiente = primer
     ? `${primer}\n\n${marco}\n\nMensaje para vos:\n${prompt}`
     : `${marco}\n\n${prompt}`;
@@ -81,9 +66,7 @@ async function turnoAgente({ paneId, prompt, primed, runId, cancelado, onChunk, 
       if (intentoTool && toolsExitosas === 0 && !pidioCorreccionEvidencia) {
         pidioCorreccionEvidencia = true;
         siguiente = 'Aurora no registró ninguna tool exitosa en este turno. No afirmes que la acción ocurrió. ' +
-          (familyResult?.protocol === 'nexus-v2'
-            ? 'Reemití ahora un único frame Nexus 2 completo y válido para ejecutarla, o explicá claramente que no se realizó.'
-            : 'Reemití ahora un único bloque ```json completo y válido para ejecutarla, o explicá claramente que no se realizó.');
+          'Reemití un único bloque JSON completo y válido, o explicá claramente que no se realizó.';
         await new Promise(resolve => setTimeout(resolve, 500));
         continue;
       }
@@ -141,9 +124,7 @@ async function turnoAgente({ paneId, prompt, primed, runId, cancelado, onChunk, 
     // destino sin fabricar una segunda burbuja/respuesta en el panel emisor.
     if (handoff) return { text: r.text.trim(), handoff };
     if (iter === MAX_ITER - 1) throw new Error(`panel ${paneId}: límite de ${MAX_ITER} iteraciones de tools`);
-    siguiente = resultados.join('\n\n---\n\n') + (familyResult.protocol === 'nexus-v2'
-      ? '\n\nContinuá la tarea. Si necesitás otra tool, emití un frame Nexus 2 final; si no, respondé a la otra IA.'
-      : '\n\nContinuá la tarea. Si necesitás otra tool, emití JSON; si no, respondé a la otra IA.');
+    siguiente = resultados.join('\n\n---\n\n') + '\n\nContinue from these real results. Need another tool? Send one final visible ```json block, never hidden reasoning. Otherwise answer normally.';
 
     await new Promise(resolve => setTimeout(resolve, 500));
   }

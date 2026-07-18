@@ -4,8 +4,6 @@ import { iconButtonClass, ICON_BTN_SQUARE } from '../shared/iconButton.js';
 import { copiarTexto } from '../shared/clipboard.js';
 import { getCloudToolPrimer } from '../shared/cloud-tool-primer.js';
 import { jsonFamilyEnabled, initJSONFamilyState, setJSONFamilyEnabled } from '../shared/json-family-state.js';
-import { nexusV2Enabled, initNexusV2State, setNexusV2Enabled } from '../shared/nexus-v2-state.js';
-import { getNexusToolPrimer } from '../shared/nexus-tool-primer.js';
 
 // ── SVG icons ────────────────────────────────────────────────
 const SVG_CAMERA = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4.5C1 3.67 1.67 3 2.5 3h1.17L4.5 1.5h5l.83 1.5H11.5C12.33 3 13 3.67 13 4.5v6c0 .83-.67 1.5-1.5 1.5h-9C1.67 12 1 11.33 1 10.5v-6z"/><circle cx="7" cy="7.5" r="2"/></svg>`;
@@ -51,18 +49,6 @@ async function aihubInjectProtocol() {
     );
   } catch (error) {
     Toast.show('No se pudo copiar la instrucción: ' + (error?.message || error), 'error');
-  }
-}
-
-async function aihubInjectNexusProtocol() {
-  try {
-    const copiado = await copiarTexto(await getNexusToolPrimer());
-    Toast.show(
-      copiado ? 'Instrucción Nexus 2 copiada al portapapeles' : 'No se pudo copiar Nexus 2',
-      copiado ? 'success' : 'error',
-    );
-  } catch (error) {
-    Toast.show('No se pudo copiar Nexus 2: ' + (error?.message || error), 'error');
   }
 }
 
@@ -132,27 +118,8 @@ export const ACCIONES_MODULO = [
       return html`<button class=${iconButtonClass(enabled, `${ICON_BTN_SQUARE} text-[10px] font-mono`)} title=${`JSON Family global: ${enabled ? 'ON' : 'OFF'}`} onClick=${toggle}><span>{ }</span><b class="ml-1 text-[8px]">${enabled ? 'ON' : 'OFF'}</b></button>`;
     },
   },
-  {
-    id: 'aihub-nexus-v2', title: 'Nexus 2',
-    component: () => {
-      const html = (...args) => globalThis.html(...args);
-      const { useEffect, useState } = globalThis.preactHooks;
-      const [enabled, setEnabled] = useState(nexusV2Enabled.value);
-      useEffect(() => {
-        initNexusV2State().then(setEnabled);
-        return nexusV2Enabled.subscribe(setEnabled);
-      }, []);
-      const toggle = async () => {
-        const next = await setNexusV2Enabled(!enabled);
-        setEnabled(next);
-        Toast.show(`Nexus 2 ${next ? 'ON' : 'OFF'}`, next ? 'success' : 'info');
-      };
-      return html`<button class=${iconButtonClass(enabled, `${ICON_BTN_SQUARE} text-[10px] font-mono`)} title=${`Nexus 2 global: ${enabled ? 'ON' : 'OFF'}`} onClick=${toggle}><span>⬡</span><b class="ml-1 text-[8px]">${enabled ? 'ON' : 'OFF'}</b></button>`;
-    },
-  },
   { id: 'aihub-load-clipboard', icon: '⊞', title: 'Cargar portapapeles a Notas', onClick: aihubLoadClipboard },
   { id: 'aihub-inject-protocol', icon: '@@', title: 'Copiar instrucciones JSON Family', onClick: aihubInjectProtocol },
-  { id: 'aihub-inject-nexus', icon: '⬡', title: 'Copiar instrucciones Nexus 2', onClick: aihubInjectNexusProtocol },
 ];
 
 function SvgBtn({ svg, title, onClick }) {

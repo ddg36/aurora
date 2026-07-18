@@ -12,11 +12,8 @@ import { askCloud, confirmarCloudAnswer } from '../../../../components/shared/cl
 import { postJSON, getJSON, putJSON } from '../../../../components/shared/api.js';
 import { detectarToolDraft, toolVisual, emitirToolVisual } from '../../../../components/shared/cloud-tool-visual.js';
 import { getCloudToolPrimer } from '../../../../components/shared/cloud-tool-primer.js';
-import { getNexusToolPrimer } from '../../../../components/shared/nexus-tool-primer.js';
 import { processJSONFamily } from '../../../../components/shared/json-family-client.js';
-import { processNexusV2 } from '../../../../components/shared/nexus-v2-client.js';
 import { jsonFamilyEnabled, initJSONFamilyState } from '../../../../components/shared/json-family-state.js';
-import { nexusV2Enabled, initNexusV2State } from '../../../../components/shared/nexus-v2-state.js';
 
 const MAX_ITER = 100;
 // Las tools oficiales de pi ya limitan la salida a 50KB. Feedback casi hasta ese
@@ -25,23 +22,11 @@ const MAX_ITER = 100;
 const MAX_TOOL_FEEDBACK = 48 * 1024;
 
 function activeCloudProtocol() {
-  if (nexusV2Enabled.value) return 'nexus-v2';
-  if (jsonFamilyEnabled.value) return 'json-family';
-  return null;
+  return jsonFamilyEnabled.value ? 'json-family' : null;
 }
 
 async function processCloudToolProtocol(text, { requestId, origin, clientTools = [] } = {}) {
-  if (nexusV2Enabled.value) {
-    const nexus = await processNexusV2(text, {
-      requestId: `nexus-${requestId}`,
-      origin: { ...origin, protocol: 'nexus-v2' },
-      clientTools,
-    });
-    if (nexus?.kind !== 'not_tool' || nexus?.nexus?.detected) return nexus;
-  }
   if (jsonFamilyEnabled.value) {
-    // Conservar IDs históricos de JSON Family evita reejecutar una tool si un
-    // turno durable se reanuda después de actualizar Aurora.
     return processJSONFamily(text, {
       requestId,
       origin: { ...origin, protocol: 'json-family' },
@@ -52,9 +37,7 @@ async function processCloudToolProtocol(text, { requestId, origin, clientTools =
 }
 
 function parsedProtocolResult(result) {
-  return result?.protocol === 'nexus-v2'
-    ? (result.nexus || { calls: [], errors: [] })
-    : (result?.parsed || { calls: [], errors: [] });
+  return result?.parsed || { calls: [], errors: [] };
 }
 
 // Prime UNA sola vez por HILO de la nube. Antes vivía en sessionStorage, que se
@@ -261,7 +244,7 @@ export async function recuperarCloudPendiente({ iframe } = {}) {
 }
 
 export async function enviarACloud({ iframe, texto, aiId, url, images, files, resume = null }) {
-  await Promise.all([initJSONFamilyState(), initNexusV2State()]);
+  await initJSONFamilyState();
   const turnoPrevio = normalizarTurnoCloud(resume?.turn);
   const retomando = !!turnoPrevio;
   const turnId = turnoPrevio?.turnId || nuevoTurnId();
@@ -304,17 +287,9 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
       } catch { return null; }
     })();
     const protocol = activeCloudProtocol();
-    // JSON conserva la clave histórica; Nexus usa namespace propio para que
-    // ambos primers puedan convivir en el mismo hilo sin pisarse.
-    const primedKey = protocol && convKey
-      ? (protocol === 'nexus-v2' ? `nexus-v2:${convKey}` : convKey)
-      : null;
+    const primedKey = protocol && convKey ? convKey : null;
     let primer = '';
-    if (protocol && !yaCebado(primedKey)) {
-      primer = protocol === 'nexus-v2'
-        ? await getNexusToolPrimer()
-        : await getCloudToolPrimer();
-    }
+    if (protocol && !yaCebado(primedKey)) primer = await getCloudToolPrimer();
     prompt = primer ? `${primer}\n\n${texto}` : texto;
     if (primedKey) marcarCebado(primedKey);
     await guardarTurnoCloud(turnId, {
@@ -583,9 +558,7 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
         resultados.push(resultado?.feedback || 'Tool error: resultado vacío');
       }
 
-      const continuation = familyResult.protocol === 'nexus-v2'
-        ? 'Continue with the task using these results. If you need another tool, emit one final Nexus 2 frame; otherwise give your final answer.'
-        : 'Continue with the task using these results. If you need another tool, emit its ```json; otherwise give your final answer.';
+      const continuation = 'Continue from these real results. Need another tool? Send one final visible ```json block, never hidden reasoning. Otherwise answer normally.';
       prompt = resultados.join('\n\n---\n\n') + `\n\n${continuation}`;
 
       await guardarTurnoCloud(turnId, {

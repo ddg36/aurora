@@ -730,8 +730,6 @@ def run_contracts(timeout_s=60):
     env = {**os.environ, 'PYTHONPATH': str(ROOT / 'src')}
     commands = [
         ('json_family', [str(VENV_PYTHON), '-m', 'unittest', '-v', 'tests.test_json_family']),
-        ('nexus_v2', [str(VENV_PYTHON), '-m', 'unittest', '-v', 'tests.test_nexus_v2']),
-        ('nexus_extension', ['node', 'tests/test-nexus-extension.mjs']),
         ('relay_adapters', ['node', 'tests/test-relay-adapters.mjs']),
         ('endpoint_registry', ['node', 'tests/test-endpoint-registry.mjs']),
         ('relay_reinjector', ['node', 'tests/test-relay-reinjector.mjs']),

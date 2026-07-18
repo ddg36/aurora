@@ -3,7 +3,6 @@ importScripts('background/yt-history.js');
 importScripts('background/browser-cabin.js');
 importScripts('background/endpoint-registry.js');
 importScripts('background/relay-reinjector.js');
-importScripts('background/nexus-reinjector.js');
 // Bridge: chrome.* APIs → servidor Aurora :7779
 const AURORA    = 'http://localhost:7779';
 const AURORA_WS = 'ws://localhost:7779/ext/ws';
@@ -11,10 +10,7 @@ const WORKSPACE_SURFACE_SETTING = 'aurora_workspace_surface_v1';
 const WORKSPACE_SURFACE_LOCAL   = 'aurora:workspace_surface_v1';
 const JSON_FAMILY_SETTING = 'json_family_enabled_v1';
 const JSON_FAMILY_LOCAL = 'aurora:json_family_enabled_v1';
-const NEXUS_V2_SETTING = 'nexus_v2_enabled_v1';
-const NEXUS_V2_LOCAL = 'aurora:nexus_v2_enabled_v1';
 let _jsonFamilyEnabled = false;
-let _nexusV2Enabled = false;
 
 async function loadJsonFamilyState() {
   const local = await chrome.storage.local.get([JSON_FAMILY_LOCAL]);
@@ -57,85 +53,6 @@ async function saveJsonFamilyState(enabled) {
   return _jsonFamilyEnabled;
 }
 
-async function loadNexusV2State() {
-  const local = await chrome.storage.local.get([NEXUS_V2_LOCAL]);
-  if (typeof local[NEXUS_V2_LOCAL] === 'boolean') _nexusV2Enabled = local[NEXUS_V2_LOCAL];
-  try {
-    await _ensureToken();
-    const response = await fetch(`${AURORA}/db/ajustes/${NEXUS_V2_SETTING}`, { headers: _hdrs(), cache: 'no-store' });
-    if (response.ok) {
-      const data = await response.json();
-      if (data?.valor === 'true' || data?.valor === 'false') _nexusV2Enabled = data.valor === 'true';
-    }
-  } catch (_) {}
-  await chrome.storage.local.set({ [NEXUS_V2_LOCAL]: _nexusV2Enabled });
-  return _nexusV2Enabled;
-}
-
-async function saveNexusV2State(enabled) {
-  _nexusV2Enabled = !!enabled;
-  await chrome.storage.local.set({ [NEXUS_V2_LOCAL]: _nexusV2Enabled });
-  try {
-    await _ensureToken();
-    await fetch(`${AURORA}/db/ajustes/${NEXUS_V2_SETTING}`, {
-      method: 'PUT', headers: _hdrs(), body: JSON.stringify({ valor: String(_nexusV2Enabled) }),
-    });
-  } catch (_) {}
-  const tabs = await chrome.tabs.query({});
-  const deliveries = [];
-  for (const tab of tabs) {
-    let frames = [];
-    try { frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id }) || []; } catch (_) {}
-    if (!frames.length) frames = [{ frameId: 0 }];
-    for (const frame of frames) {
-      deliveries.push(chrome.tabs.sendMessage(tab.id, {
-        type: 'NEXUS_V2_STATE', enabled: _nexusV2Enabled,
-      }, { frameId: frame.frameId }));
-    }
-  }
-  await Promise.allSettled(deliveries);
-  if (_nexusV2Enabled) {
-    AuroraNexusV2Reinjector.scan('state_enabled')
-      .catch(error => console.warn('[BG] Nexus 2 reinject enable:', error?.message || String(error)));
-  }
-  return _nexusV2Enabled;
-}
-
-async function processNexusV2Capture(msg) {
-  await _ensureToken();
-  const response = await fetch(`${AURORA}/nexus-v2/process`, {
-    method: 'POST',
-    headers: _hdrs(),
-    body: JSON.stringify({
-      requestId: String(msg.requestId || ''),
-      text: String(msg.text || ''),
-      origin: msg.origin && typeof msg.origin === 'object' ? msg.origin : {},
-      clientTools: Array.isArray(msg.clientTools) ? msg.clientTools : [],
-    }),
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || `Nexus 2 HTTP ${response.status}`);
-  return result;
-}
-
-async function acknowledgeNexusV2Delivery(requestId, { attempts = 5 } = {}) {
-  let lastError = null;
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    try {
-      await _ensureToken();
-      const response = await fetch(`${AURORA}/nexus-v2/delivered`, {
-        method: 'POST', headers: _hdrs(), body: JSON.stringify({ requestId: String(requestId || '') }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (response.ok && result.acknowledged) return { acknowledged: true, error: null };
-      lastError = result.error || `Nexus ACK HTTP ${response.status}`;
-    } catch (error) {
-      lastError = error?.message || String(error);
-    }
-    if (attempt + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
-  }
-  return { acknowledged: false, error: lastError || 'No se confirmó el ACK Nexus.' };
-}
 
 async function processRelayCapture(msg) {
   await _ensureToken();
@@ -890,46 +807,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  if (msg.type === 'NEXUS_V2_GET_STATE') {
-    loadNexusV2State()
-      .then(enabled => sendResponse({ ok: true, enabled }))
-      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
-    return true;
-  }
-
-  if (msg.type === 'NEXUS_V2_SET_STATE') {
-    saveNexusV2State(msg.enabled)
-      .then(enabled => sendResponse({ ok: true, enabled }))
-      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
-    return true;
-  }
-
-  if (msg.type === 'AURORA_NEXUS_REINJECT') {
-    AuroraNexusV2Reinjector.scan(msg.reason || 'manual')
-      .then(result => sendResponse(result))
-      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
-    return true;
-  }
-
-  if (msg.type === 'AURORA_NEXUS_PROCESS') {
-    processNexusV2Capture(msg)
-      .then(result => sendResponse(result))
-      .catch(error => sendResponse({ ok: false, kind: 'transport_error', error: error?.message || String(error) }));
-    return true;
-  }
-
-  if (msg.type === 'AURORA_NEXUS_DELIVER') {
-    deliverToOrigin(sender, msg.delivery || msg.feedback, msg.endpointId || null)
-      .then(async result => {
-        if (!result.delivered) return sendResponse(result);
-        const ack = await acknowledgeNexusV2Delivery(msg.requestId).catch(error => ({
-          acknowledged: false, error: error?.message || String(error),
-        }));
-        sendResponse({ ...result, ...ack });
-      })
-      .catch(error => sendResponse({ delivered: false, error: error?.message || String(error) }));
-    return true;
-  }
 
   if (msg.type === 'JSON_FAMILY_GET_STATE') {
     loadJsonFamilyState()
@@ -2275,8 +2152,6 @@ chrome.runtime.onStartup.addListener(async () => {
   }
   AuroraRelayReinjector.scan('browser_startup')
     .catch(error => console.warn('[BG] relay reinject startup:', error?.message || String(error)));
-  AuroraNexusV2Reinjector.scan('browser_startup')
-    .catch(error => console.warn('[BG] Nexus 2 reinject startup:', error?.message || String(error)));
 });
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -2284,8 +2159,6 @@ chrome.runtime.onInstalled.addListener(() => {
     .catch(error => console.warn('[BG] restore workspace install:', error?.message || String(error)));
   AuroraRelayReinjector.scan('extension_installed')
     .catch(error => console.warn('[BG] relay reinject install:', error?.message || String(error)));
-  AuroraNexusV2Reinjector.scan('extension_installed')
-    .catch(error => console.warn('[BG] Nexus 2 reinject install:', error?.message || String(error)));
 });
 
 // También cubre el botón Reload de chrome://extensions: ese ciclo no siempre
@@ -2293,6 +2166,4 @@ chrome.runtime.onInstalled.addListener(() => {
 setTimeout(() => {
   AuroraRelayReinjector.scan('worker_boot')
     .catch(error => console.warn('[BG] relay reinject boot:', error?.message || String(error)));
-  AuroraNexusV2Reinjector.scan('worker_boot')
-    .catch(error => console.warn('[BG] Nexus 2 reinject boot:', error?.message || String(error)));
 }, 500);
