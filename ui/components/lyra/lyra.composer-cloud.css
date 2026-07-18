@@ -110,6 +110,13 @@
   background:color-mix(in srgb,var(--aurora-accent) 13%,transparent);
   box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--aurora-accent) 25%,transparent);
 }
+/* Favicon real del proveedor (iconoUrlPara): imagen, no glifo centrado —
+   mismo tamaño/redondeo que .cloud-provider-mark, con padding para que no
+   toque el borde del chip. */
+.cloud-provider-favicon {
+  padding:3px; object-fit:contain; background:var(--aurora-surface2,transparent);
+  box-shadow:inset 0 0 0 1px var(--aurora-border);
+}
 .cloud-mini-label {
   font-size: 11px; font-weight: 700; color: var(--text); letter-spacing: .02em;
 }

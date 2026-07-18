@@ -61,6 +61,16 @@ const AI_URLS = {
 };
 const AI_LABELS = { gemini: 'Gemini', chatgpt: 'ChatGPT', claude: 'Claude', perplexity: 'Perplexity', custom: 'Custom' };
 const AI_ICONOS = { gemini: '◇', chatgpt: '◉', claude: '✶', perplexity: '⊕', custom: '🌐' };
+// Favicon real del proveedor en vez de un glifo fijo. El favicon.ico directo
+// del dominio no es confiable (probado: ChatGPT 403, Gemini 404, Grok 200
+// pero text/html de error) — el servicio de Google resuelve esto igual para
+// cualquier sitio, sin depender de CORS/hosting de cada proveedor.
+function iconoUrlPara(aiId) {
+  const url = AI_URLS[aiId];
+  if (!url) return null;
+  try { return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=64`; }
+  catch { return null; }
+}
 
 // SVG monocromo, mismo lenguaje visual que NavBar/Footer (nav-tabs.js,
 // footer/registry.js): viewBox 14x14, stroke currentColor — nunca glifos
@@ -175,6 +185,9 @@ export function Local({ active = true } = {}) {
   // siempre a mini al recargar, sin importar cómo lo había dejado el usuario.
   const [cloudExpanded, setCloudExpanded]           = usePersistedState('lyra_cloud_expanded', false);
   const [cloudHidden, setCloudHidden]               = usePersistedState('lyra_cloud_hidden', false);
+  // Favicon del proveedor (iconoUrlPara) puede fallar por red/CORS del
+  // servicio externo — no persistido, solo evita reintentar en este montaje.
+  const [faviconFallo, setFaviconFallo]             = useState({});
   // Altura custom del panel cloud (px). Persistida en la DB (/db/ajustes) vía
   // usePersistedState — NO localStorage — y sincronizada entre superficies por
   // el bus /eventos. Durante el drag se aplica imperativo (sin persistir) para
@@ -1560,7 +1573,9 @@ export function Local({ active = true } = {}) {
         ${cloudVisible && html`
           <div class="cloud-mini-header">
             <div class="cloud-identity">
-              <span class="cloud-provider-mark">${AI_ICONOS[cloudAiId] || '☁'}</span>
+              ${iconoUrlPara(cloudAiId) && !faviconFallo[cloudAiId]
+                ? html`<img class="cloud-provider-mark cloud-provider-favicon" src=${iconoUrlPara(cloudAiId)} alt="" onError=${() => setFaviconFallo(f => ({ ...f, [cloudAiId]: true }))} />`
+                : html`<span class="cloud-provider-mark">${AI_ICONOS[cloudAiId] || '☁'}</span>`}
               <span class="cloud-mini-label">${cloudAiLabel}</span>
               <span class=${'cloud-live-status cloud-live-status--' + cloudStatusTone}>
                 <span class="cloud-live-dot"></span>${cloudStatusLabel}
@@ -1645,7 +1660,10 @@ export function Local({ active = true } = {}) {
           >
             ${Object.keys(AI_URLS).filter(id => id !== 'custom').map(id => html`
               <button key=${id} class="composer-plus-item" onClick=${() => elegirCloudAi(id)}>
-                <span>${AI_ICONOS[id]}</span><span>${AI_LABELS[id]}</span>
+                ${iconoUrlPara(id) && !faviconFallo[id]
+                  ? html`<img class="cloud-provider-mark cloud-provider-favicon" src=${iconoUrlPara(id)} alt="" onError=${() => setFaviconFallo(f => ({ ...f, [id]: true }))} />`
+                  : html`<span>${AI_ICONOS[id]}</span>`}
+                <span>${AI_LABELS[id]}</span>
               </button>
             `)}
             <button class="composer-plus-item" onClick=${() => {
