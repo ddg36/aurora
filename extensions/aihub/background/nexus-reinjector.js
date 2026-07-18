@@ -3,7 +3,7 @@
 (() => {
   'use strict';
 
-  const BUILD = '2026-07-18.4-nexus-channel-recovery';
+  const BUILD = '2026-07-18.5-managed-surface-delegation';
   const COURIER = ['content-scripts/nexus-orchestrator.js'];
   const HOSTS = new Set([
     'chatgpt.com', 'chat.openai.com', 'gemini.google.com', 'claude.ai', 'grok.com',

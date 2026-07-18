@@ -4,7 +4,7 @@
 (function installNexusV2Orchestrator() {
   'use strict';
 
-  const BUILD = '2026-07-18.4-nexus-channel-recovery';
+  const BUILD = '2026-07-18.5-managed-surface-delegation';
   const previous = globalThis.__auroraNexusV2Install;
   if (previous?.build === BUILD) return;
   try { previous?.dispose?.('upgrade'); } catch (_) {}
@@ -121,6 +121,20 @@
     const snapshot = snapshotResult.snapshot;
     lastSnapshot = snapshot;
     root.dataset.auroraNexusV2Adapter = snapshot.adapter;
+
+    // Los panes Cloud administrados por Aurora procesan Nexus dentro de su
+    // propio loop durable (UI → backend → Pi → feedback → siguiente iteración).
+    // Capturarlos también desde este courier produciría dos propietarios del
+    // mismo turno: el loop UI podría cerrar con un fragmento mientras el courier
+    // inyecta el resultado real y crea una respuesta huérfana en el proveedor.
+    const managedSurface = snapshot.context?.surface === 'lyria-cloud';
+    if (managedSurface) {
+      pending = null;
+      stableCandidate = null;
+      lastFingerprint = currentFingerprint(snapshot);
+      return mark('delegated', 'lyria_cloud_loop_owner');
+    }
+
     if (snapshot.generating) return mark('waiting', 'provider_generating');
 
     const text = pending?.text || String(snapshot.raw || snapshot.text || '').trim();

@@ -28,10 +28,11 @@ assert.match(orchestrator, /NEXUS_V2_STATE/, 'Nexus posee estado independiente')
 assert.doesNotMatch(orchestrator, /json-family\/process|AURORA_RELAY_PROCESS/, 'Nexus no usa el orquestador JSON');
 assert.doesNotMatch(orchestrator, /querySelector|#prompt-textarea|chatgpt\.com|gemini\.google\.com/, 'Nexus no duplica selectores del proveedor');
 assert.match(orchestrator, /auroraJsonFamilyConsumed/, 'Nexus respeta ownership de Cloud ASK');
-assert.match(orchestrator, /2026-07-18\.4-nexus-channel-recovery/, 'Nexus usa el build resiliente');
+assert.match(orchestrator, /2026-07-18\.5-managed-surface-delegation/, 'Nexus usa el build resiliente');
 assert.match(orchestrator, /runtime_message_timeout/, 'Nexus no queda bloqueado por un worker dormido');
 assert.match(orchestrator, /runtime_channel_closed/, 'Nexus recupera cierres transitorios del canal');
 assert.match(orchestrator, /snapshotResult\?\.transient[\s\S]*?mark\('waiting', 'runtime_channel_reconnecting'\)/, 'el snapshot Nexus no registra como error un cierre transitorio');
+assert.match(orchestrator, /snapshot\.context\?\.surface === 'lyria-cloud'[\s\S]*?mark\('delegated', 'lyria_cloud_loop_owner'\)/, 'Lyra Cloud delega Nexus a su loop durable y evita doble propietario');
 assert.match(orchestrator, /if \(error\?\.transient\)/, 'Nexus clasifica desconexiones transitorias antes de registrar errores reales');
 assert.doesNotMatch(orchestrator, /pending\.attempts/, 'Nexus reintenta usando activeRequest estable');
 assert.match(background, /EXT_WS_WATCHDOG_ALARM/, 'el worker posee watchdog durable');
