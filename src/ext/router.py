@@ -99,6 +99,14 @@ async def ext_ws(socket: WebSocket) -> None:
 
             mtype = msg.get("type")
 
+            if mtype == "EXT_PING":
+                await sess.send({
+                    "type": "EXT_PONG",
+                    "ts": msg.get("ts"),
+                    "generation": msg.get("generation"),
+                })
+                continue
+
             if mtype == "EXT_HELLO":
                 sess.extension_id = msg.get("extensionId")
                 sess.extensions   = msg.get("extensions", [])
@@ -133,6 +141,9 @@ async def ext_ws(socket: WebSocket) -> None:
                         fut.set_result(msg.get("data"))
                     else:
                         fut.set_exception(RuntimeError(msg.get("error", "ext error")))
+                # ACK incluso si el future ya no existe: el resultado puede venir
+                # de un outbox recuperado después de reiniciar el worker MV3.
+                await sess.send({"type": "EXT_RESULT_ACK", "id": req_id})
                 continue
 
             if mtype == "EXT_PUSH_CAPTURE":

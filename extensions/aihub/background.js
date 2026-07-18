@@ -3,6 +3,7 @@ importScripts('background/yt-history.js');
 importScripts('background/browser-cabin.js');
 importScripts('background/endpoint-registry.js');
 importScripts('background/relay-reinjector.js');
+importScripts('background/nexus-reinjector.js');
 // Bridge: chrome.* APIs → servidor Aurora :7779
 const AURORA    = 'http://localhost:7779';
 const AURORA_WS = 'ws://localhost:7779/ext/ws';
@@ -10,7 +11,10 @@ const WORKSPACE_SURFACE_SETTING = 'aurora_workspace_surface_v1';
 const WORKSPACE_SURFACE_LOCAL   = 'aurora:workspace_surface_v1';
 const JSON_FAMILY_SETTING = 'json_family_enabled_v1';
 const JSON_FAMILY_LOCAL = 'aurora:json_family_enabled_v1';
+const NEXUS_V2_SETTING = 'nexus_v2_enabled_v1';
+const NEXUS_V2_LOCAL = 'aurora:nexus_v2_enabled_v1';
 let _jsonFamilyEnabled = false;
+let _nexusV2Enabled = false;
 
 async function loadJsonFamilyState() {
   const local = await chrome.storage.local.get([JSON_FAMILY_LOCAL]);
@@ -51,6 +55,86 @@ async function saveJsonFamilyState(enabled) {
   }
   await Promise.allSettled(deliveries);
   return _jsonFamilyEnabled;
+}
+
+async function loadNexusV2State() {
+  const local = await chrome.storage.local.get([NEXUS_V2_LOCAL]);
+  if (typeof local[NEXUS_V2_LOCAL] === 'boolean') _nexusV2Enabled = local[NEXUS_V2_LOCAL];
+  try {
+    await _ensureToken();
+    const response = await fetch(`${AURORA}/db/ajustes/${NEXUS_V2_SETTING}`, { headers: _hdrs(), cache: 'no-store' });
+    if (response.ok) {
+      const data = await response.json();
+      if (data?.valor === 'true' || data?.valor === 'false') _nexusV2Enabled = data.valor === 'true';
+    }
+  } catch (_) {}
+  await chrome.storage.local.set({ [NEXUS_V2_LOCAL]: _nexusV2Enabled });
+  return _nexusV2Enabled;
+}
+
+async function saveNexusV2State(enabled) {
+  _nexusV2Enabled = !!enabled;
+  await chrome.storage.local.set({ [NEXUS_V2_LOCAL]: _nexusV2Enabled });
+  try {
+    await _ensureToken();
+    await fetch(`${AURORA}/db/ajustes/${NEXUS_V2_SETTING}`, {
+      method: 'PUT', headers: _hdrs(), body: JSON.stringify({ valor: String(_nexusV2Enabled) }),
+    });
+  } catch (_) {}
+  const tabs = await chrome.tabs.query({});
+  const deliveries = [];
+  for (const tab of tabs) {
+    let frames = [];
+    try { frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id }) || []; } catch (_) {}
+    if (!frames.length) frames = [{ frameId: 0 }];
+    for (const frame of frames) {
+      deliveries.push(chrome.tabs.sendMessage(tab.id, {
+        type: 'NEXUS_V2_STATE', enabled: _nexusV2Enabled,
+      }, { frameId: frame.frameId }));
+    }
+  }
+  await Promise.allSettled(deliveries);
+  if (_nexusV2Enabled) {
+    AuroraNexusV2Reinjector.scan('state_enabled')
+      .catch(error => console.warn('[BG] Nexus 2 reinject enable:', error?.message || String(error)));
+  }
+  return _nexusV2Enabled;
+}
+
+async function processNexusV2Capture(msg) {
+  await _ensureToken();
+  const response = await fetch(`${AURORA}/nexus-v2/process`, {
+    method: 'POST',
+    headers: _hdrs(),
+    body: JSON.stringify({
+      requestId: String(msg.requestId || ''),
+      text: String(msg.text || ''),
+      origin: msg.origin && typeof msg.origin === 'object' ? msg.origin : {},
+      clientTools: Array.isArray(msg.clientTools) ? msg.clientTools : [],
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `Nexus 2 HTTP ${response.status}`);
+  return result;
+}
+
+async function acknowledgeNexusV2Delivery(requestId, { attempts = 5 } = {}) {
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      await _ensureToken();
+      const response = await fetch(`${AURORA}/nexus-v2/delivered`, {
+        method: 'POST', headers: _hdrs(), body: JSON.stringify({ requestId: String(requestId || '') }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok && result.acknowledged) return { acknowledged: true, error: null };
+      lastError = result.error || `Nexus ACK HTTP ${response.status}`;
+    } catch (error) {
+      lastError = error?.message || String(error);
+    }
+    if (attempt + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+  }
+  return { acknowledged: false, error: lastError || 'No se confirmó el ACK Nexus.' };
 }
 
 async function processRelayCapture(msg) {
@@ -149,8 +233,21 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch(e => console.warn('[BG] sidePanel:', e));
 
 // ─── WebSocket control bus con el servidor ───────────────
+const EXT_WS_WATCHDOG_ALARM = 'aurora-ext-ws-watchdog-v1';
+const EXT_WS_RESULT_OUTBOX = 'aurora:ext_result_outbox_v1';
+const EXT_WS_KEEPALIVE_MS = 20000;
+const EXT_WS_STALE_MS = 55000;
+const EXT_WS_OUTBOX_LIMIT = 50;
 let _extWs = null;
 let _extWsRetry = null;
+let _extWsGeneration = 0;
+let _extWsConnectPromise = null;
+let _extWsRetryAttempt = 0;
+let _extWsLastRxAt = 0;
+let _extWsLastTxAt = 0;
+let _extWsLastPongAt = 0;
+let _extWsKeepaliveTimer = null;
+let _extWsOutboxQueue = Promise.resolve();
 let _auroraToken = null;  // token de usuario confirmado por el servidor
 let _auroraUserId = null;
 
@@ -312,57 +409,172 @@ async function restoreWorkspaceSurface(reason = 'startup') {
   return { ok: true, restored: true, surface: 'newtab', tabId: existing.id, reused: true };
 }
 
-async function connectExtWs() {
-  if (_extWs && _extWs.readyState <= 1) return;
-  if (!_auroraToken) _auroraToken = await _fetchToken();
+function _clearExtWsKeepalive() {
+  if (_extWsKeepaliveTimer) clearInterval(_extWsKeepaliveTimer);
+  _extWsKeepaliveTimer = null;
+}
+
+function _wsCurrent(ws, generation) {
+  return _extWs === ws && _extWsGeneration === generation;
+}
+
+function _wsSend(payload) {
+  if (!_extWs || _extWs.readyState !== WebSocket.OPEN) return false;
   try {
-    // Token también por query: el guard del server valida el WS antes del HELLO.
-    _extWs = new WebSocket(AURORA_WS + '?token=' + encodeURIComponent(_auroraToken || ''));
-    _extWs.onopen = () => {
-      console.log('[BG] ext/ws connected');
-      _extWs.send(JSON.stringify({
-        type: 'EXT_HELLO',
-        extensionId: chrome.runtime.id,
-        extensions: ['aihub'],
-        token: _auroraToken,
-      }));
+    _extWs.send(JSON.stringify(payload));
+    _extWsLastTxAt = Date.now();
+    return true;
+  } catch (_) { return false; }
+}
+
+function _scheduleExtWsReconnect(reason = 'retry') {
+  if (_extWsRetry) clearTimeout(_extWsRetry);
+  const attempt = _extWsRetryAttempt++;
+  const base = Math.min(30000, 1000 * (2 ** Math.min(attempt, 5)));
+  const delay = base + Math.floor(Math.random() * Math.max(250, base * 0.2));
+  console.log(`[BG] ext/ws reconnect ${reason} in ${delay}ms`);
+  _extWsRetry = setTimeout(() => {
+    _extWsRetry = null;
+    connectExtWs({ force: true, reason }).catch(() => {});
+  }, delay);
+}
+
+function _queueExtWsOutbox(task) {
+  _extWsOutboxQueue = _extWsOutboxQueue.then(task, task);
+  return _extWsOutboxQueue;
+}
+
+async function _enqueueExtResult(message) {
+  return _queueExtWsOutbox(async () => {
+    const stored = await chrome.storage.local.get([EXT_WS_RESULT_OUTBOX]);
+    const items = Array.isArray(stored[EXT_WS_RESULT_OUTBOX]) ? stored[EXT_WS_RESULT_OUTBOX] : [];
+    const next = items.filter(item => item?.id !== message.id);
+    next.push({ ...message, queuedAt: Date.now() });
+    await chrome.storage.local.set({ [EXT_WS_RESULT_OUTBOX]: next.slice(-EXT_WS_OUTBOX_LIMIT) });
+  });
+}
+
+async function _ackExtResult(id) {
+  if (!id) return;
+  return _queueExtWsOutbox(async () => {
+    const stored = await chrome.storage.local.get([EXT_WS_RESULT_OUTBOX]);
+    const items = Array.isArray(stored[EXT_WS_RESULT_OUTBOX]) ? stored[EXT_WS_RESULT_OUTBOX] : [];
+    const next = items.filter(item => item?.id !== id);
+    if (next.length !== items.length) {
+      await chrome.storage.local.set({ [EXT_WS_RESULT_OUTBOX]: next });
+    }
+  });
+}
+
+async function _flushExtResultOutbox() {
+  const stored = await chrome.storage.local.get([EXT_WS_RESULT_OUTBOX]);
+  const items = Array.isArray(stored[EXT_WS_RESULT_OUTBOX]) ? stored[EXT_WS_RESULT_OUTBOX] : [];
+  for (const item of items) {
+    if (!_wsSend({
+      id: item.id, type: 'EXT_RESULT', ok: !!item.ok,
+      data: item.data ?? null, error: item.error ?? null,
+    })) break;
+  }
+}
+
+function _startExtWsKeepalive(ws, generation) {
+  _clearExtWsKeepalive();
+  _extWsKeepaliveTimer = setInterval(() => {
+    if (!_wsCurrent(ws, generation) || ws.readyState !== WebSocket.OPEN) return;
+    const lastHealthy = Math.max(_extWsLastPongAt, _extWsLastRxAt);
+    if (lastHealthy && Date.now() - lastHealthy > EXT_WS_STALE_MS) {
+      console.warn('[BG] ext/ws stale; forcing reconnect');
+      try { ws.close(4000, 'stale'); } catch (_) {}
+      return;
+    }
+    _wsSend({ type: 'EXT_PING', ts: Date.now(), generation });
+  }, EXT_WS_KEEPALIVE_MS);
+}
+
+async function connectExtWs({ force = false, reason = 'connect' } = {}) {
+  const healthy = _extWs?.readyState === WebSocket.OPEN
+    && Date.now() - Math.max(_extWsLastPongAt, _extWsLastRxAt) < EXT_WS_STALE_MS;
+  if (!force && healthy) return;
+  if (!force && _extWs?.readyState === WebSocket.CONNECTING) return;
+  if (_extWsConnectPromise) return _extWsConnectPromise;
+
+  _extWsConnectPromise = (async () => {
+    if (_extWs && _extWs.readyState <= WebSocket.OPEN) {
+      try { _extWs.close(4001, reason); } catch (_) {}
+    }
+    _clearExtWsKeepalive();
+    if (!_auroraToken) _auroraToken = await _fetchToken();
+    const generation = ++_extWsGeneration;
+    let ws;
+    try {
+      ws = new WebSocket(AURORA_WS + '?token=' + encodeURIComponent(_auroraToken || ''));
+    } catch (error) {
+      console.warn('[BG] ext/ws create error', error);
+      _scheduleExtWsReconnect('create_error');
+      return;
+    }
+    _extWs = ws;
+    _extWsLastRxAt = Date.now();
+    ws.onopen = () => {
+      if (!_wsCurrent(ws, generation)) return;
+      _extWsRetryAttempt = 0;
+      _extWsLastRxAt = Date.now();
+      _extWsLastPongAt = Date.now();
       if (_extWsRetry) { clearTimeout(_extWsRetry); _extWsRetry = null; }
-      // Notificar tab activa inmediatamente al conectar
+      _wsSend({ type: 'EXT_HELLO', extensionId: chrome.runtime.id,
+        extensions: ['aihub'], token: _auroraToken, generation });
+      _startExtWsKeepalive(ws, generation);
+      _flushExtResultOutbox().catch(error => {
+        console.warn('[BG] ext/ws outbox:', error?.message || String(error));
+      });
       notifyTabChange(null);
     };
-    _extWs.onmessage = (e) => {
+    ws.onmessage = event => {
+      if (!_wsCurrent(ws, generation)) return;
+      _extWsLastRxAt = Date.now();
       let msg;
-      try { msg = JSON.parse(e.data); } catch { return; }
+      try { msg = JSON.parse(event.data); } catch { return; }
+      if (msg.type === 'EXT_PONG') { _extWsLastPongAt = Date.now(); return; }
+      if (msg.type === 'EXT_RESULT_ACK') {
+        _ackExtResult(msg.id).catch(() => {});
+        return;
+      }
       if (msg.type === 'EXT_ACK') {
+        _extWsLastPongAt = Date.now();
         if (msg.token) {
-          _auroraToken  = msg.token;
+          _auroraToken = msg.token;
           _auroraUserId = msg.usuario_id ?? null;
-          console.log('[BG] ext/ws ACK uid=' + _auroraUserId);
-          // Propagar token al sidepanel para que aurora.js lo use
-          chrome.runtime.sendMessage({ type: 'AURORA_TOKEN_UPDATE', token: _auroraToken, usuario_id: _auroraUserId, serverUrl: msg.serverUrl }).catch(() => {});
+          chrome.runtime.sendMessage({ type: 'AURORA_TOKEN_UPDATE', token: _auroraToken,
+            usuario_id: _auroraUserId, serverUrl: msg.serverUrl }).catch(() => {});
         }
         return;
       }
       if (msg.type === 'EXT_CMD') {
-        handleServerCmd(msg).catch(err => {
-          sendExtResult(msg.id, false, null, err.message);
-        });
+        handleServerCmd(msg).catch(error => sendExtResult(msg.id, false, null, error?.message || String(error)));
       }
     };
-    _extWs.onclose = () => {
-      console.log('[BG] ext/ws closed, retry in 5s');
-      _extWsRetry = setTimeout(connectExtWs, 5000);
+    ws.onclose = () => {
+      if (!_wsCurrent(ws, generation)) return;
+      _clearExtWsKeepalive();
+      _extWs = null;
+      _scheduleExtWsReconnect('closed');
     };
-    _extWs.onerror = () => {};
-  } catch (err) {
-    console.warn('[BG] ext/ws error', err);
-    _extWsRetry = setTimeout(connectExtWs, 5000);
-  }
+    ws.onerror = () => {
+      if (_wsCurrent(ws, generation)) try { ws.close(4002, 'socket_error'); } catch (_) {}
+    };
+  })().finally(() => { _extWsConnectPromise = null; });
+  return _extWsConnectPromise;
 }
 
-function sendExtResult(id, ok, data, error) {
-  if (!_extWs || _extWs.readyState !== 1) return;
-  _extWs.send(JSON.stringify({ type: 'EXT_RESULT', id, ok, data: data ?? null, error: error ?? null }));
+async function sendExtResult(id, ok, data, error) {
+  const message = { id, type: 'EXT_RESULT', ok: !!ok, data: data ?? null, error: error ?? null };
+  try {
+    await _enqueueExtResult(message);
+    if (_extWs?.readyState === WebSocket.OPEN) await _flushExtResultOutbox();
+    else connectExtWs({ reason: 'result_pending' }).catch(() => {});
+  } catch (queueError) {
+    console.warn('[BG] EXT_RESULT outbox:', queueError?.message || String(queueError));
+  }
 }
 
 async function handleServerCmd(msg) {
@@ -495,10 +707,16 @@ async function handleServerCmd(msg) {
   }
 }
 
-// Conectar al arrancar
-connectExtWs();
-// Reconectar cada 30s si el server estuvo caído
-setInterval(connectExtWs, 30000);
+// El service worker MV3 puede dormir. El alarm lo despierta y valida el canal.
+chrome.alarms.create(EXT_WS_WATCHDOG_ALARM, { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name !== EXT_WS_WATCHDOG_ALARM) return;
+  const healthy = _extWs?.readyState === WebSocket.OPEN
+    && Date.now() - Math.max(_extWsLastPongAt, _extWsLastRxAt) < EXT_WS_STALE_MS;
+  if (!healthy && _extWs) try { _extWs.close(4003, 'watchdog'); } catch (_) {}
+  connectExtWs({ force: !healthy, reason: 'watchdog' }).catch(() => {});
+});
+connectExtWs({ reason: 'worker_boot' }).catch(() => {});
 
 // ChatGPT/Gemini crean conversaciones mediante history.pushState y en ciertos
 // renders reemplazan el mundo aislado sin disparar una navegación que vuelva a
@@ -672,13 +890,58 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === 'NEXUS_V2_GET_STATE') {
+    loadNexusV2State()
+      .then(enabled => sendResponse({ ok: true, enabled }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'NEXUS_V2_SET_STATE') {
+    saveNexusV2State(msg.enabled)
+      .then(enabled => sendResponse({ ok: true, enabled }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'AURORA_NEXUS_REINJECT') {
+    AuroraNexusV2Reinjector.scan(msg.reason || 'manual')
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'AURORA_NEXUS_PROCESS') {
+    processNexusV2Capture(msg)
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ ok: false, kind: 'transport_error', error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (msg.type === 'AURORA_NEXUS_DELIVER') {
+    deliverToOrigin(sender, msg.delivery || msg.feedback, msg.endpointId || null)
+      .then(async result => {
+        if (!result.delivered) return sendResponse(result);
+        const ack = await acknowledgeNexusV2Delivery(msg.requestId).catch(error => ({
+          acknowledged: false, error: error?.message || String(error),
+        }));
+        sendResponse({ ...result, ...ack });
+      })
+      .catch(error => sendResponse({ delivered: false, error: error?.message || String(error) }));
+    return true;
+  }
+
   if (msg.type === 'JSON_FAMILY_GET_STATE') {
-    loadJsonFamilyState().then(enabled => sendResponse({ ok: true, enabled }));
+    loadJsonFamilyState()
+      .then(enabled => sendResponse({ ok: true, enabled }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }
 
   if (msg.type === 'JSON_FAMILY_SET_STATE') {
-    saveJsonFamilyState(msg.enabled).then(enabled => sendResponse({ ok: true, enabled }));
+    saveJsonFamilyState(msg.enabled)
+      .then(enabled => sendResponse({ ok: true, enabled }))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }
 
@@ -2012,6 +2275,8 @@ chrome.runtime.onStartup.addListener(async () => {
   }
   AuroraRelayReinjector.scan('browser_startup')
     .catch(error => console.warn('[BG] relay reinject startup:', error?.message || String(error)));
+  AuroraNexusV2Reinjector.scan('browser_startup')
+    .catch(error => console.warn('[BG] Nexus 2 reinject startup:', error?.message || String(error)));
 });
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -2019,6 +2284,8 @@ chrome.runtime.onInstalled.addListener(() => {
     .catch(error => console.warn('[BG] restore workspace install:', error?.message || String(error)));
   AuroraRelayReinjector.scan('extension_installed')
     .catch(error => console.warn('[BG] relay reinject install:', error?.message || String(error)));
+  AuroraNexusV2Reinjector.scan('extension_installed')
+    .catch(error => console.warn('[BG] Nexus 2 reinject install:', error?.message || String(error)));
 });
 
 // También cubre el botón Reload de chrome://extensions: ese ciclo no siempre
@@ -2026,4 +2293,6 @@ chrome.runtime.onInstalled.addListener(() => {
 setTimeout(() => {
   AuroraRelayReinjector.scan('worker_boot')
     .catch(error => console.warn('[BG] relay reinject boot:', error?.message || String(error)));
+  AuroraNexusV2Reinjector.scan('worker_boot')
+    .catch(error => console.warn('[BG] Nexus 2 reinject boot:', error?.message || String(error)));
 }, 500);

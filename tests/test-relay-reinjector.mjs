@@ -7,9 +7,14 @@ import vm from 'node:vm';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = fs.readFileSync(path.join(root, 'extensions/aihub/background/relay-reinjector.js'), 'utf8');
 const courierSource = fs.readFileSync(path.join(root, 'extensions/aihub/content-scripts/provider-relay.js'), 'utf8');
-assert.match(source, /2026-07-17\.2-endpoint-routing/);
-assert.match(courierSource, /2026-07-17\.2-endpoint-routing/, 'background y courier deben compartir build de ping');
+assert.match(source, /2026-07-18\.4-channel-recovery/);
+assert.match(courierSource, /2026-07-18\.4-channel-recovery/, 'background y courier deben compartir build de ping');
 assert.match(courierSource, /previousInstall\?\.dispose/, 'upgrade desmonta el courier anterior');
+assert.match(courierSource, /runtime_message_timeout/, 'el courier no queda bloqueado por un worker dormido');
+assert.match(courierSource, /runtime_channel_closed/, 'el cierre transitorio del canal se recupera sin ruido de error');
+assert.match(courierSource, /if \(error\?\.transient\)/, 'clasifica cierres transitorios antes de registrar errores reales');
+assert.match(courierSource, /new MutationObserver\(\(\) => schedule\(\)\)/, 'MutationObserver no filtra la lista de mutaciones como delay');
+assert.doesNotMatch(courierSource, /pending\.attempts/, 'el retry usa la referencia estable activeRequest');
 const courierBuild = new Map([['7:0', '2026-07-17.1-endpoint-registry']]);
 const courierRuntime = new Map([['7:0', false]]);
 const mainReady = new Map([['7:0', true], ['7:1', false], ['7:2', true]]);
@@ -57,7 +62,7 @@ const chrome = {
       injections.push({ id, world: options.world, files: options.files });
       if (options.world === 'MAIN') mainReady.set(id, true);
       if (options.world === 'ISOLATED') {
-        courierBuild.set(id, '2026-07-17.2-endpoint-routing');
+        courierBuild.set(id, '2026-07-18.4-channel-recovery');
         courierRuntime.set(id, true);
       }
       return [];
@@ -82,4 +87,5 @@ const second = await context.AuroraRelayReinjector.scan('contract_repeat');
 assert.equal(second.reports.filter(item => item.state === 'alive').length, 2);
 assert.equal(injections.length, before, 'ping hace la reinyección idempotente');
 
+assert.match(courierSource, /snapshotResult\?\.transient[\s\S]*?mark\('waiting', 'runtime_channel_reconnecting'\)/, 'snapshot transitorio queda waiting, no error');
 console.log('OK — Relay Reinjector: ping, recuperación no disruptiva e idempotencia');

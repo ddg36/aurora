@@ -278,6 +278,25 @@ async def _mig_json_family_delivery_ack(db):
         await db.execute("ALTER TABLE json_family_runs ADD COLUMN delivered_at INTEGER")
 
 
+async def _mig_nexus_v2_runs(db):
+    await db.executescript('''
+        CREATE TABLE IF NOT EXISTS nexus_v2_runs (
+            usuario_id    INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            request_id    TEXT    NOT NULL,
+            input_hash    TEXT    NOT NULL,
+            status        TEXT    NOT NULL DEFAULT 'running',
+            response_json TEXT,
+            created_at    INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at    INTEGER NOT NULL DEFAULT (unixepoch()),
+            completed_at  INTEGER,
+            delivered_at  INTEGER,
+            PRIMARY KEY (usuario_id, request_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_nexus_v2_runs_status
+            ON nexus_v2_runs(usuario_id, status, updated_at);
+    ''')
+
+
 async def _mig_drop_legacy_cloud_tool_journal(db):
     # JSON Family reemplazó por completo este journal duplicado. Los snapshots
     # reanudables permanecen en cloud_agent_turns/json_family_runs.
@@ -297,6 +316,7 @@ MIGRACIONES: list[tuple[int, str, object]] = [
     (11, "acuse durable de entrega JSON Family", _mig_json_family_delivery_ack),
     (12, "retirar journal legacy de cloud-tool", _mig_drop_legacy_cloud_tool_journal),
     (13, "turnos Pi estructurados en mensajes", _mig_mensajes_estructura),
+    (14, "journal durable de Nexus 2", _mig_nexus_v2_runs),
 ]
 
 
@@ -339,6 +359,12 @@ async def init_db():
     if await _tiene_tabla(db, "json_family_runs"):
         await db.execute(
             "UPDATE json_family_runs SET status='unknown', updated_at=unixepoch() WHERE status='running'"
+        )
+        await db.commit()
+
+    if await _tiene_tabla(db, "nexus_v2_runs"):
+        await db.execute(
+            "UPDATE nexus_v2_runs SET status='unknown', updated_at=unixepoch() WHERE status='running'"
         )
         await db.commit()
 

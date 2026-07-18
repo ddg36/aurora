@@ -2,7 +2,7 @@
 // navegar, recargar ni detener la página del proveedor.
 (() => {
   'use strict';
-  const COURIER_BUILD = '2026-07-17.2-endpoint-routing';
+  const COURIER_BUILD = '2026-07-18.4-channel-recovery';
   const BASE_MAIN = [
     'content-scripts/relay/relay-contract.js',
     'content-scripts/relay/relay-utils.js',
@@ -85,6 +85,28 @@
       target: { tabId, frameIds: [frameId] }, world, files,
     }), 4500, timeout);
     if (result === timeout) throw new Error(`inject_timeout:${world.toLowerCase()}`);
+  }
+
+  async function ensureProviderMain(tab, frame, reason = 'provider_main') {
+    const tabId = tab.id;
+    const frameId = Number(frame.frameId || 0);
+    const host = hostname(frame.url || tab.url);
+    const providerFile = PROVIDERS[host];
+    if (!providerFile) return { ok: true, state: 'unsupported', tabId, frameId, host };
+    if (tab.discarded) return { ok: true, state: 'deferred_discarded', tabId, frameId, host };
+    if (tab.frozen) return { ok: true, state: 'deferred_frozen', tabId, frameId, host };
+
+    let main = await probeMain(tabId, frameId);
+    let mainInjected = false;
+    if (!main.ready) {
+      await injectFiles(tabId, frameId, [...BASE_MAIN, providerFile, ...CORE_MAIN], 'MAIN');
+      mainInjected = true;
+      main = await probeMain(tabId, frameId);
+    }
+    if (!main.ready) {
+      return { ok: false, state: 'main_unavailable', tabId, frameId, host, error: main.error || null };
+    }
+    return { ok: true, state: 'main_ready', tabId, frameId, host, reason, mainInjected, main };
   }
 
   async function resetCourier(tabId, frameId) {
@@ -186,5 +208,5 @@
     }
   });
 
-  globalThis.AuroraRelayReinjector = Object.freeze({ scan, ensureFrame, ping, probeMain, scheduleScan });
+  globalThis.AuroraRelayReinjector = Object.freeze({ scan, ensureFrame, ensureProviderMain, ping, probeMain, scheduleScan });
 })();

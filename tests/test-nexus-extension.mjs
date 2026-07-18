@@ -1,0 +1,60 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const orchestrator = read('extensions/aihub/content-scripts/nexus-orchestrator.js');
+const reinjector = read('extensions/aihub/background/nexus-reinjector.js');
+const background = read('extensions/aihub/background.js');
+const manifest = JSON.parse(read('extensions/aihub/manifest.json'));
+const cloud = read('ui/modules/lyra/scripts/chat/cloud.js');
+const duo = read('ui/modules/llmcloud/scripts/cloud-duo.js');
+const nexusState = read('ui/components/shared/nexus-v2-state.js');
+assert.match(cloud, /processNexusV2/, 'Lyra Cloud procesa Nexus cuando posee el turno');
+assert.match(cloud, /processCloudToolProtocol/, 'Lyra Cloud arbitra Nexus y JSON sin mezclar parsers');
+assert.match(duo, /processNexusV2/, 'Duo procesa Nexus y conserva panel_send');
+assert.match(duo, /clientTools: \['panel_send'\]/);
+assert.match(nexusState, /let initialization = null/, 'la inicialización Nexus comparte una única promesa');
+assert.match(nexusState, /typeof request !== 'function'/, 'la UI tolera que el bridge aún no exista');
+assert.doesNotMatch(nexusState, /\)\.catch\?\./, 'no llama catch sobre un resultado opcional indefinido');
+assert.match(nexusState, /void backgroundRequest\(\{ type: 'AURORA_NEXUS_REINJECT'/, 'la reinyección es fire-and-forget segura');
+
+assert.match(orchestrator, /AURORA_RELAY_SNAPSHOT/, 'Nexus reutiliza snapshots de Provider Drivers');
+assert.match(orchestrator, /AURORA_NEXUS_PROCESS/, 'Nexus posee process route independiente');
+assert.match(orchestrator, /AURORA_NEXUS_DELIVER/, 'Nexus posee lifecycle de entrega independiente');
+assert.match(orchestrator, /NEXUS_V2_STATE/, 'Nexus posee estado independiente');
+assert.doesNotMatch(orchestrator, /json-family\/process|AURORA_RELAY_PROCESS/, 'Nexus no usa el orquestador JSON');
+assert.doesNotMatch(orchestrator, /querySelector|#prompt-textarea|chatgpt\.com|gemini\.google\.com/, 'Nexus no duplica selectores del proveedor');
+assert.match(orchestrator, /auroraJsonFamilyConsumed/, 'Nexus respeta ownership de Cloud ASK');
+assert.match(orchestrator, /2026-07-18\.4-nexus-channel-recovery/, 'Nexus usa el build resiliente');
+assert.match(orchestrator, /runtime_message_timeout/, 'Nexus no queda bloqueado por un worker dormido');
+assert.match(orchestrator, /runtime_channel_closed/, 'Nexus recupera cierres transitorios del canal');
+assert.match(orchestrator, /snapshotResult\?\.transient[\s\S]*?mark\('waiting', 'runtime_channel_reconnecting'\)/, 'el snapshot Nexus no registra como error un cierre transitorio');
+assert.match(orchestrator, /if \(error\?\.transient\)/, 'Nexus clasifica desconexiones transitorias antes de registrar errores reales');
+assert.doesNotMatch(orchestrator, /pending\.attempts/, 'Nexus reintenta usando activeRequest estable');
+assert.match(background, /EXT_WS_WATCHDOG_ALARM/, 'el worker posee watchdog durable');
+assert.match(background, /EXT_PING/, 'el canal WS posee keepalive de aplicación');
+assert.match(background, /EXT_RESULT_ACK/, 'los resultados esperan ACK antes de salir del outbox');
+assert(manifest.permissions.includes('alarms'), 'manifest habilita chrome.alarms');
+
+assert.match(reinjector, /AuroraRelayReinjector\?\.ensureProviderMain/, 'reutiliza sólo el bootstrap MAIN neutral');
+assert.doesNotMatch(reinjector, /AuroraRelayReinjector\?\.ensureFrame/, 'Nexus no depende del courier JSON');
+assert.match(reinjector, /content-scripts\/nexus-orchestrator\.js/, 'reinyecta sólo el Lego Nexus');
+assert.match(background, /nexus-v2\/process/);
+assert.match(background, /clientTools: Array\.isArray\(msg\.clientTools\)/, 'el bridge Nexus conserva clientTools permitidas');
+assert.match(background, /nexus-v2\/delivered/);
+assert.match(background, /acknowledgeNexusV2Delivery/, 'Nexus confirma durablemente la entrega');
+assert.match(background, /AuroraNexusV2Reinjector\.scan\('worker_boot'\)/);
+assert.match(background, /NEXUS_V2_GET_STATE[\s\S]*?catch\(error => sendResponse/, 'GET_STATE siempre cierra el canal async');
+assert.match(background, /NEXUS_V2_SET_STATE[\s\S]*?catch\(error => sendResponse/, 'SET_STATE siempre cierra el canal async');
+assert.match(background, /JSON_FAMILY_GET_STATE[\s\S]*?catch\(error => sendResponse/, 'JSON GET_STATE siempre cierra el canal async');
+assert.match(background, /JSON_FAMILY_SET_STATE[\s\S]*?catch\(error => sendResponse/, 'JSON SET_STATE siempre cierra el canal async');
+
+const nexusEntry = manifest.content_scripts.find(entry => entry.js?.includes('content-scripts/nexus-orchestrator.js'));
+assert(nexusEntry, 'manifest debe cargar Nexus Orchestrator');
+assert.equal(nexusEntry.world || 'ISOLATED', 'ISOLATED');
+assert(!nexusEntry.js.includes('content-scripts/provider-relay.js'));
+
+console.log('OK — Nexus 2: orquestador independiente, Provider Drivers compartidos y reinyección propia');

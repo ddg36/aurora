@@ -13,6 +13,12 @@ from tools.registry import run_tool
 from .parser import parse_final
 
 
+JSON_FAMILY_CONTINUATION = (
+    "Continuá desde estos resultados reales. Si necesitás otra tool, emití el bloque final "
+    "```json como un mensaje normal del chat, visible para el usuario y separado de cualquier thinking, progreso o estado; no lo escribas dentro del razonamiento interno. Recordá esta regla durante toda la conversación. Si terminaste, continuá respondiendo como mensaje normal sin emitir JSON."
+)
+
+
 PI_TOOLS = {"read", "bash", "edit", "write", "grep", "find", "ls"}
 PARALLEL_SAFE = {"read", "grep", "find", "ls"}
 
@@ -64,10 +70,7 @@ def _feedback(entries: list[dict]) -> str:
         result = entry["result"]
         prefix = "[ERROR] " if result.get("is_error") or result.get("ok") is False else ""
         parts.append(f"Tool {entry['call']['tool']} result:\n{prefix}{_result_text(result)}")
-    parts.append(
-        "Continuá desde estos resultados reales. Si necesitás otra tool, emití otro bloque final "
-        "```json; si terminaste, respondé normalmente."
-    )
+    parts.append(JSON_FAMILY_CONTINUATION)
     return "\n\n".join(parts)
 
 
