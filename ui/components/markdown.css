@@ -12,8 +12,8 @@
 }
 
 .code-block {
-  background: #0d0d0d;
-  border: 1px solid var(--aurora-surface3);
+  background: var(--aurora-surface2);
+  border: 1px solid color-mix(in srgb, var(--aurora-accent) 22%, var(--aurora-surface3));
   border-radius: var(--aurora-radius-sm);
   margin: 8px 0;
   overflow: hidden;
