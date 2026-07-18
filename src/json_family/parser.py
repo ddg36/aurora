@@ -92,13 +92,27 @@ def _final_fences(source: str) -> tuple[list[tuple[str, str, int]], str, list[st
         kind = None
         while start >= 0:
             marker = clean[start].lower()
-            if marker in {"```json", "```"}:
-                kind = "json" if marker == "```json" else "plain"
+            # Cualquier apertura ``` (sola, ```json, o con OTRO lenguaje como
+            # ```python/```js) cierra la búsqueda del fence. Antes sólo
+            # ```json/``` contaban como apertura válida: un bloque de código
+            # normal en cualquier otro lenguaje (```python, ```bash, ...) que
+            # fuera el ÚLTIMO del mensaje disparaba "Fence final sin apertura
+            # correspondiente." — un error falso sobre una respuesta sin
+            # ninguna tool, sólo código. Se trata como "plain" salvo que su
+            # contenido tenga pinta real de tool (_TOOL_HINT).
+            if marker.startswith("```"):
+                lang = marker[3:].strip()
+                kind = "json" if lang == "json" else "plain"
                 break
             start -= 1
         if start < 0 or kind is None:
             return [], source, ["Fence final sin apertura correspondiente."]
         raw = "".join(lines[start + 1:end]).strip()
+        if kind == "plain" and not _TOOL_HINT.search(raw):
+            # Bloque de código de un lenguaje cualquiera, sin pinta de tool
+            # (```tool":... nunca aparecería en Python/JS real): no es una
+            # tool rota, es código — ignorar como si no hubiera fence final.
+            return [], source, []
         found.insert(0, (kind, raw, offsets[start]))
         index = start - 1
         while index >= 0 and not clean[index]:
@@ -120,7 +134,13 @@ def parse_final(text: str) -> ParseResult:
         try:
             value = _loads_strict(raw)
         except (json.JSONDecodeError, StrictJSONError, RecursionError) as exc:
-            if kind == "json" and _TOOL_HINT.search(raw):
+            # Un fence ``` sin json explícito con {"tool":...} roto adentro
+            # (comillas faltantes, llave sin cerrar) es un intento de tool
+            # mal armado, no código — igual que ```json, debe avisarle al LLM
+            # que se equivocó en vez de ignorarlo en silencio. _final_fences
+            # ya filtró el caso limpio (código real sin _TOOL_HINT nunca llega
+            # con kind="plain" hasta acá salvo que tenga esa pinta).
+            if _TOOL_HINT.search(raw):
                 detail = exc.msg if isinstance(exc, json.JSONDecodeError) else str(exc)
                 result.errors.append(f"JSON de tool inválido: {detail}.")
             elif kind == "json":
