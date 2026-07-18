@@ -80,6 +80,10 @@ function iconoUrlPara(aiId) {
 const ICON_OCULTAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c1.3-2.3 3.2-3.5 5-3.5s3.7 1.2 5 3.5c-1.3 2.3-3.2 3.5-5 3.5S3.3 9.3 2 7z"/><circle cx="7" cy="7" r="1.6"/><line x1="2" y1="12" x2="12" y2="2"/></svg>';
 const ICON_MOSTRAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c1.3-2.3 3.2-3.5 5-3.5s3.7 1.2 5 3.5c-1.3 2.3-3.2 3.5-5 3.5S3.3 9.3 2 7z"/><circle cx="7" cy="7" r="1.6"/></svg>';
 const ICON_COLAPSAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,5 7,9 11,5"/></svg>';
+// Mover el panel a cabecera (arriba del chat) o de vuelta al pie (entre el
+// chat y el composer, default). Doble flecha vertical = "cambiar de lado".
+const ICON_A_CABECERA = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 7,2 11,6"/><line x1="7" y1="2" x2="7" y2="9"/><line x1="2.5" y1="12" x2="11.5" y2="12"/></svg>';
+const ICON_AL_PIE = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,8 7,12 11,8"/><line x1="7" y1="12" x2="7" y2="5"/><line x1="2.5" y1="2" x2="11.5" y2="2"/></svg>';
 
 // Fila de acciones del composer: usaba +, /, 🎤, ■, ↑ y el emoji 👁 mezclados
 // con texto plano — inconsistente con el resto de la interfaz (NavBar/Footer,
@@ -190,6 +194,10 @@ export function Local({ active = true } = {}) {
   // siempre a mini al recargar, sin importar cómo lo había dejado el usuario.
   const [cloudExpanded, setCloudExpanded]           = usePersistedState('lyra_cloud_expanded', false);
   const [cloudHidden, setCloudHidden]               = usePersistedState('lyra_cloud_hidden', false);
+  // Posición del panel — independiente del modo (mini/oculto/expandido):
+  // 'bottom' (default, entre el chat y el composer) o 'top' (cabecera, antes
+  // de la barra de historial/params/tools).
+  const [cloudPosition, setCloudPosition]           = usePersistedState('lyra_cloud_position', 'bottom');
   // Favicon del proveedor (iconoUrlPara) puede fallar por red/CORS del
   // servicio externo — no persistido, solo evita reintentar en este montaje.
   const [faviconFallo, setFaviconFallo]             = useState({});
@@ -201,11 +209,17 @@ export function Local({ active = true } = {}) {
   const iniciarResizeCloud = useCallback((e) => {
     e.preventDefault();
     const panel = document.querySelector('.cloud-panel');
+    const enCabecera = panel?.classList.contains('cloud-panel-top');
     const startY = e.clientY;
     const startH = panel?.getBoundingClientRect().height || 420;
     let finalH = startH;
     const onMove = (ev) => {
-      finalH = Math.max(140, Math.min(window.innerHeight * 0.9, startH + (startY - ev.clientY)));
+      // Abajo (default): el panel crece "hacia arriba" (borde inferior fijo,
+      // pegado al composer) — arrastrar hacia arriba agranda.
+      // Cabecera: el panel crece "hacia abajo" (borde superior fijo, pegado
+      // al techo) — arrastrar hacia abajo agranda. Signo invertido.
+      const delta = enCabecera ? (ev.clientY - startY) : (startY - ev.clientY);
+      finalH = Math.max(140, Math.min(window.innerHeight * 0.9, startH + delta));
       if (panel) panel.style.height = finalH + 'px';   // imperativo: liso y sin tocar la DB
     };
     const onUp = () => {
@@ -1586,7 +1600,7 @@ export function Local({ active = true } = {}) {
         </div>
       `}
 
-      <div class=${'cloud-panel ' + (cloudExpanded ? 'expanded' : cloudHidden ? 'hidden-mode' : 'mini') + (cloudVisible ? '' : ' cloud-panel-hidden')}
+      <div class=${'cloud-panel ' + (cloudExpanded ? 'expanded' : cloudHidden ? 'hidden-mode' : 'mini') + (cloudVisible ? '' : ' cloud-panel-hidden') + (cloudPosition === 'top' && !cloudExpanded ? ' cloud-panel-top' : '')}
         style=${cloudVisible && !cloudHidden && !cloudExpanded && cloudHeight ? `height:${cloudHeight}px` : ''}>
         ${cloudVisible && !cloudHidden && !cloudExpanded && html`
           <div class="cloud-resize-handle" title="Arrastrá para ajustar el alto" onPointerdown=${iniciarResizeCloud}></div>
@@ -1604,6 +1618,14 @@ export function Local({ active = true } = {}) {
               ${cloudStatusTiming && html`<span class="cloud-live-timing">${cloudStatusTiming}</span>`}
             </div>
             <div class="cloud-mini-actions">
+              ${!cloudExpanded && html`
+                <button
+                  class="cloud-mini-btn"
+                  title=${cloudPosition === 'top' ? 'Mover al pie (junto al composer)' : 'Mover a cabecera (arriba del chat)'}
+                  onClick=${() => setCloudPosition(p => p === 'top' ? 'bottom' : 'top')}
+                  dangerouslySetInnerHTML=${{ __html: cloudPosition === 'top' ? ICON_AL_PIE : ICON_A_CABECERA }}
+                ></button>
+              `}
               <button class="cloud-mini-btn" title=${cloudExpanded ? 'Contraer a mini' : 'Expandir'} onClick=${() => { setCloudExpanded(v => !v); setCloudHidden(false); }}>${cloudExpanded ? '▾' : '⛶'}</button>
               <button class="cloud-mini-btn" title="Recargar" onClick=${() => recargarCloudIframe(cloudUrl)}>↺</button>
               <button class="cloud-mini-btn cloud-mini-btn--close" title="Cerrar" onClick=${closeCloud}>✕</button>

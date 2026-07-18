@@ -262,6 +262,21 @@
   display: none;
 }
 
+/* Cabecera: mismo panel (mini u oculto), pero antes del chat en vez de entre
+   el chat y el composer — order:-1 en .llama-view lo mueve sin tocar el DOM.
+   El resize handle vive en el flujo normal, ANTES del header/iframe (para
+   quedar arriba del panel cuando éste está abajo); en cabecera necesita
+   quedar DESPUÉS (abajo del panel, donde está el borde libre para agrandar
+   hacia el chat) — order:1 lo manda al final sin duplicar el JSX. */
+.cloud-panel.cloud-panel-top {
+  order: -1;
+  border-width: 0 0 1px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  display: flex;
+  flex-direction: column;
+}
+.cloud-panel.cloud-panel-top .cloud-resize-handle { order: 1; }
+
 /* Mini: miniatura zoom del contenido */
 .cloud-panel.mini {
   height: 190px;
