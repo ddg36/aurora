@@ -350,12 +350,21 @@
   color: var(--text-dim);
 }
 .message-header .role {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-weight: 700;
   font-size: 10.5px;
   color: var(--text-muted);
   letter-spacing: 0.3px;
 }
-.message-header .role .cloud-provider-favicon-inline { vertical-align: -2px; margin-right: 2px; }
+/* El ícono SVG del rol (Tú/Lyra/proveedor) es display:block por default del
+   navegador — dentro de un contenedor no-flex eso lo saltaba a su propia
+   línea (reportado con captura: ícono arriba, texto abajo). .role ya es
+   inline-flex; sus hijos (incluido el <span> con dangerouslySetInnerHTML)
+   quedan en fila sin necesitar reglas de inline-flow adicionales. */
+.message-header .role svg { display: block; flex-shrink: 0; }
+.message-header .role .cloud-provider-favicon-inline { flex-shrink: 0; }
 .message-header .time { margin-left: auto; opacity: 0.5; }
 
 /* ── Contenido ────────────────────────────────────────── */
