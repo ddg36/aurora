@@ -215,7 +215,27 @@ function startAuroraRelayCore(injectedAdapter) {
       node.childNodes.forEach(walk);
     }
     walk(root);
-    return out.join('').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
+    const md = out.join('').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
+    // ChatGPT (y otros) generan cada punto de una lista como un <ol>/<ul>
+    // SEPARADO (uno por ítem, cortado por su párrafo de explicación), usando
+    // el atributo HTML `start` para que el navegador los numere en secuencia
+    // — invisible al recorrer el DOM elemento por elemento (cada <ol> local
+    // reinicia el contador `i=1` de arriba). Se detecta la secuencia de
+    // marcadores numerados consecutivos (con párrafos intercalados, sin
+    // heading/bullet que corte) y se renumera en el texto ya generado.
+    const lineas = md.split('\n');
+    let contador = 0, dentroDeLista = false;
+    for (let idx = 0; idx < lineas.length; idx++) {
+      const m = lineas[idx].match(/^(\s*)(\d+)\.(\s+)/);
+      if (m) {
+        contador = dentroDeLista ? contador + 1 : 1;
+        dentroDeLista = true;
+        lineas[idx] = lineas[idx].replace(/^(\s*)(\d+)\.(\s+)/, `${m[1]}${contador}.${m[3]}`);
+        continue;
+      }
+      if (dentroDeLista && (/^\s*#{1,6}\s/.test(lineas[idx]) || /^\s*[-*•]\s/.test(lineas[idx]))) dentroDeLista = false;
+    }
+    return lineas.join('\n');
   }
 
   // Contenedores de turno (del primer selector que matchee). Contar-y-enganchar
