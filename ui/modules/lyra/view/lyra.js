@@ -956,6 +956,22 @@ export function Local({ active = true } = {}) {
     setTimeout(() => { iframe.src = target; }, 50);
   }, [cloudUrl]);
 
+  // El hilo persistido puede estar muerto del lado del proveedor (borrado,
+  // expirado, ID inválido): ChatGPT lo redirige a home en silencio, sin
+  // error visible. relay-core.js lo detecta (getConversationKey cambia de
+  // /c/<id> a raíz sin pedido de new-chat) y avisa AURORA_CLOUD_NAV_CHANGED.
+  // Sin esto, cloudUrl seguía apuntando para siempre al hilo muerto.
+  useEffect(() => {
+    const onNavChanged = e => {
+      const url = e.detail?.url;
+      if (!url || e.detail?.paneId !== 'cloud') return;
+      setCloudUrl(prev => (url === prev ? prev : url));
+      Toast().show('☁️ El hilo guardado ya no existe, se restauró el chat activo.', 'info', 3000);
+    };
+    window.addEventListener('aurora:cloud-nav-changed', onNavChanged);
+    return () => window.removeEventListener('aurora:cloud-nav-changed', onNavChanged);
+  }, []);
+
   const toggleCloud = useCallback(() => {
     setCloudVisible(v => {
       const abriendo = !v;

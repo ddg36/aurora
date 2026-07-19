@@ -739,6 +739,28 @@ function startAuroraRelayCore(injectedAdapter) {
   };
   anunciar();
 
+  // ── Vigía de redirect inesperado ───────────────────────
+  // ChatGPT puede recibir un thread ID inválido/muerto (borrado, expirado,
+  // ID corrupto) y silenciosamente reemplazar la URL a home vía pushState
+  // tras cargar sin encontrarlo — sin error visible, sin turnos en el DOM.
+  // Confirmado en vivo: navega a /c/<id>, se queda sin turnos ~5-8s, termina
+  // en `location.pathname === '/'`. Sin este vigía, Aurora sigue creyendo
+  // que el hilo persistido (cloudUrl) es válido para siempre.
+  let claveConversacionPrevia = observe.getConversationKey();
+  setInterval(() => {
+    const clave = observe.getConversationKey();
+    if (clave === claveConversacionPrevia) return;
+    const eraHiloEspecifico = /\/c\//.test(claveConversacionPrevia || '');
+    const cayoAHome = !/\/c\//.test(clave || '');
+    claveConversacionPrevia = clave;
+    if (!eraHiloEspecifico || !cayoAHome) return;
+    // No avisar si fue un new-chat pedido por el usuario (ese flujo ya se
+    // resuelve por su cuenta vía NEW_CHAT_KEY/confirmarNuevoChatPendiente).
+    if (leerMarcaNuevoChat()) return;
+    trace('redirected_home', { url: location.href });
+    post({ type: 'AURORA_CLOUD_NAV_CHANGED', reason: 'redirected_home', url: location.href });
+  }, 1000);
+
   let ocupado = false, cancelActual = null, reqActual = null;
   let ultimoTurnoTerminado = 0;
   let ultimoFueTool = false;
