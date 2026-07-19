@@ -287,6 +287,13 @@ export function Local({ active = true } = {}) {
   // todavía); null = resuelto, hilo SIN memoria propia (ocultar todo lo
   // cloud); número = conv_id real del hilo con memoria.
   const [cloudConvIdActivo, setCloudConvIdActivo]   = useState(undefined);
+  // Hidrata desde DB (cloud_mensajes) los turnos cloud de un hilo que YA
+  // tiene memoria pero cuyo historial en memoria está vacío para ese convId
+  // — el caso típico: recargar Aurora borra el signal `historial` (efímero),
+  // pero cloud_mensajes sí persiste. Sin esto, la respuesta de un hilo con
+  // memoria real desaparecía tras cada reload, aunque el iframe (ChatGPT
+  // nativo) siguiera mostrándola normalmente.
+  const [cloudHistorialPropio, setCloudHistorialPropio] = useState([]);
   // En extensión el iframe del LLM se monta a nivel de extensión (login OK),
   // no inline. Reactivo: el caps de la extensión llega async (HELLO).
   const [usaExtPane, setUsaExtPane]                 = useState(() => (globalThis.__aurora_extContext?.value?.caps || []).includes('llmPanes'));
@@ -990,8 +997,11 @@ export function Local({ active = true } = {}) {
       // sin esto no hay forma de saber a qué mensajes _via:direct-ai/pi-tool
       // corresponde este hilo específico vs. otro que el usuario visitó antes.
       getJSON(`/db/llm/cloud/conversaciones/by-url?url=${encodeURIComponent(url)}`)
-        .then(r => setCloudConvIdActivo(r?.id ?? null))
-        .catch(() => setCloudConvIdActivo(null));
+        .then(r => {
+          setCloudConvIdActivo(r?.id ?? null);
+          setCloudHistorialPropio(Array.isArray(r?.mensajes) ? r.mensajes : []);
+        })
+        .catch(() => { setCloudConvIdActivo(null); setCloudHistorialPropio([]); });
     };
     window.addEventListener('aurora:cloud-nav-changed', onNavChanged);
     return () => window.removeEventListener('aurora:cloud-nav-changed', onNavChanged);
@@ -1194,12 +1204,29 @@ export function Local({ active = true } = {}) {
   // del proveedor (cloudConvIdActivo ya resuelto contra ESE hilo), ocultar
   // los que pertenecen a un hilo distinto — sin esto, cambiar de hilo en
   // ChatGPT mezclaba visualmente memoria de conversaciones distintas.
-  const _visiblesTodos = historialVal.filter(m => {
+  const _visiblesFiltrados = historialVal.filter(m => {
     if (m._internal) return false;
     const esCloud = m._via === 'direct-ai' || m._via === 'pi-tool';
     if (!esCloud || m._convId == null || cloudConvIdActivo === undefined) return true;
     return m._convId === cloudConvIdActivo;
   });
+  // El signal `historial` es efímero: un reload de Aurora lo vacía (viene de
+  // cargarMensajes, que solo lee la tabla `mensajes` de pi, NUNCA cloud). Si
+  // el hilo activo SÍ tiene memoria en DB (cloud_mensajes) pero no quedó
+  // ningún mensaje suyo en memoria, hidratar desde ahí — si no, la respuesta
+  // de un hilo real desaparecía tras cada reload aunque ChatGPT (el iframe)
+  // la siguiera mostrando con normalidad.
+  const tieneMemoriaEnVivo = cloudConvIdActivo != null
+    && _visiblesFiltrados.some(m => m._convId === cloudConvIdActivo);
+  const _visiblesTodos = (!tieneMemoriaEnVivo && cloudConvIdActivo != null && cloudHistorialPropio.length)
+    ? [
+        ..._visiblesFiltrados,
+        ...cloudHistorialPropio.map(m => ({
+          role: m.rol, content: m.contenido, ts: (m.capturado_en || 0) * 1000,
+          id: `cloud-hist-${m.id}`, _via: 'direct-ai', _convId: cloudConvIdActivo,
+        })),
+      ]
+    : _visiblesFiltrados;
   const visibleMessages = _visiblesTodos.length > MAX_RENDER
     ? _visiblesTodos.slice(-MAX_RENDER)
     : _visiblesTodos;
