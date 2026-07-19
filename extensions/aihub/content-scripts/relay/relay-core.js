@@ -681,10 +681,22 @@ function startAuroraRelayCore(injectedAdapter) {
 
       // Respaldo por sondeo (por si la última mutación fue la que quitó el
       // stop button y el observer ya no dispara más).
+      const STALL_MS = 15000;
+      let stallAvisado = false;
       const poll = setInterval(() => {
         if (cancelToken?.cancelled) return terminar('cancelled');
         leer();
         chequearFin();
+        // Reintento de tool colgado: el widget "Generating.../Analyzing..."
+        // sigue vivo (isToolWorking) mientras el turno de chat queda con
+        // texto congelado (sin cambios) más de STALL_MS. No es "sigue
+        // generando" normal (eso mueve lastChange); avisar a Lyra UNA vez
+        // por turno para que el usuario decida si clickear "Answer now" —
+        // nunca autoclic.
+        if (!stallAvisado && observe.isToolWorking?.() && Date.now() - lastChange > STALL_MS) {
+          stallAvisado = true;
+          post({ type: 'AURORA_CLOUD_TOOL_STALLED', aiId: providerAdapter.id, stalledMs: Date.now() - lastChange });
+        }
         if (Date.now() - start > timeoutMs) return terminar('timeout');
       }, 350);
     });
@@ -1091,6 +1103,15 @@ function startAuroraRelayCore(injectedAdapter) {
       return;
     }
     if (e.data?.type === 'AURORA_CLOUD_STOP') { detenerNube(); return; }
+    // Botón manual "Answer now": SOLO ejecuta ante pedido explícito de Lyra
+    // (clic del usuario en la cabecera Cloud). Nunca disparado por el propio
+    // watcher de stall — ese solo avisa.
+    if (e.data?.type === 'AURORA_CLOUD_ANSWER_NOW') {
+      const ok = Boolean(act.answerNow?.());
+      trace('answer_now', { ok });
+      post({ type: 'AURORA_CLOUD_ANSWER_NOW_ANSWER', requestId: e.data.requestId, ok });
+      return;
+    }
     if (e.data?.type === 'AURORA_CLOUD_NEW_CHAT') {
       try { iniciarNuevoChat(e.data.requestId); }
       catch (err) {

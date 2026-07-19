@@ -110,6 +110,12 @@
     getGeneratedImageSources: () => generatedImages({ includePending: true }),
     isGeneratedImagePending: () => Boolean(first(SELECTORS.imageWork)) && generatedImages().length === 0,
     detectCodeLang: chatgptLangLabel,
+    // Reintento de tool en progreso (widget "Generating.../Analyzing..."),
+    // vive FUERA de [data-message-author-role] — invisible al observador
+    // normal de turno. Señal de "sigue vivo de verdad" independiente del
+    // streaming de texto del chat (confirmado en vivo: el turno de chat
+    // queda congelado varios minutos mientras este widget sigue trabajando).
+    isToolWorking: () => Boolean(first(SELECTORS.toolWorking)),
   });
 
   const act = Object.freeze({
@@ -152,6 +158,20 @@
       return true;
     },
     startNewConversation: () => { location.assign('/'); return true; },
+    // Botón manual, nunca disparado automáticamente (regla explícita del
+    // usuario: "no hagas autoclic"). Búsqueda por TEXTO, no clase CSS — el
+    // selector real de este botón nunca se verificó en vivo (aparece solo
+    // durante un reintento de tool con error, difícil de reproducir a
+    // demanda); el texto "Answer now" es lo único confirmado por captura de
+    // pantalla en sesión anterior. Si no lo encuentra, no hace nada (false),
+    // sin efecto dañino.
+    answerNow() {
+      const btn = [...document.querySelectorAll('button')]
+        .find(b => /answer now|responder ahora/i.test((b.textContent || '').trim()));
+      if (!btn) return false;
+      btn.click();
+      return true;
+    },
   });
 
   const adapter = Object.freeze({

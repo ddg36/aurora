@@ -7,7 +7,7 @@ import {
   limpiarStream, borrarMensaje, parsearMensajeRico, combinarPartesRicas,
 } from '../scripts/chat/mensajes.js';
 import { enviarACloud, recuperarCloudPendiente } from '../scripts/chat/cloud.js';
-import { detenerCloud, invalidarCloudRelay } from '../../../components/shared/cloud-ask.js';
+import { detenerCloud, invalidarCloudRelay, answerNowCloud } from '../../../components/shared/cloud-ask.js';
 import { crearDuoLyraCloud } from '../scripts/chat/duo.js';
 import { urlRestaurada } from '../../../components/shared/llm-sesiones.js';
 import { chats, chatActualId, cargarChats, crearChat, eliminarChat, autoGuardar, fmtFecha, exportarChat } from '../scripts/chat/historial.js';
@@ -287,6 +287,7 @@ export function Local({ active = true } = {}) {
   // todavía); null = resuelto, hilo SIN memoria propia (ocultar todo lo
   // cloud); número = conv_id real del hilo con memoria.
   const [cloudConvIdActivo, setCloudConvIdActivo]   = useState(undefined);
+  const [cloudStalled, setCloudStalled]             = useState(false);
   // Hidrata desde DB (cloud_mensajes) los turnos cloud de un hilo que YA
   // tiene memoria pero cuyo historial en memoria está vacío para ese convId
   // — el caso típico: recargar Aurora borra el signal `historial` (efímero),
@@ -1045,6 +1046,21 @@ export function Local({ active = true } = {}) {
     window.addEventListener('aurora:cloud-conv-resolved', onConvResolved);
     return () => window.removeEventListener('aurora:cloud-conv-resolved', onConvResolved);
   }, []);
+
+  // "Answer now" (solo ChatGPT, relay-chatgpt.js act.answerNow): el relay
+  // avisa una vez cuando el reintento de tool queda "colgado" (widget de
+  // progreso vivo, texto congelado). Botón manual — nunca autoclic; se
+  // limpia solo cuando la nube deja de generar (turno cerrado, cancelado o
+  // resuelto por el propio botón).
+  useEffect(() => {
+    const onStalled = e => {
+      if (e.detail?.paneId !== 'cloud' || cloudAiId !== 'chatgpt') return;
+      setCloudStalled(true);
+    };
+    window.addEventListener('aurora:cloud-tool-stalled', onStalled);
+    return () => window.removeEventListener('aurora:cloud-tool-stalled', onStalled);
+  }, [cloudAiId]);
+  useEffect(() => { if (!cloudGenerandoVal) setCloudStalled(false); }, [cloudGenerandoVal]);
 
   // "Reconocer sesiones": desde el Centro de notificaciones (tab Cloud
   // history, que ya lista cloud_conversaciones) el usuario puede abrir
@@ -1810,6 +1826,13 @@ export function Local({ active = true } = {}) {
               ${cloudStatusTiming && html`<span class="cloud-live-timing">${cloudStatusTiming}</span>`}
             </div>
             <div class="cloud-mini-actions">
+              ${cloudStalled && cloudAiId === 'chatgpt' && html`
+                <button
+                  class="cloud-mini-btn cloud-mini-btn--answer-now"
+                  title="ChatGPT parece colgado en un reintento de herramienta. Forzar respuesta ahora."
+                  onClick=${() => { answerNowCloud(iframeRef.current); setCloudStalled(false); }}
+                >Answer now</button>
+              `}
               ${!cloudExpanded && html`
                 <button
                   class="cloud-mini-btn"

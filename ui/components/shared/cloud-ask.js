@@ -76,6 +76,11 @@ window.addEventListener('message', (e) => {
     window.dispatchEvent(new CustomEvent('aurora:cloud-sync-hilo', { detail: { ...e.data, paneId } }));
     return;
   }
+  if (e.data?.type === 'AURORA_CLOUD_TOOL_STALLED') {
+    const paneId = e.data.__llmPane || 'cloud';
+    window.dispatchEvent(new CustomEvent('aurora:cloud-tool-stalled', { detail: { ...e.data, paneId } }));
+    return;
+  }
   if (e.data?.type !== 'AURORA_CLOUD_READY') return;
   const paneId = e.data.__llmPane || 'cloud';
   if (e.source === window.parent) _extPanesReady.add(paneId);
@@ -129,6 +134,13 @@ function postAlRelay(iframe, msg) {
 // clickee el botón "Detener respuesta" del sitio.
 export function detenerCloud(iframe, paneId = 'cloud') {
   try { postAlRelay(iframe, { type: 'AURORA_CLOUD_STOP', __llmPane: paneId }); } catch (_) {}
+}
+
+// Botón manual "Answer now" (solo ChatGPT, ver relay-chatgpt.js act.answerNow).
+// Acción explícita del usuario únicamente — nunca disparado por el watcher
+// de stall, que solo avisa.
+export function answerNowCloud(iframe, paneId = 'cloud') {
+  try { postAlRelay(iframe, { type: 'AURORA_CLOUD_ANSWER_NOW', __llmPane: paneId }); } catch (_) {}
 }
 
 // Lectura fresca de la URL real del iframe, bajo demanda — no confiar en
