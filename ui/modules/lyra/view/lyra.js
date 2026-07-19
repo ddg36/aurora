@@ -1022,6 +1022,27 @@ export function Local({ active = true } = {}) {
     return () => window.removeEventListener('aurora:cloud-conv-resolved', onConvResolved);
   }, [cloudUrl]);
 
+  // "Reconocer sesiones": desde el Centro de notificaciones (tab Cloud
+  // history, que ya lista cloud_conversaciones) el usuario puede abrir
+  // directamente una conversación pasada — navega el iframe a esa URL,
+  // el vigía de relay-core.js la detecta como cambio de hilo (mismo camino
+  // que un cambio manual en el sidebar del proveedor) y el resto de la
+  // cadena ya construida (convId, hidratación) hace el resto solo.
+  useEffect(() => {
+    const onOpenUrl = e => {
+      const { url, aiId } = e.detail || {};
+      if (!url) return;
+      if (aiId) setCloudAiId(aiId);
+      setCloudUrl(url);
+      setCloudVisible(true);
+      setCloudExpanded(false);
+      setCloudHidden(false);
+      setTimeout(() => recargarCloudIframe(url), 80);
+    };
+    window.addEventListener('aurora:cloud-open-url', onOpenUrl);
+    return () => window.removeEventListener('aurora:cloud-open-url', onOpenUrl);
+  }, [recargarCloudIframe]);
+
   const toggleCloud = useCallback(() => {
     setCloudVisible(v => {
       const abriendo = !v;

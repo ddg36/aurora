@@ -759,6 +759,16 @@ function startAuroraRelayCore(injectedAdapter) {
   // primero y actualiza <title> unos segundos después (async, vía su router)
   // — confirmado en vivo: al momento del cambio de pathname el título aún
   // decía el genérico "ChatGPT", el nombre real llegó ~2s más tarde.
+  // Intervalo corto (no 1000ms) para achicar la ventana de carrera: si el
+  // usuario cambia de hilo y escribe en Lyra casi al instante, cloudUrl en
+  // React puede seguir apuntando al hilo viejo por un ciclo — enviarACloud
+  // usaría ese url desactualizado para resolver/crear la conversación,
+  // persistiendo el mensaje bajo el conv_id INCORRECTO (corrupción real de
+  // cloud_mensajes, no solo un problema visual). 300ms no la elimina del
+  // todo (seguiría existiendo un poll, no un evento síncrono — el iframe es
+  // cross-origin, no se puede leer su location.href directo desde afuera),
+  // pero la reduce ~3x del riesgo previo sin tocar el protocolo de mensajería
+  // ya verificado hoy (mismo orden de magnitud que confirmarNuevoChatPendiente).
   let claveConversacionPrevia = '';
   let tituloPrevio = '';
   setInterval(() => {
@@ -772,7 +782,7 @@ function startAuroraRelayCore(injectedAdapter) {
     if (leerMarcaNuevoChat()) return;
     trace('conversation_changed', { url: location.href, titulo });
     post({ type: 'AURORA_CLOUD_NAV_CHANGED', reason: 'conversation_changed', url: location.href, titulo });
-  }, 1000);
+  }, 300);
 
   let ocupado = false, cancelActual = null, reqActual = null;
   let ultimoTurnoTerminado = 0;

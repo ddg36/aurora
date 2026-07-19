@@ -86,12 +86,13 @@ export function NotifCenter({ onClose }) {
               ${convs.length === 0 && html`<div class="text-white/30 text-sm text-center py-8">Sin conversaciones capturadas</div>`}
               ${convs.map(c => html`
                 <div key=${c.id} class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5 text-xs">
-                  <div class="flex-1 min-w-0">
+                  <div class="flex-1 min-w-0 cursor-pointer" title="Abrir en Lyra Cloud"
+                    onClick=${() => { window.dispatchEvent(new CustomEvent('aurora:cloud-open-url', { detail: { url: c.url, aiId: c.llm } })); onClose?.(); }}>
                     <div class="text-white/80 truncate">${c.titulo || c.url || '(sin título)'}</div>
                     <div class="text-[10px] text-white/30">${c.llm} · ${tiempoRel(c.capturado_en)}</div>
                   </div>
-                  ${c.url && html`<a href=${c.url} target="_blank" class="text-white/40 hover:text-white">↗</a>`}
-                  <${Button} iconOnly variant="danger" onClick=${() => borrarConv(c.id)} title="Borrar">🗑<//>
+                  ${c.url && html`<a href=${c.url} target="_blank" class="text-white/40 hover:text-white" title="Abrir en pestaña nueva" onClick=${e => e.stopPropagation()}>↗</a>`}
+                  <${Button} iconOnly variant="danger" onClick=${e => { e.stopPropagation(); borrarConv(c.id); }} title="Borrar">🗑<//>
                 </div>
               `)}
             </div>
