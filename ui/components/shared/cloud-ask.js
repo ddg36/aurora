@@ -71,6 +71,11 @@ window.addEventListener('message', (e) => {
     window.dispatchEvent(new CustomEvent('aurora:cloud-nav-changed', { detail: { ...e.data, paneId } }));
     return;
   }
+  if (e.data?.type === 'AURORA_CLOUD_SYNC_HILO') {
+    const paneId = e.data.__llmPane || 'cloud';
+    window.dispatchEvent(new CustomEvent('aurora:cloud-sync-hilo', { detail: { ...e.data, paneId } }));
+    return;
+  }
   if (e.data?.type !== 'AURORA_CLOUD_READY') return;
   const paneId = e.data.__llmPane || 'cloud';
   if (e.source === window.parent) _extPanesReady.add(paneId);

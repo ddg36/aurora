@@ -150,6 +150,39 @@ async function persistir(convId, rol, contenido) {
   }
 }
 
+// Sincronización de hilo completo: la conversación tiene identidad estable
+// (conv_id, resuelto por URL) — en vez de cazar cada turno nuevo en tiempo
+// real (frágil, intentado y descartado), relay-core.js manda TODO el hilo
+// visible cada vez que se estabiliza. Acá se compara contra lo YA persistido
+// (dedup por rol+texto, mismo patrón que la fusión de hidratación en
+// lyra.js) y solo se agrega lo que falte — idempotente, cubre tanto lo que
+// pasó por el composer de Lyra como lo escrito directo en el proveedor,
+// sin necesidad de diferenciar el origen. _espontaneo:true en los que no
+// estaban ya en historial (evita marcar como "directo" lo que la propia
+// sesión de Lyra ya pintó vía enviarACloud).
+window.addEventListener('aurora:cloud-sync-hilo', async e => {
+  const { url, aiId, turnos } = e.detail || {};
+  if (!Array.isArray(turnos) || !turnos.length) return;
+  const convId = await asegurarConversacion(aiId, url);
+  if (!convId) return;
+  let existentes;
+  try { existentes = await getJSON(`/db/llm/cloud/conversaciones/by-url?url=${encodeURIComponent(url)}`); }
+  catch (_) { existentes = null; }
+  const yaGuardados = new Set((existentes?.mensajes || []).map(m => `${m.rol} ${m.contenido}`));
+  const yaEnPantalla = new Set(historial.value.map(m => `${m.role} ${m.content}`));
+  for (const { rol, texto } of turnos) {
+    const clave = `${rol} ${texto}`;
+    if (yaGuardados.has(clave)) continue; // ya persistido, no duplicar en DB
+    await persistir(convId, rol, texto);
+    if (yaEnPantalla.has(clave)) continue; // ya visible (lo pintó enviarACloud), no duplicar en pantalla
+    const { draft, texto: textoLimpio } = rol === 'assistant' ? separarToolDraft(texto) : { draft: null, texto: '' };
+    agregar({
+      role: rol, content: textoLimpio || texto, _via: 'direct-ai', _espontaneo: true, _convId: convId,
+      _toolDraft: draft || undefined,
+    });
+  }
+});
+
 // Resultado canónico devuelto dentro de una entry de JSON Family.
 function textoResultadoFamily(r) {
   if (!r?.ok && !r?.output) return 'Tool error: ' + (r?.error || 'unknown');

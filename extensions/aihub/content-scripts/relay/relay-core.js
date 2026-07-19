@@ -852,15 +852,52 @@ function startAuroraRelayCore(injectedAdapter) {
   // respuesta) — así un futuro observador puede inferir que el assistant que
   // lo sigue también es de Lyra aunque su propio id aún no esté registrado.
   const LYRA_TURN_IDS_KEY = 'aurora_lyra_turn_ids_v1';
+  function leerTurnosDeLyra() {
+    try { return JSON.parse(sessionStorage.getItem(LYRA_TURN_IDS_KEY) || '[]'); } catch (_) { return []; }
+  }
   function marcarTurnoDeLyra(turnId) {
     if (!turnId) return;
-    let arr;
-    try { arr = JSON.parse(sessionStorage.getItem(LYRA_TURN_IDS_KEY) || '[]'); } catch (_) { arr = []; }
+    const arr = leerTurnosDeLyra();
     if (arr.includes(turnId)) return;
     arr.push(turnId);
     if (arr.length > 200) arr = arr.slice(-200); // acotar: turnos viejos caen
     try { sessionStorage.setItem(LYRA_TURN_IDS_KEY, JSON.stringify(arr)); } catch (_) {}
   }
+
+  // ── Sincronización de hilo completo (no turno-por-turno) ───────────────
+  // Corrección de diseño: un observador de "turno espontáneo" en tiempo real
+  // (estabilidad por turno, Set de turnIds, 3 chequeos) resultó frágil —
+  // vivía anidado en el scope equivocado (bug real: markdownMedido no
+  // accesible ahí, ReferenceError silencioso en cada intento, el mensaje
+  // nunca salía). La idea correcta: la conversación YA tiene identidad
+  // estable (conv_id, resuelto por URL en el frontend) — en vez de cazar
+  // cada turno nuevo con timers, simplemente sincronizar TODO el hilo
+  // visible cada vez que se estabiliza (deja de generar), dedup por texto
+  // contra lo ya persistido (mismo patrón que la fusión de hidratación en
+  // lyra.js). Idempotente: turnos ya guardados no se reenvían, solo los
+  // que falten — sin importar si vinieron de un ASK de Lyra o de escritura
+  // directa en el sitio, y sin necesidad de diferenciar el origen.
+  let syncTimer = null;
+  const sincronizarHilo = () => {
+    syncTimer = null;
+    if (ocupado || observe.isGenerating()) return; // esperar a que se asiente
+    // Orden real de aparición (no dos listas separadas): user/assistant se
+    // intercalan por posición real en el DOM, vía los nodos que el contrato
+    // YA expone (compareDocumentPosition, no un selector nuevo).
+    const turnos = [
+      ...(observe.getUserTurns?.() || []).map(nodo => ({ rol: 'user', nodo, texto: (nodo.innerText || '').trim() })),
+      ...(observe.getAssistantTurns?.() || []).map(nodo => ({ rol: 'assistant', nodo, texto: textOf(nodo) })),
+    ].filter(t => t.texto)
+      .sort((a, b) => (a.nodo.compareDocumentPosition(b.nodo) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1)
+      .map(({ rol, texto }) => ({ rol, texto }));
+    if (!turnos.length) return;
+    post({ type: 'AURORA_CLOUD_SYNC_HILO', url: location.href, aiId: providerAdapter.id, turnos });
+  };
+  new MutationObserver(() => {
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(sincronizarHilo, 2200);
+  }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  setTimeout(sincronizarHilo, 2200); // primer intento sin esperar la primera mutación
 
   // El primer envío de una conversación suele navegar /app → /app/<id>.
   // Esa navegación destruye el content script, pero NO la generación del

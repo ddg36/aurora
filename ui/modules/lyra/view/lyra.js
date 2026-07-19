@@ -977,31 +977,51 @@ export function Local({ active = true } = {}) {
     setTimeout(() => { iframe.src = target; }, 50);
   }, [cloudUrl]);
 
-  // relay-core.js vigila getConversationKey() y avisa CUALQUIER cambio de
-  // hilo (click manual del usuario en el sidebar del proveedor, o un hilo
-  // muerto/borrado que el sitio redirige a home en silencio sin error
-  // visible). Sin esto, cloudUrl y el título mostrado quedaban desincronizados
-  // del hilo real que el usuario está viendo en el iframe.
+  // relay-core.js vigila getConversationKey() (MutationObserver, no poll) y
+  // avisa cambio de hilo (click manual del usuario en el sidebar del
+  // proveedor, o un hilo muerto/borrado que el sitio redirige a home en
+  // silencio sin error visible). Sin esto, cloudUrl y el título mostrado
+  // quedaban desincronizados del hilo real que el usuario ve en el iframe.
+  //
+  // reason distingue dos señales de gravedad muy distinta (mismo evento,
+  // separadas en el emisor): 'thread_changed' es el hilo real cambiando —
+  // dispara el fetch pesado a by-url. 'title_only' es solo el <title> de
+  // ChatGPT terminando de nombrarse (asíncrono, varios segundos después de
+  // la navegación) — NUNCA debe disparar fetch, solo actualiza el label.
+  // Antes ambos casos compartían un solo aviso indiscriminado: cada cambio
+  // de título re-disparaba by-url completo (sin LIMIT), confirmado en vivo
+  // saturando el endpoint innecesariamente.
+  const fetchSeqRef = useRef(0);
   useEffect(() => {
     const onNavChanged = e => {
       const url = e.detail?.url;
+      const reason = e.detail?.reason;
       if (!url || e.detail?.paneId !== 'cloud') return;
+      setCloudTitulo(e.detail?.titulo || '');
+      if (reason === 'title_only') return; // solo label, nunca dispara fetch
       const eraHiloEspecifico = /\/c\//.test(cloudUrl || '');
       const esAhoraHome = !/\/c\//.test(url);
       setCloudUrl(prev => (url === prev ? prev : url));
-      setCloudTitulo(e.detail?.titulo || '');
       if (eraHiloEspecifico && esAhoraHome) {
         Toast().show('☁️ El hilo guardado ya no existe, se restauró el chat activo.', 'info', 3000);
       }
       // Resuelve si ESTE hilo ya tiene memoria propia guardada (conv_id) —
       // sin esto no hay forma de saber a qué mensajes _via:direct-ai/pi-tool
       // corresponde este hilo específico vs. otro que el usuario visitó antes.
+      // Guard de secuencia: si dos thread_changed reales y rápidos disparan
+      // fetches que resuelven fuera de orden, solo el último DISPARADO puede
+      // aplicar su resultado — descarta respuestas obsoletas.
+      const miSeq = ++fetchSeqRef.current;
       getJSON(`/db/llm/cloud/conversaciones/by-url?url=${encodeURIComponent(url)}`)
         .then(r => {
+          if (miSeq !== fetchSeqRef.current) return;
           setCloudConvIdActivo(r?.id ?? null);
           setCloudHistorialPropio(Array.isArray(r?.mensajes) ? r.mensajes : []);
         })
-        .catch(() => { setCloudConvIdActivo(null); setCloudHistorialPropio([]); });
+        .catch(() => {
+          if (miSeq !== fetchSeqRef.current) return;
+          setCloudConvIdActivo(null); setCloudHistorialPropio([]);
+        });
     };
     window.addEventListener('aurora:cloud-nav-changed', onNavChanged);
     return () => window.removeEventListener('aurora:cloud-nav-changed', onNavChanged);
@@ -1457,6 +1477,9 @@ export function Local({ active = true } = {}) {
               : esExterno
                 ? html`<${RolProveedor} aiId=${cloudAiId} label=${AI_LABELS[cloudAiId] || 'AI ext'} />`
                 : rolLyra();
+          // No confundir con una conversación real de Lyra: el usuario escribió
+          // esto directo en el iframe del proveedor, sin pasar por el composer.
+          const marcaEspontaneo = msg._espontaneo && html`<span class="cloud-live-status" title="Escrito directo en el proveedor, no por Lyra">directo</span>`;
 
           if (msg.role === 'assistant') {
             const parsed = combinarPartesRicas(parsearMensajeRico(msg.content));
@@ -1464,6 +1487,7 @@ export function Local({ active = true } = {}) {
               <div key=${msgKey} class=${'message assistant' + (esExterno ? ' direct-ai' : '') + (esPiTool ? ' pi-tool' : '') + (esPiTool && msg._toolError ? ' is-error' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
                 <div class="message-header">
                   <span class="role">${rolLabel}</span>
+                  ${marcaEspontaneo}
                   <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
                   ${msg.id && html`
                     <button
@@ -1572,6 +1596,7 @@ export function Local({ active = true } = {}) {
             <div key=${msgKey} class=${'message ' + msg.role + (esExternoFinal ? ' direct-ai' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
               <div class="message-header">
                 <span class="role">${rolLabelFinal}</span>
+                ${marcaEspontaneo}
                 <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
                 ${msg.id && html`
                   <button
