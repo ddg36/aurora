@@ -1027,20 +1027,24 @@ export function Local({ active = true } = {}) {
     return () => window.removeEventListener('aurora:cloud-nav-changed', onNavChanged);
   }, [cloudUrl]);
 
-  // Autoritativo: cloud.js conoce el convId real que está usando AHORA para
-  // el turno en curso — evita la carrera donde by-url resuelve "sin memoria"
-  // (null) antes de que el turno cree la conversación, lo que ocultaría la
-  // propia respuesta recién generada (el filtro de _visiblesTodos la trataría
-  // como de "otro hilo").
+  // Autoritativo: cloud.js conoce el convId (y la URL real leída fresca del
+  // iframe) que está usando AHORA para el turno en curso — no depender de
+  // que cloudUrl (React) ya haya sido sincronizado por el nav-changed async
+  // independiente. Bug real verificado en vivo: exigir url === cloudUrl acá
+  // dejaba cloudConvIdActivo atascado en el valor VIEJO durante todo el
+  // streaming (cloudUrl tardaba en sincronizarse), y el filtro de
+  // _visiblesTodos ocultaba el placeholder hasta que algo más lo destrababa
+  // — percibido como "no streamea, aparece de golpe al final".
   useEffect(() => {
     const onConvResolved = e => {
       const { url, convId } = e.detail || {};
-      if (!url || convId == null || url !== cloudUrl) return;
+      if (!url || convId == null) return;
+      setCloudUrl(prev => (url === prev ? prev : url));
       setCloudConvIdActivo(convId);
     };
     window.addEventListener('aurora:cloud-conv-resolved', onConvResolved);
     return () => window.removeEventListener('aurora:cloud-conv-resolved', onConvResolved);
-  }, [cloudUrl]);
+  }, []);
 
   // "Reconocer sesiones": desde el Centro de notificaciones (tab Cloud
   // history, que ya lista cloud_conversaciones) el usuario puede abrir
