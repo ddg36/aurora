@@ -123,6 +123,12 @@
 .cloud-mini-label {
   font-size: 11px; font-weight: 700; color: var(--text); letter-spacing: .02em;
 }
+/* Título real del hilo activo en el proveedor (document.title del sitio) —
+   trunca en vez de romper el layout de la cabecera si es largo. */
+.cloud-thread-title {
+  font-size: 10px; color: var(--text-dim); max-width: 120px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
 .cloud-live-status {
   display:inline-flex; align-items:center; gap:5px; min-height:20px; padding:2px 7px;
   border-radius:999px; font-size:9px; font-weight:650; color:var(--text-dim);

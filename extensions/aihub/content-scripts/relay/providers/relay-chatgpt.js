@@ -12,6 +12,16 @@
     generatedImage: ['[class*="imagegen"] img', '[data-testid*="image"] img', '.group\\/imagegen-image img'],
     imageWork: ['[class*="imagegen"]', '[class*="image-gen"]'],
     attachmentPreview: ['[data-testid*="preview" i]', '[class*="attachment" i]', 'button[aria-label^="Remove file" i]', 'button[aria-label^="Remove image" i]', 'button[aria-label^="Quitar archivo" i]'],
+    // Reintento de tool tras un error (bucle agéntico JSON Family): ChatGPT
+    // muestra un widget de progreso ("Generating...", "Analyzing...") FUERA
+    // del turno de chat — no vive dentro de [data-message-author-role], el
+    // relay que solo observa el turno nunca lo ve. Confirmado en vivo: el
+    // turno de chat queda con texto congelado (no cambia) mientras este
+    // widget shimmer sigue trabajando de verdad varios minutos; sin vigilarlo
+    // el relay no tiene forma de distinguir "se colgó" de "sigue generando en
+    // otro lado". "Answer now" es el botón que ChatGPT mismo ofrece para
+    // forzar el corte de ese reintento.
+    toolWorking: ['.loading-shimmer-tertiary'],
   });
 
   const first = (selectors, root = document) => selectors.map(s => root.querySelector(s)).find(Boolean) || null;
@@ -87,6 +97,10 @@
     isGenerating: () => Boolean(visibleStop()),
     isComplete: () => false,
     getConversationKey: () => location.pathname,
+    // ChatGPT pone el título real del hilo en <title> (mismo texto que el
+    // sidebar) — más robusto que buscar el link activo del sidebar, que
+    // puede no estar montado/visible según el estado del panel.
+    getConversationTitle: () => document.title,
     isNewConversationReady(snapshot) {
       const routeClean = !/^\/c\//.test(location.pathname);
       const count = all(SELECTORS.assistant).length;

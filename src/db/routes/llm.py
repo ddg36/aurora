@@ -100,6 +100,19 @@ class LlmController(Controller):
         uid = request.state.usuario_id
         db = await get_db()
         now = int(time.time())
+        async with db.execute(
+            "SELECT id FROM cloud_conversaciones WHERE usuario_id=? AND url=?",
+            (uid, data.url),
+        ) as cur:
+            existente = await cur.fetchone()
+        if existente:
+            if data.titulo:
+                await db.execute(
+                    "UPDATE cloud_conversaciones SET titulo=?, capturado_en=? WHERE id=?",
+                    (data.titulo, now, existente["id"]),
+                )
+                await db.commit()
+            return {"id": existente["id"]}
         cur = await db.execute(
             """INSERT INTO cloud_conversaciones (usuario_id, llm, url, titulo, capturado_en)
                VALUES (?,?,?,?,?)""",
@@ -120,6 +133,26 @@ class LlmController(Controller):
         )
         await db.commit()
         return {"ok": True}
+
+    @get("/cloud/conversaciones/by-url")
+    async def get_conversacion_by_url(self, request: Request, url: str) -> Optional[dict]:
+        uid = request.state.usuario_id
+        db = await get_db()
+        async with db.execute(
+            "SELECT id, titulo, capturado_en FROM cloud_conversaciones WHERE usuario_id=? AND url=?",
+            (uid, url),
+        ) as cur:
+            conv = await cur.fetchone()
+        if not conv:
+            return None
+        async with db.execute(
+            """SELECT id, rol, contenido, capturado_en
+               FROM cloud_mensajes WHERE conv_id=?
+               ORDER BY id""",
+            (conv["id"],),
+        ) as cur:
+            mensajes = await cur.fetchall()
+        return {"id": conv["id"], "titulo": conv["titulo"], "mensajes": [dict(m) for m in mensajes]}
 
     @get("/cloud/conversaciones")
     async def list_conversaciones(self, request: Request) -> list:

@@ -273,6 +273,11 @@ export function Local({ active = true } = {}) {
   // estuviera trabajando con ChatGPT.
   const [cloudUrl, setCloudUrl]                     = usePersistedState('lyra_cloud_url', AI_URLS.gemini);
   const [cloudAiId, setCloudAiId]                   = usePersistedState('lyra_cloud_ai', 'gemini');
+  // Título real del hilo activo en el proveedor (document.title del sitio,
+  // ej. "Saludos informales") — reportado por relay-core.js en cada cambio
+  // de conversación. Se muestra al lado de "ChatGPT" en la cabecera del panel
+  // para que el usuario sepa en qué sesión concreta está parado.
+  const [cloudTitulo, setCloudTitulo]               = useState('');
   // En extensión el iframe del LLM se monta a nivel de extensión (login OK),
   // no inline. Reactivo: el caps de la extensión llega async (HELLO).
   const [usaExtPane, setUsaExtPane]                 = useState(() => (globalThis.__aurora_extContext?.value?.caps || []).includes('llmPanes'));
@@ -956,21 +961,26 @@ export function Local({ active = true } = {}) {
     setTimeout(() => { iframe.src = target; }, 50);
   }, [cloudUrl]);
 
-  // El hilo persistido puede estar muerto del lado del proveedor (borrado,
-  // expirado, ID inválido): ChatGPT lo redirige a home en silencio, sin
-  // error visible. relay-core.js lo detecta (getConversationKey cambia de
-  // /c/<id> a raíz sin pedido de new-chat) y avisa AURORA_CLOUD_NAV_CHANGED.
-  // Sin esto, cloudUrl seguía apuntando para siempre al hilo muerto.
+  // relay-core.js vigila getConversationKey() y avisa CUALQUIER cambio de
+  // hilo (click manual del usuario en el sidebar del proveedor, o un hilo
+  // muerto/borrado que el sitio redirige a home en silencio sin error
+  // visible). Sin esto, cloudUrl y el título mostrado quedaban desincronizados
+  // del hilo real que el usuario está viendo en el iframe.
   useEffect(() => {
     const onNavChanged = e => {
       const url = e.detail?.url;
       if (!url || e.detail?.paneId !== 'cloud') return;
+      const eraHiloEspecifico = /\/c\//.test(cloudUrl || '');
+      const esAhoraHome = !/\/c\//.test(url);
       setCloudUrl(prev => (url === prev ? prev : url));
-      Toast().show('☁️ El hilo guardado ya no existe, se restauró el chat activo.', 'info', 3000);
+      setCloudTitulo(e.detail?.titulo || '');
+      if (eraHiloEspecifico && esAhoraHome) {
+        Toast().show('☁️ El hilo guardado ya no existe, se restauró el chat activo.', 'info', 3000);
+      }
     };
     window.addEventListener('aurora:cloud-nav-changed', onNavChanged);
     return () => window.removeEventListener('aurora:cloud-nav-changed', onNavChanged);
-  }, []);
+  }, [cloudUrl]);
 
   const toggleCloud = useCallback(() => {
     setCloudVisible(v => {
@@ -1666,6 +1676,7 @@ export function Local({ active = true } = {}) {
                 ? html`<img class="cloud-provider-mark cloud-provider-favicon" src=${iconoUrlPara(cloudAiId)} alt="" onError=${() => setFaviconFallo(f => ({ ...f, [cloudAiId]: true }))} />`
                 : html`<span class="cloud-provider-mark">${AI_ICONOS[cloudAiId] || '☁'}</span>`}
               <span class="cloud-mini-label">${cloudAiLabel}</span>
+              ${cloudTitulo && html`<span class="cloud-thread-title" title=${cloudTitulo}>${cloudTitulo}</span>`}
               <span class=${'cloud-live-status cloud-live-status--' + cloudStatusTone}>
                 <span class="cloud-live-dot"></span>${cloudStatusLabel}
               </span>

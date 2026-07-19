@@ -739,26 +739,39 @@ function startAuroraRelayCore(injectedAdapter) {
   };
   anunciar();
 
-  // ── Vigía de redirect inesperado ───────────────────────
-  // ChatGPT puede recibir un thread ID inválido/muerto (borrado, expirado,
-  // ID corrupto) y silenciosamente reemplazar la URL a home vía pushState
-  // tras cargar sin encontrarlo — sin error visible, sin turnos en el DOM.
-  // Confirmado en vivo: navega a /c/<id>, se queda sin turnos ~5-8s, termina
-  // en `location.pathname === '/'`. Sin este vigía, Aurora sigue creyendo
-  // que el hilo persistido (cloudUrl) es válido para siempre.
-  let claveConversacionPrevia = observe.getConversationKey();
+  // ── Vigía de cambio de conversación ────────────────────
+  // Cubre DOS casos con la misma señal (getConversationKey === location.pathname):
+  // (a) el usuario clickea otro hilo en el sidebar del propio sitio — Aurora
+  //     debe reconocer esa sesión y restaurar SU historial (si Lyra ya habló
+  //     ahí antes) en vez de seguir mezclando con el hilo anterior;
+  // (b) un thread ID inválido/muerto (borrado, expirado) redirige a home en
+  //     silencio tras cargar sin encontrarlo — sin error visible, sin turnos
+  //     en el DOM (confirmado en vivo: navega a /c/<id>, se queda sin turnos
+  //     ~5-8s, termina en pathname '/'). Sin este vigía, Aurora seguía
+  //     creyendo el hilo persistido (cloudUrl) válido para siempre.
+  // Se manda SIEMPRE que la clave cambia (no solo el caso b) — el consumidor
+  // decide qué hacer con la URL/título nuevos (restaurar historial si existe
+  // en DB, o vaciar si es un hilo sin memoria previa).
+  // Arranca en '' (no en la clave actual) para que la primera comparación ya
+  // dispare un aviso — así el consumidor conoce el título del hilo inicial
+  // sin tener que esperar a que el usuario cambie de conversación primero.
+  // Vigila TAMBIÉN el título solo (no solo el pathname): ChatGPT navega
+  // primero y actualiza <title> unos segundos después (async, vía su router)
+  // — confirmado en vivo: al momento del cambio de pathname el título aún
+  // decía el genérico "ChatGPT", el nombre real llegó ~2s más tarde.
+  let claveConversacionPrevia = '';
+  let tituloPrevio = '';
   setInterval(() => {
     const clave = observe.getConversationKey();
-    if (clave === claveConversacionPrevia) return;
-    const eraHiloEspecifico = /\/c\//.test(claveConversacionPrevia || '');
-    const cayoAHome = !/\/c\//.test(clave || '');
+    const titulo = observe.getConversationTitle?.() || '';
+    if (clave === claveConversacionPrevia && titulo === tituloPrevio) return;
     claveConversacionPrevia = clave;
-    if (!eraHiloEspecifico || !cayoAHome) return;
+    tituloPrevio = titulo;
     // No avisar si fue un new-chat pedido por el usuario (ese flujo ya se
     // resuelve por su cuenta vía NEW_CHAT_KEY/confirmarNuevoChatPendiente).
     if (leerMarcaNuevoChat()) return;
-    trace('redirected_home', { url: location.href });
-    post({ type: 'AURORA_CLOUD_NAV_CHANGED', reason: 'redirected_home', url: location.href });
+    trace('conversation_changed', { url: location.href, titulo });
+    post({ type: 'AURORA_CLOUD_NAV_CHANGED', reason: 'conversation_changed', url: location.href, titulo });
   }, 1000);
 
   let ocupado = false, cancelActual = null, reqActual = null;

@@ -45,6 +45,7 @@
     isGenerating: () => Boolean(stopControl()),
     isComplete: turn => Boolean(turn && first(SELECTORS.complete, turn)),
     getConversationKey: () => location.pathname,
+    getConversationTitle: () => document.title,
     isNewConversationReady(snapshot) {
       const count = all(SELECTORS.assistant).length;
       const routeClean = /^\/app\/?$/.test(location.pathname);

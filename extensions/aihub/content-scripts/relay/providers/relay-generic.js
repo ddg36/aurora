@@ -23,6 +23,7 @@
     getTurnId: turn => turn?.getAttribute?.('data-message-id') || turn?.getAttribute?.('data-turn-id') || turn?.id || '',
     isGenerating: () => Boolean(first(SELECTORS.stop)), isComplete: () => false,
     getConversationKey: () => location.pathname, isNewConversationReady: () => false,
+    getConversationTitle: () => document.title,
     getGeneratedImages: () => [], getGeneratedImageSources: () => [], isGeneratedImagePending: () => false,
   });
   const act = Object.freeze({
