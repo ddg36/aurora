@@ -1,6 +1,17 @@
 export const { signal, computed } = globalThis.preactSignals;
 
-export const activeTab   = signal('inicio');
+// Mirror sincrónico de la última tab (misma clave que sesion-ui.js escribe).
+// activeTab arrancaba SIEMPRE en 'inicio' y solo cambiaba tras el round-trip
+// async de restaurarTab() (~0.5s) — se veía el menú principal un instante
+// antes de saltar a la tab real en cada boot. Leer el mirror acá, síncrono,
+// antes del primer render, evita el flash (mismo patrón que usePersistedState
+// usa para todo lo demás en /db/ajustes).
+const TAB_MIRROR_KEY = 'aurora_ui_last_tab_mirror';
+function leerTabEspejo() {
+  try { return localStorage.getItem(TAB_MIRROR_KEY) || 'inicio'; } catch { return 'inicio'; }
+}
+
+export const activeTab   = signal(leerTabEspejo());
 export const theme       = signal('violet');
 export const themeMode   = signal('dark');
 export const background  = signal('void');

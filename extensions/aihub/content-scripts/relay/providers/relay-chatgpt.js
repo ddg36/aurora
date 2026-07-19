@@ -104,7 +104,13 @@
     isNewConversationReady(snapshot) {
       const routeClean = !/^\/c\//.test(location.pathname);
       const count = all(SELECTORS.assistant).length;
-      return Boolean(observe.getInput() && (count === 0 || count < (snapshot?.beforeCount || 0)) && (routeClean || location.href !== snapshot?.beforeUrl));
+      // "Libre para responder" = el composer existe Y no hay nada generando
+      // (sin botón Stop visible). Sin este chequeo, un hilo que restaura su
+      // historial viejo justo después de mostrar `/` en blanco podía colar
+      // como "listo" mientras ChatGPT todavía estaba terminando de cargar/
+      // generar algo — la señal real de "puede recibir un mensaje ahora" es
+      // la ausencia de Stop, no solo que el input exista.
+      return Boolean(observe.getInput() && !visibleStop() && (count === 0 || count < (snapshot?.beforeCount || 0)) && (routeClean || location.href !== snapshot?.beforeUrl));
     },
     getGeneratedImages: () => generatedImages(),
     getGeneratedImageSources: () => generatedImages({ includePending: true }),

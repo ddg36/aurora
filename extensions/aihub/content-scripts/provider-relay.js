@@ -68,6 +68,37 @@
     }
   });
 
+  // Fallback MISMO-FRAME (isolated → MAIN, ver relay-core.js) para cuando
+  // este courier vive dentro de un frame SIN tab (side panel: confirmado en
+  // vivo que chrome.tabs.getCurrent() da null ahí) — chrome.scripting.
+  // executeScript, que usa background.js para snapshotProvider/deliverToOrigin,
+  // EXIGE tabId y no puede alcanzar ese frame. postMessage no depende de tabs:
+  // isolated y MAIN comparten el mismo `window`. Solo se intenta cuando el
+  // camino normal (background) falla específicamente por falta de tab — el
+  // caso común (tab/newtab) sigue exactamente igual que antes.
+  const SIN_TAB_ERROR = /no pertenece a una pesta.a viva/i;
+  function sameFrameRequest(type, responseType, payload, timeoutMs = 15000) {
+    return new Promise(resolve => {
+      const requestId = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      let done = false;
+      const finish = value => {
+        if (done) return;
+        done = true;
+        window.removeEventListener('message', onMsg);
+        clearTimeout(timer);
+        resolve(value);
+      };
+      const onMsg = e => {
+        if (e.data?.type === responseType && e.data.requestId === requestId) finish(e.data);
+      };
+      window.addEventListener('message', onMsg);
+      const timer = setTimeout(() => finish({ ok: false, delivered: false, error: 'same_frame_timeout' }), timeoutMs);
+      window.postMessage({ type, requestId, ...payload }, '*');
+    });
+  }
+  const sameFrameSnapshot = () => sameFrameRequest('AURORA_MAIN_SNAPSHOT_REQUEST', 'AURORA_MAIN_SNAPSHOT_RESPONSE', {});
+  const sameFrameDeliver = delivery => sameFrameRequest('AURORA_MAIN_DELIVER_REQUEST', 'AURORA_MAIN_DELIVER_RESPONSE', { delivery });
+
   let heartbeatBusy = false;
   async function endpointHeartbeat(phase = 'heartbeat') {
     if (heartbeatBusy || disposed) return;
@@ -125,7 +156,10 @@
     if (processing || root.dataset.auroraCloudAskActive === '1') {
       return mark('waiting', processing ? 'aurora_processing' : 'cloud_ask_active');
     }
-    const snapshotResult = await runtimeMessage({ type: 'AURORA_RELAY_SNAPSHOT' });
+    let snapshotResult = await runtimeMessage({ type: 'AURORA_RELAY_SNAPSHOT' });
+    if (!snapshotResult?.ok && SIN_TAB_ERROR.test(snapshotResult?.error || '')) {
+      snapshotResult = await sameFrameSnapshot();
+    }
     if (!snapshotResult?.ok) {
       if (snapshotResult?.transient) {
         mark('waiting', 'runtime_channel_reconnecting');
@@ -187,11 +221,22 @@
         throw new Error('JSON Family respondió sin contenido para entregar.');
       }
       mark('delivering', requestId);
-      const delivery = await runtimeMessage({
+      let delivery = await runtimeMessage({
         type: 'AURORA_RELAY_DELIVER', requestId,
         endpointId: root.dataset.auroraEndpointId || activeRequest.snapshot?.endpointId || null,
         delivery: deliveryPayload,
       });
+      // El fallback mismo-frame solo maneja texto (relay-core.js hace
+      // insertText+submit) — el feedback de tool SIEMPRE es texto, así que
+      // cubre el caso real; imágenes/archivos en un frame sin tab quedan
+      // fuera de alcance por ahora (no hay caso de uso conocido todavía).
+      if (!delivery?.delivered && SIN_TAB_ERROR.test(delivery?.error || '')) {
+        delivery = await sameFrameDeliver(deliveryPayload);
+        // La entrega mismo-frame no pasa por deliverToOrigin (background), así
+        // que el ACK server-side (evita reinyectar en un replay) hay que
+        // pedirlo aparte.
+        if (delivery?.delivered) runtimeMessage({ type: 'AURORA_RELAY_ACK', requestId }).catch(() => {});
+      }
       if (!delivery?.delivered) { const error = new Error(delivery?.error || 'El proveedor no confirmó la entrega.'); error.transient = delivery?.transient === true; throw error; }
       lastFingerprint = activeRequest.fingerprint; if (pending === activeRequest) pending = null; mark('delivered', requestId);
     } catch (error) {

@@ -186,7 +186,11 @@ function startAuroraRelayCore(injectedAdapter) {
         // tenga fondo temizado. domToMarkdown no conoce el DOM de ningún
         // proveedor: delega en el driver activo si expone el hook.
         const lang = m ? m[1] : (observe.detectCodeLang?.(node) || '');
-        const txt = (target.innerText || target.textContent || '').replace(/\n+$/, '');
+        // Mismo motivo que detectCodeLang: algunos proveedores (Qwen/Monaco)
+        // virtualizan el editor y mezclan gutter/NBSP en innerText — el driver
+        // puede exponer readCodeBlockText(node) para devolver el texto limpio
+        // de ESE bloque puntual, sin cambiar el árbol genérico para el resto.
+        const txt = (observe.readCodeBlockText?.(node) || target.innerText || target.textContent || '').replace(/\n+$/, '');
         out.push('\n\n```' + lang + '\n' + txt + '\n```\n\n'); return;
       }
       if (tag === 'code') { out.push('`' + (node.innerText || node.textContent || '') + '`'); return; }
@@ -893,13 +897,55 @@ function startAuroraRelayCore(injectedAdapter) {
   const sincronizarHilo = () => {
     syncTimer = null;
     if (ocupado || observe.isGenerating()) return; // esperar a que se asiente
+    // Nuevo chat pendiente de confirmar (marcador de avisarCambio/
+    // confirmarNuevoChatPendiente): el DOM está en transición (ChatGPT
+    // navegando a home, hilo viejo desapareciendo) — leerlo acá capturaba
+    // restos del hilo ANTERIOR y los empujaba a historial.value vía
+    // agregar(), sin pasar por chatActualId (confirmado en vivo: al pedir
+    // "Nuevo chat" se veía un parpadeo de OTRA conversación por ~2s hasta que
+    // el chat nuevo terminaba de confirmarse). Mismo marcador que ya usa
+    // avisarCambio para suprimir el nav-changed intermedio — sincronizarHilo
+    // vivía fuera de esa guardia.
+    if (leerMarcaNuevoChat()) return;
     // Orden real de aparición (no dos listas separadas): user/assistant se
     // intercalan por posición real en el DOM, vía los nodos que el contrato
     // YA expone (compareDocumentPosition, no un selector nuevo).
+    // Feedback de tool (JSON Family reinyecta 'Tool "X" result:...' como turno
+    // "user" para que el modelo lo lea) — protocolo interno, no texto que el
+    // usuario escribió. Sin este filtro, sync-hilo lo mostraba en Lyra como
+    // mensaje "directo" (confirmado en vivo: burbuja con el ANSI crudo de
+    // neofetch etiquetada "Tú directo").
+    const esFeedbackDeTool = texto => /^Tool "[^"]*" result\b/i.test(texto);
+    // Turnos que Lyra misma originó (composer real, marcados en
+    // marcarTurnoDeLyra) YA se persisten limpios (sin el primer de tools
+    // prepended) desde cloud.js/persistir — sync-hilo no debe re-capturarlos.
+    // Sin esto, el turno de usuario con el primer de ~3KB concatenado
+    // ("Hola :) En ESTE chat Aurora puede ejecutar...") se colaba como
+    // mensaje "directo" duplicado (confirmado en vivo: cloud_mensajes tenía
+    // el texto limpio Y una segunda fila con el primer completo).
+    const propiosDeLyra = new Set(leerTurnosDeLyra());
+    const esDeLyra = nodo => {
+      const id = observe.getTurnId?.(nodo);
+      return Boolean(id && propiosDeLyra.has(id));
+    };
+    // Bloque de código capturado a mitad de render: ChatGPT muestra primero
+    // el fence con la etiqueta de lenguaje (ej. "JSON") como header ANTES de
+    // que el contenido real llegue — si sincronizarHilo agarra el DOM justo
+    // en esa ventana (reload/navegación en curso), el "cuerpo" capturado es
+    // literalmente la etiqueta repetida o nada. Confirmado en vivo: quedó
+    // persistido un mensaje "```json\nJSON\n```" sin contenido real, que
+    // nunca existió así en el hilo real de ChatGPT.
+    const esBloqueDeCodigoIncompleto = texto => {
+      const m = texto.trim().match(/^```(\w*)\n?([\s\S]*?)\n?```$/);
+      if (!m) return false;
+      const cuerpo = m[2].trim();
+      return !cuerpo || cuerpo.toLowerCase() === m[1].toLowerCase();
+    };
     const turnos = [
       ...(observe.getUserTurns?.() || []).map(nodo => ({ rol: 'user', nodo, texto: (nodo.innerText || '').trim() })),
       ...(observe.getAssistantTurns?.() || []).map(nodo => ({ rol: 'assistant', nodo, texto: textOf(nodo) })),
-    ].filter(t => t.texto)
+    ].filter(t => t.texto && !(t.rol === 'user' && esFeedbackDeTool(t.texto)) && !esDeLyra(t.nodo)
+      && !esBloqueDeCodigoIncompleto(t.texto))
       .sort((a, b) => (a.nodo.compareDocumentPosition(b.nodo) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1)
       .map(({ rol, texto }) => ({ rol, texto }));
     if (!turnos.length) return;
@@ -993,20 +1039,49 @@ function startAuroraRelayCore(injectedAdapter) {
     try { sessionStorage.removeItem(NEW_CHAT_KEY); } catch (_) {}
   }
 
+  // `iniciarNuevoChat` programa esta función a 250ms (pensado para
+  // proveedores SPA que no reinyectan el content script) Y el script la
+  // corre también sin condición al iniciar (línea de abajo, para cuando
+  // location.assign SÍ recarga la página duro y el script viejo muere). Si
+  // la navegación real tarda >250ms en reemplazar el documento, la llamada
+  // de los 250ms llega a correr TODAVÍA en la página vieja (a punto de
+  // morir) — puede leer un estado transitorio como "ready" (composer vacío
+  // de la propia animación de salida) y declarar el chat nuevo confirmado
+  // AHÍ, antes de que la navegación real siquiera termine. Cuando la
+  // navegación de verdad completa, el content script fresco corre su propia
+  // confirmación — dos loops effectively confirmando el mismo (o ya
+  // consumido) marcador. Confirmado en vivo: un solo click en "Nuevo chat"
+  // producía DOS pantallas de "chat vacío" sucesivas en ChatGPT. Guard de
+  // instancia única: solo un loop de confirmación corre a la vez.
+  let confirmandoNuevoChat = false;
   async function confirmarNuevoChatPendiente() {
+    if (confirmandoNuevoChat) return false;
     const marca = leerMarcaNuevoChat();
     if (!marca?.requestId) return false;
+    confirmandoNuevoChat = true;
+    try {
+      return await _confirmarNuevoChatPendiente(marca);
+    } finally {
+      confirmandoNuevoChat = false;
+    }
+  }
+  async function _confirmarNuevoChatPendiente(marca) {
     const deadline = Date.now() + 30000;
     let limpioDesde = 0;
+    // Ventana de estabilidad mínima: antes 2200ms contra el falso-listo de
+    // ChatGPT (`/` en blanco ~800ms, luego restaura el hilo viejo). Ahora
+    // isNewConversationReady TAMBIÉN exige ausencia de Stop (nada generando)
+    // — señal mucho más dura que "input existe" solo. Con esa señal extra,
+    // 500ms alcanza para cubrir el mismo glitch sin pagar el resto del
+    // margen: "libre para responder" es la condición real, no un timer
+    // arbitrario. Poll cada 80ms (antes 200ms) para no sumar demora propia.
+    const ESTABLE_MS = 500;
     while (Date.now() < deadline) {
       const count = contenedores().length;
       const candidato = observe.isNewConversationReady?.(marca) && Date.now() - marca.startedAt > 500;
       if (candidato && !limpioDesde) limpioDesde = Date.now();
       if (!candidato) limpioDesde = 0;
-      // ChatGPT puede mostrar `/` y DOM vacío durante ~800ms y restaurar el
-      // hilo anterior justo después. Exigir estabilidad evita declarar un
-      // chat limpio que en realidad vuelve a contaminarse con el historial.
-      if (candidato && Date.now() - limpioDesde >= 2200) {
+      if (candidato && Date.now() - limpioDesde >= ESTABLE_MS) {
         borrarMarcaNuevoChat();
         trace('new_chat_ready', { requestId: marca.requestId, url: location.href, count });
         post({ type: 'AURORA_CLOUD_READY', host: location.hostname, relayBuild: RELAY_BUILD });
@@ -1014,7 +1089,7 @@ function startAuroraRelayCore(injectedAdapter) {
           ok: true, reason: 'new_chat_ready', url: location.href });
         return true;
       }
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 80));
     }
     borrarMarcaNuevoChat();
     trace('new_chat_error', { requestId: marca.requestId, reason: 'new_chat_not_ready' });
@@ -1045,9 +1120,21 @@ function startAuroraRelayCore(injectedAdapter) {
         reason: 'new_chat_unsupported', error: 'El Provider Adapter no ofrece nueva conversación.' });
       return;
     }
-    // Algunos proveedores navegan como SPA y no reinyectan el content script.
-    setTimeout(() => confirmarNuevoChatPendiente(), 250);
+    // Algunos proveedores navegan como SPA y no reinyectan el content script
+    // (ese caso necesita este fallback). Pero si location.assign() SÍ recarga
+    // duro la página (ChatGPT), este documento puede seguir vivo unos ms
+    // mientras el navegador todavía está cargando la nueva — si el timer
+    // dispara en esa ventana, corre sobre un DOM en plena transición de
+    // salida y puede leer un "listo" falso, confirmando el chat nuevo ACÁ,
+    // antes de que la navegación real siquiera termine. Cuando la página
+    // fresca carga, vuelve a confirmar por su cuenta (más abajo) — dos
+    // confirmaciones para el mismo click. `paginaViva` (false en pagehide)
+    // corta el fallback en cuanto el documento empieza a descargarse de
+    // verdad, dejando la confirmación real solo a cargo de la página fresca.
+    setTimeout(() => { if (paginaViva) confirmarNuevoChatPendiente(); }, 250);
   }
+  let paginaViva = true;
+  window.addEventListener('pagehide', () => { paginaViva = false; });
 
   // Si esta instancia nació por una navegación completa, consume el marcador.
   setTimeout(() => confirmarNuevoChatPendiente(), 0);
@@ -1100,6 +1187,55 @@ function startAuroraRelayCore(injectedAdapter) {
     // conversación, en vez de confiar en el url que ya tenía como parámetro.
     if (e.data?.type === 'AURORA_CLOUD_WHERE_AM_I') {
       post({ type: 'AURORA_CLOUD_WHERE_AM_I_ANSWER', requestId: e.data.requestId, url: location.href });
+      return;
+    }
+    // Puente MISMO-FRAME entre el courier ISOLATED (provider-relay.js) y este
+    // driver MAIN, SIN pasar por chrome.scripting.executeScript (que exige
+    // tabId — inexistente cuando este frame vive dentro del side panel, ver
+    // chrome.tabs.getCurrent() → null ahí). Isolated y MAIN comparten el
+    // mismo `window`: postMessage cruza el límite de mundo sin depender de
+    // ninguna tab. Solo se usa como FALLBACK cuando el camino normal
+    // (background → executeScript) falla por falta de tab; no reemplaza esa
+    // ruta para el caso de tab común, que ya funciona.
+    if (e.data?.type === 'AURORA_MAIN_SNAPSHOT_REQUEST') {
+      const requestId = e.data.requestId;
+      try {
+        const assistant = observe.getLatestAssistant();
+        const raw = String(observe.readAssistant(assistant) || '').trim();
+        const codeNodes = [...(assistant?.querySelectorAll?.('pre code, pre') || [])];
+        const code = String(codeNodes.at(-1)?.innerText || codeNodes.at(-1)?.textContent || '').trim();
+        const text = code && /^\s*\{[\s\S]*"tool"\s*:/i.test(code) && !raw.includes(code)
+          ? `${raw}\n\n\`\`\`json\n${code}\n\`\`\`` : raw;
+        const composerReady = Boolean(observe.getInput());
+        const generating = Boolean(observe.isGenerating());
+        const turns = observe.getAssistantTurns?.() || [];
+        window.postMessage({
+          type: 'AURORA_MAIN_SNAPSHOT_RESPONSE', requestId, ok: true,
+          snapshot: {
+            adapter: providerAdapter.id, version: providerAdapter.version, provider: location.hostname,
+            conversation: `${location.origin}${observe.getConversationKey()}`,
+            capabilities: providerAdapter.capabilities || {}, composerReady, generating,
+            state: generating ? 'generating' : composerReady ? 'idle' : 'booting',
+            text, raw, turnId: observe.getTurnId?.(assistant) || '', turnIndex: Math.max(0, turns.indexOf(assistant)),
+          },
+        }, '*');
+      } catch (error) {
+        window.postMessage({ type: 'AURORA_MAIN_SNAPSHOT_RESPONSE', requestId, ok: false, error: error?.message || String(error) }, '*');
+      }
+      return;
+    }
+    if (e.data?.type === 'AURORA_MAIN_DELIVER_REQUEST') {
+      const requestId = e.data.requestId;
+      try {
+        const input = observe.getInput();
+        const text = e.data.delivery?.text || '';
+        if (!input || !text) throw new Error('Sin composer o sin texto para entregar.');
+        act.insertText(input, text);
+        if (!act.submit(input)) throw new Error('El Provider Adapter rechazó submit.');
+        window.postMessage({ type: 'AURORA_MAIN_DELIVER_RESPONSE', requestId, delivered: true }, '*');
+      } catch (error) {
+        window.postMessage({ type: 'AURORA_MAIN_DELIVER_RESPONSE', requestId, delivered: false, error: error?.message || String(error) }, '*');
+      }
       return;
     }
     if (e.data?.type === 'AURORA_CLOUD_STOP') { detenerNube(); return; }

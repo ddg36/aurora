@@ -25,7 +25,7 @@ http://localhost:7779/ui
 
 ## Notas clave
 
-- 다음과 같은 fusinمنذ: `aurora.js`, `manifest.js`
+- Se fusionan: `aurora.js` y `manifest.js`
 - Las exténsion son thin clients que opera iframe
 - Todo en base de datos SQLite a través de endpoints `/db/*`
 - Contiene implementación de Duo (LLM en cadena) y explorer basados en WebSocket

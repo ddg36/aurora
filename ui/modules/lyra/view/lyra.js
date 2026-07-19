@@ -7,7 +7,7 @@ import {
   limpiarStream, borrarMensaje, parsearMensajeRico, combinarPartesRicas,
 } from '../scripts/chat/mensajes.js';
 import { enviarACloud, recuperarCloudPendiente } from '../scripts/chat/cloud.js';
-import { detenerCloud, invalidarCloudRelay, answerNowCloud } from '../../../components/shared/cloud-ask.js';
+import { detenerCloud, invalidarCloudRelay, answerNowCloud, nuevaConversacionCloud } from '../../../components/shared/cloud-ask.js';
 import { crearDuoLyraCloud } from '../scripts/chat/duo.js';
 import { urlRestaurada } from '../../../components/shared/llm-sesiones.js';
 import { chats, chatActualId, cargarChats, crearChat, eliminarChat, autoGuardar, fmtFecha, exportarChat } from '../scripts/chat/historial.js';
@@ -508,7 +508,13 @@ export function Local({ active = true } = {}) {
         setMensaje(`Ejecutá este comando con run_bash y mostrame el output:\n\`\`\`bash\n${code}\n\`\`\``);
       },
     });
-  }, [historialVal, streamingVal, cargandoVal, thinkingVal]);
+    // cloudHistorialPropio (hidratación por-url del hilo cloud) llega ASYNC,
+    // después del mount — historialVal (chat nativo) puede quedarse chico/sin
+    // cambios mientras tanto. Sin esta dependencia, cuando el hidratado
+    // aparece y _visiblesTodos crece de golpe, nada volvía a hacer scroll:
+    // tras un reload con un hilo cloud largo ya cargado, la vista se quedaba
+    // arriba (en lo que había al montar) en vez de ir al último mensaje real.
+  }, [historialVal, streamingVal, cargandoVal, thinkingVal, cloudHistorialPropio]);
 
   const enviarMensaje = useCallback(async (textoDirecto) => {
     const opciones = textoDirecto && typeof textoDirecto === 'object' ? textoDirecto : {};
@@ -978,6 +984,36 @@ export function Local({ active = true } = {}) {
     setTimeout(() => { iframe.src = target; }, 50);
   }, [cloudUrl]);
 
+  // "New chat" (solo ChatGPT, relay-chatgpt.js act.startNewConversation):
+  // mismo mecanismo que --new-chat de sol-debug, expuesto como botón real en
+  // la cabecera Cloud. Evita que probar/arrancar un hilo limpio dependa de la
+  // CLI — el usuario lo necesita para no seguir escribiendo sobre un hilo ya
+  // "cebado"/contaminado.
+  const nuevoChatCloud = useCallback(() => {
+    if (cloudGenerando.value) { Toast().show('⏳ Esperá a que la nube termine', 'warning', 2000); return; }
+    // Reset del lado Lyra INSTANTÁNEO: acá no hay texto que streamear, así que
+    // no hay motivo para que la UI espere los ~2s que ChatGPT necesita para
+    // confirmar que el hilo quedó estable (evita declarar "limpio" un DOM que
+    // todavía puede restaurar el hilo viejo un instante). Ese reset es
+    // puramente local — no depende de que el navegador termine de confirmar
+    // nada del lado de ChatGPT.
+    setCloudTitulo('');
+    setCloudConvIdActivo(null);
+    setCloudHistorialPropio([]);
+    crearChat();
+    Toast().show('✚ Chat nuevo en ChatGPT', 'success', 2000);
+    // La navegación/confirmación real sigue en paralelo, sin bloquear lo de
+    // arriba — solo ajusta cloudUrl cuando ChatGPT confirme el hilo, o avisa
+    // si falló.
+    nuevoChatEnCursoRef.current = true;
+    nuevaConversacionCloud(iframeRef.current)
+      .then(r => {
+        if (!r.ok) { Toast().show(`⚠ ${r.error || 'No se pudo abrir un chat nuevo.'}`, 'warning', 3000); return; }
+        if (r.url) setCloudUrl(r.url);
+      })
+      .finally(() => { nuevoChatEnCursoRef.current = false; });
+  }, []);
+
   // relay-core.js vigila getConversationKey() (MutationObserver, no poll) y
   // avisa cambio de hilo (click manual del usuario en el sidebar del
   // proveedor, o un hilo muerto/borrado que el sitio redirige a home en
@@ -993,11 +1029,20 @@ export function Local({ active = true } = {}) {
   // de título re-disparaba by-url completo (sin LIMIT), confirmado en vivo
   // saturando el endpoint innecesariamente.
   const fetchSeqRef = useRef(0);
+  // Mientras "Nuevo chat" (manual, nuevoChatCloud) está en curso: ChatGPT
+  // navega a home ANTES de confirmar el hilo limpio, y ese nav-changed
+  // intermedio disparaba este mismo by-url con la URL base — podía matchear
+  // una fila vieja de otra conversación (de una prueba anterior bajo esa
+  // misma URL sin /c/ todavía) y mostrar por ~2s un chat ajeno, hasta que
+  // nuevoChatCloud terminaba y pisaba el estado con el reset correcto.
+  // nuevoChatCloud ya resuelve el estado final de forma explícita y
+  // autoritativa — este listener no debe pisarlo mientras tanto.
+  const nuevoChatEnCursoRef = useRef(false);
   useEffect(() => {
     const onNavChanged = e => {
       const url = e.detail?.url;
       const reason = e.detail?.reason;
-      if (!url || e.detail?.paneId !== 'cloud') return;
+      if (!url || e.detail?.paneId !== 'cloud' || nuevoChatEnCursoRef.current) return;
       setCloudTitulo(e.detail?.titulo || '');
       if (reason === 'title_only') return; // solo label, nunca dispara fetch
       const eraHiloEspecifico = /\/c\//.test(cloudUrl || '');
@@ -1013,6 +1058,20 @@ export function Local({ active = true } = {}) {
       // fetches que resuelven fuera de orden, solo el último DISPARADO puede
       // aplicar su resultado — descarta respuestas obsoletas.
       const miSeq = ++fetchSeqRef.current;
+      // Una URL sin /c/<id> (home/"+" nuevo chat, sea del botón de Aurora O
+      // del nativo de ChatGPT) NUNCA identifica una conversación real — es la
+      // misma URL genérica para CUALQUIER chat recién abierto. Buscarla en DB
+      // por-url podía matchear la fila de OTRA conversación vieja que en
+      // algún momento también tuvo esa URL antes de redirigir a su /c/ real
+      // (confirmado en vivo: cambiar de hilo en el sidebar nativo de ChatGPT
+      // y apretar su "+" mostraba memoria de un chat completamente ajeno).
+      // Sin id específico no hay nada que buscar: resolver "sin memoria"
+      // directo, sin pegarle al backend con una clave ambigua.
+      if (esAhoraHome) {
+        setCloudConvIdActivo(null);
+        setCloudHistorialPropio([]);
+        return;
+      }
       getJSON(`/db/llm/cloud/conversaciones/by-url?url=${encodeURIComponent(url)}`)
         .then(r => {
           if (miSeq !== fetchSeqRef.current) return;
@@ -1268,7 +1327,16 @@ export function Local({ active = true } = {}) {
   const _visiblesFiltrados = historialVal.filter(m => {
     if (m._internal) return false;
     const esCloud = m._via === 'direct-ai' || m._via === 'pi-tool' || m._via === 'duo-external';
-    if (!esCloud || m._convId == null || cloudConvIdActivo === undefined) return true;
+    if (!esCloud || m._convId == null) return true;
+    // cloudConvIdActivo === undefined ("todavía no resuelto contra qué hilo
+    // corresponde"): antes esto mostraba TODOS los mensajes cloud sin
+    // importar su _convId — con varios hilos probados en la misma sesión,
+    // historial.value (nunca se limpia entre hilos, solo se ACUMULA) mezclaba
+    // visualmente mensajes de conversaciones de ChatGPT distintas mientras
+    // se resolvía (confirmado en vivo: al abrir "Nuevo chat", por unos
+    // segundos se veían mensajes de pruebas de hilos anteriores). Mientras
+    // no se sepa el hilo activo, ocultar es SIEMPRE más seguro que mezclar.
+    if (cloudConvIdActivo === undefined) return false;
     return m._convId === cloudConvIdActivo;
   });
   // El signal `historial` es efímero: un reload de Aurora lo vacía (viene de
@@ -1826,6 +1894,14 @@ export function Local({ active = true } = {}) {
               ${cloudStatusTiming && html`<span class="cloud-live-timing">${cloudStatusTiming}</span>`}
             </div>
             <div class="cloud-mini-actions">
+              ${cloudAiId === 'chatgpt' && html`
+                <button
+                  class="cloud-mini-btn"
+                  title="Nuevo chat en ChatGPT (hilo limpio)"
+                  onClick=${nuevoChatCloud}
+                  dangerouslySetInnerHTML=${{ __html: ICON_NUEVO_CHAT }}
+                ></button>
+              `}
               ${cloudStalled && cloudAiId === 'chatgpt' && html`
                 <button
                   class="cloud-mini-btn cloud-mini-btn--answer-now"

@@ -321,21 +321,17 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
       ? (turnoPrevio.nextPrompt || turnoPrevio.prompt || texto)
       : (turnoPrevio.prompt || texto);
   } else {
-    // Cebar por HILO de ChatGPT, no por host. Antes la key era el host
-    // (chatgpt.com): tras un chat nuevo el flag seguía puesto y el hilo fresco
-    // NO recibía el primer → ChatGPT no sabía que tenía tools y alucinaba la
-    // ejecución (o razonaba sin emitir el bloque JSON). El id de hilo vive en
-    // la url (/c/<id>). Sin id todavía (chat recién abierto, url base) es un
-    // hilo fresco → cebar siempre. Repetir el primer es ruido; omitirlo rompe.
-    const convKey = (() => {
-      try {
-        const u = new URL(url);
-        const m = u.pathname.match(/\/(?:c|g|share)\/([\w-]+)/);
-        return m ? `${u.host}:${m[1]}` : null;
-      } catch { return null; }
-    })();
+    // Cebar por HILO, no por host. Antes la key se parseaba de la URL
+    // (/c/<id>): un chat recién abierto (--new-chat) no tiene esa URL hasta
+    // que ChatGPT redirige TRAS el primer mensaje, así que primedKey salía
+    // null y `marcarCebado` nunca se llamaba (guardeado por `if (primedKey)`)
+    // — el hilo quedaba sin marca de "ya cebado" para siempre, y el SIGUIENTE
+    // mensaje en ese mismo hilo (ahora con convId real) volvía a cebar de
+    // nuevo (confirmado en vivo: primer de ~3KB repetido en el segundo turno
+    // del mismo hilo). `convId` (numérico, de DB) ya está resuelto acá arriba
+    // y es estable para el hilo completo — usarlo como key en vez de la URL.
     const protocol = activeCloudProtocol();
-    const primedKey = protocol && convKey ? convKey : null;
+    const primedKey = protocol && convId != null ? `conv:${convId}` : null;
     let primer = '';
     if (protocol && !yaCebado(primedKey)) primer = await getCloudToolPrimer();
     prompt = primer ? `${primer}\n\n${texto}` : texto;
@@ -416,6 +412,11 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
           if (urlReal !== url && /\/c\//.test(urlReal)) {
             const convIdReal = await asegurarConversacion(aiId, urlReal);
             if (convIdReal && convIdReal !== convId) {
+              // El hilo se cebó bajo el convId provisorio (pre-redirect) —
+              // trasladar la marca al convId real para que el PRÓXIMO mensaje
+              // de este mismo hilo no vuelva a cebar (ver comentario en el
+              // cálculo de primedKey más arriba).
+              marcarCebado(`conv:${convIdReal}`);
               url = urlReal;
               convId = convIdReal;
               window.dispatchEvent(new CustomEvent('aurora:cloud-conv-resolved', { detail: { url, convId } }));

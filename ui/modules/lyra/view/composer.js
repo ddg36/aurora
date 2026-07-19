@@ -13,10 +13,11 @@ const AI_URLS = {
   claude:     'https://claude.ai',
   chatgpt:    'https://chatgpt.com',
   perplexity: 'https://www.perplexity.ai',
+  qwen:       'https://chat.qwen.ai',
   custom:     '',
 };
-const AI_LABELS = { gemini: 'Gemini', chatgpt: 'ChatGPT', claude: 'Claude', perplexity: 'Perplexity', custom: 'Custom' };
-const AI_ICONOS = { gemini: '◇', chatgpt: '◉', claude: '✶', perplexity: '⊕', custom: '🌐' };
+const AI_LABELS = { gemini: 'Gemini', chatgpt: 'ChatGPT', claude: 'Claude', perplexity: 'Perplexity', qwen: 'Qwen', custom: 'Custom' };
+const AI_ICONOS = { gemini: '◇', chatgpt: '◉', claude: '✶', perplexity: '⊕', qwen: '❖', custom: '🌐' };
 
 export function Composer({
   cloudVisible, cloudAiLabel, cloudExpanded, cloudHidden, cloudMenu, setCloudMenu,

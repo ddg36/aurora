@@ -105,7 +105,14 @@ async function snapshotProvider(sender) {
       const raw = String(observe.readAssistant(assistant) || '').trim();
       const codeNodes = [...(assistant?.querySelectorAll?.('pre code, pre') || [])];
       const code = String(codeNodes.at(-1)?.innerText || codeNodes.at(-1)?.textContent || '').trim();
-      const text = code && /^\s*\{[\s\S]*"tool"\s*:/i.test(code)
+      // readAssistant (domToMarkdown) YA renderiza el bloque de código fielmente
+      // dentro de `raw` — concatenar `code` de nuevo sin chequear duplicaba el
+      // MISMO tool call una segunda vez en el texto final, y JSON Family lo
+      // contaba como "dos tools en un turno" (rechazo real, aunque en pantalla
+      // solo hubiera un bloque). Solo agregar el fallback si `raw` de verdad no
+      // lo tiene (caso legítimo: algún proveedor donde domToMarkdown no capturó
+      // el fence).
+      const text = code && /^\s*\{[\s\S]*"tool"\s*:/i.test(code) && !raw.includes(code)
         ? `${raw}\n\n\`\`\`json\n${code}\n\`\`\`` : raw;
       const context = globalThis.__auroraRelaySurfaceContext?.() || {
         surface: window.top === window ? 'tab' : 'embedded-unknown',
@@ -159,6 +166,18 @@ async function deliverToOrigin(sender, delivery, endpointId = null) {
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   .catch(e => console.warn('[BG] sidePanel:', e));
+
+// ─── Recargar Aurora (clic derecho en el ícono) ──────────
+// Solo dispara el reload — restoreWorkspaceSurface (worker_boot) ya se
+// encarga de reabrir la superficie correcta al reiniciar, sidepanel incluido
+// (vía _abrirSidePanelForzado). No hace falta duplicar esa lógica acá.
+const CONTEXT_MENU_RELOAD_ID = 'aurora_reload';
+chrome.contextMenus.removeAll(() => {
+  chrome.contextMenus.create({ id: CONTEXT_MENU_RELOAD_ID, title: '🔄 Recargar Aurora', contexts: ['action'] });
+});
+chrome.contextMenus.onClicked.addListener((info) => {
+  if (info.menuItemId === CONTEXT_MENU_RELOAD_ID) chrome.runtime.reload();
+});
 
 // ─── WebSocket control bus con el servidor ───────────────
 const EXT_WS_WATCHDOG_ALARM = 'aurora-ext-ws-watchdog-v1';
@@ -274,9 +293,12 @@ function _recordWorkspaceSurface(msg) {
     const instanceId = String(msg.instanceId || `${surface}-unknown`);
     const instances = { ...(previous.instances || {}) };
 
-    // Las instancias sin heartbeat/evento durante 24h ya no representan un
-    // documento vivo; se conserva sólo la configuración lógica del workspace.
-    const cutoff = now - 24 * 60 * 60 * 1000;
+    // `instances` solo existe para calcular `open` (más abajo) — nada más lo
+    // lee. Un cutoff de 24h en desarrollo (reload de la extensión = instanceId
+    // nuevo cada vez) acumulaba cientos de entradas zombies que nunca decían
+    // adiós, puro peso muerto en chrome.storage.local. 10 minutos alcanza de
+    // sobra para cualquier chequeo real de "¿hay algo vivo ahora?".
+    const cutoff = now - 10 * 60 * 1000;
     for (const [id, state] of Object.entries(instances)) {
       if (Number(state?.seen_at || 0) < cutoff) delete instances[id];
     }
@@ -293,8 +315,37 @@ function _recordWorkspaceSurface(msg) {
       !!msg.visible && ['init', 'focus', 'visibility'].includes(String(msg.phase || ''))
     );
 
+    // "Abierto ahora" vs "última superficie usada, ya cerrada" — sin esto,
+    // restoreWorkspaceSurface reabría SIEMPRE lo último visto, incluso si el
+    // usuario había cerrado Aurora a propósito antes del reload. pagehide es
+    // la única señal real de cierre de un documento; si TODAS las instancias
+    // conocidas quedaron en pagehide, no hay nada vivo ahora mismo.
+    //
+    // OJO: `instances` puede acumular cientos de entradas viejas (cada reload
+    // de la extensión en desarrollo crea un instanceId nuevo) que NUNCA
+    // llegaron a marcar pagehide — un reload de la extensión mata la página
+    // igual de abrupto que cerrar una tab, y antes de agregar el puerto de
+    // desconexión (aurora_surface:*), esas instancias viejas quedaban
+    // congeladas en 'visibility'/'blur' para siempre. Sin un corte de
+    // frescura, UNA sola de esas zombies alcanza para que `open` quede
+    // pegado en true de por vida. Solo cuentan instancias vistas hace poco.
+    // Debe ser bien mayor al heartbeat de aurora-bridge.js (60s) — Chrome
+    // puede throttlear timers en tabs en segundo plano, así que un par de
+    // beats perdidos no deben leerse como "se cerró".
+    const FRESCURA_MS = 5 * 60 * 1000;
+    // Por superficie, no un único "target" — newtab y sidepanel pueden estar
+    // abiertos A LA VEZ (usuario con ambos), y antes solo se recordaba el
+    // último que reportó, pisando al otro. Cada uno se restaura por su
+    // cuenta según su propio estado, no "el que ganó".
+    const abiertaPorSurface = tipo => Object.values(instances).some(inst =>
+      inst.surface === tipo && inst.phase !== 'pagehide' && (now - Number(inst.seen_at || 0)) < FRESCURA_MS);
+    const open_surfaces = ['newtab', 'sidepanel'].filter(abiertaPorSurface);
+    const open = open_surfaces.length > 0;
+
     const snapshot = {
-      version: 1,
+      version: 2,
+      open,
+      open_surfaces,
       preferred_surface: isActive ? surface : (previous.preferred_surface || surface),
       last_surface: isActive ? surface : (previous.last_surface || surface),
       last_instance_id: isActive ? instanceId : (previous.last_instance_id || instanceId),
@@ -311,30 +362,110 @@ function _recordWorkspaceSurface(msg) {
   return _workspaceSurfaceQueue;
 }
 
-async function restoreWorkspaceSurface(reason = 'startup') {
-  const snapshot = await _loadWorkspaceSurface(true);
-  const target = snapshot?.preferred_surface || snapshot?.last_surface;
-  if (!target) return { ok: true, restored: false, reason: 'no_snapshot' };
-
-  if (target === 'sidepanel') {
-    // Chrome exige gesto de usuario en algunos contextos para sidePanel.open().
-    // Dejamos el panel habilitado y con su ruta correcta: el primer click en la
-    // acción lo abre ya conectado al workspace persistido.
-    await chrome.sidePanel.setOptions({ path: 'sidepanel.html', enabled: true });
-    await chrome.storage.local.set({
-      'aurora:surface_restore_pending_v1': { surface: 'sidepanel', reason, ts: Date.now() },
+// Chrome rechaza chrome.sidePanel.open() sin un gesto de usuario REAL — pero
+// Input.dispatchMouseEvent vía chrome.debugger (permiso ya en manifest.json)
+// sí cuenta como gesto genuino para Chrome (verificado en vivo: mismo error
+// "may only be called in response to a user gesture" con una llamada directa,
+// pero éxito con un click sintetizado). El click tiene que ocurrir DENTRO de
+// una página de la extensión (chrome.sidePanel no existe en el contexto JS
+// de una tab cualquiera) — se abre newtab.html oculto, se le adjunta el
+// debugger, se inyecta un botón que llama sidePanel.open(), se sintetiza el
+// click, y se cierra la tab helper apenas termina.
+async function _abrirSidePanelForzado(windowId) {
+  // ?aurora_helper=1: aurora-bridge.js lo lee y NO reporta esta tab como
+  // superficie real (evita contaminar la memoria de "qué tenía abierto el
+  // usuario" con una tab que la propia extensión abre y cierra sola).
+  const helperTab = await chrome.tabs.create({
+    windowId, url: chrome.runtime.getURL('newtab.html') + '?aurora_helper=1', active: false,
+  });
+  const target = { tabId: helperTab.id };
+  try {
+    await new Promise(resolve => {
+      const onUpdated = (tabId, info) => {
+        if (tabId !== helperTab.id || info.status !== 'complete') return;
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve();
+      };
+      chrome.tabs.onUpdated.addListener(onUpdated);
+      setTimeout(resolve, 3000);
     });
-    return { ok: true, restored: true, surface: 'sidepanel', prepared: true };
+    await chrome.debugger.attach(target, '1.3');
+    await chrome.debugger.sendCommand(target, 'Runtime.enable');
+    await chrome.debugger.sendCommand(target, 'Runtime.evaluate', {
+      expression: `
+        (() => {
+          const b = document.createElement('button');
+          b.id = '__aurora_forced_sidepanel_open';
+          b.style.cssText = 'position:fixed;top:0;left:0;width:8px;height:8px;opacity:0;';
+          b.onclick = () => {
+            chrome.sidePanel.setOptions({ path: 'sidepanel.html', enabled: true })
+              .then(() => chrome.sidePanel.open({ windowId: ${windowId} }));
+          };
+          document.body.appendChild(b);
+        })()
+      `,
+    });
+    await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: 4, y: 4, button: 'left', clickCount: 1 });
+    await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: 4, y: 4, button: 'left', clickCount: 1 });
+    // sidePanel.open() necesita un instante para asentar antes de matar la
+    // tab helper (si se cierra demasiado rápido, cancela el open en curso).
+    await new Promise(resolve => setTimeout(resolve, 600));
+    return true;
+  } finally {
+    try { await chrome.debugger.detach(target); } catch (_) {}
+    try { await chrome.tabs.remove(helperTab.id); } catch (_) {}
   }
+}
 
+async function _restoreSidepanel(reason) {
+  await chrome.sidePanel.setOptions({ path: 'sidepanel.html', enabled: true });
+  try {
+    const win = await chrome.windows.getLastFocused({ populate: false });
+    if (await _abrirSidePanelForzado(win.id)) return { surface: 'sidepanel', forced: true };
+  } catch (error) {
+    console.warn('[BG] open sidepanel forzado falló, queda preparado nomás:', error?.message || String(error));
+  }
+  // Fallback si el forzado falla (ej. debugger ya adjunto por DevTools real
+  // del usuario — Chrome no permite dos adjuntos al mismo tab): el panel
+  // queda igual habilitado y con la ruta correcta, el primer click en el
+  // ícono lo abre ya conectado.
+  await chrome.storage.local.set({
+    'aurora:surface_restore_pending_v1': { surface: 'sidepanel', reason, ts: Date.now() },
+  });
+  return { surface: 'sidepanel', prepared: true };
+}
+
+async function _restoreNewtab() {
   const url = chrome.runtime.getURL('newtab.html');
   const tabs = await chrome.tabs.query({});
   const existing = tabs.find(tab => tab.url === url || tab.pendingUrl === url);
   if (!existing) {
     const created = await chrome.tabs.create({ url, active: true });
-    return { ok: true, restored: true, surface: 'newtab', tabId: created.id };
+    return { surface: 'newtab', tabId: created.id };
   }
-  return { ok: true, restored: true, surface: 'newtab', tabId: existing.id, reused: true };
+  return { surface: 'newtab', tabId: existing.id, reused: true };
+}
+
+async function restoreWorkspaceSurface(reason = 'startup') {
+  const snapshot = await _loadWorkspaceSurface(true);
+  // open === false: el usuario cerró Aurora (sidepanel/newtab) antes del
+  // reload — no reabrir nada por su cuenta. Snapshots viejos (de antes de
+  // este campo) no tienen `open`; tratarlos como abiertos para no romper el
+  // comportamiento ya esperado en instalaciones existentes.
+  if (snapshot?.open === false) return { ok: true, restored: false, reason: 'was_closed' };
+  // open_surfaces (v2): newtab y sidepanel pueden estar abiertos A LA VEZ —
+  // restaurar cada uno, no solo "el último que ganó" (preferred_surface,
+  // legado de v1, se usa solo si el snapshot es viejo y no tiene el array).
+  const surfaces = snapshot?.open_surfaces?.length
+    ? snapshot.open_surfaces
+    : [snapshot?.preferred_surface || snapshot?.last_surface].filter(Boolean);
+  if (!surfaces.length) return { ok: true, restored: false, reason: 'no_snapshot' };
+
+  const resultados = [];
+  for (const surface of surfaces) {
+    resultados.push(surface === 'sidepanel' ? await _restoreSidepanel(reason) : await _restoreNewtab());
+  }
+  return { ok: true, restored: true, surfaces: resultados };
 }
 
 function _clearExtWsKeepalive() {
@@ -751,6 +882,18 @@ async function getActiveUserTab() {
 
 // ─── PORT CONNECTIONS (persistent, keeps SW alive) ────────
 chrome.runtime.onConnect.addListener(port => {
+  // aurora_surface:<surface>:<instanceId> — abierto por aurora-bridge.js al
+  // montar. onDisconnect es la señal de cierre CONFIABLE (dispara siempre,
+  // tab cerrada de golpe o no): pagehide + sendMessage async podía no
+  // completarse a tiempo, dejando `open:true` pegado tras cerrar Aurora.
+  if (port.name?.startsWith('aurora_surface:')) {
+    const [, surface, instanceId] = port.name.split(':');
+    port.onDisconnect.addListener(() => {
+      _recordWorkspaceSurface({ surface, instanceId, phase: 'pagehide', visible: false, focused: false, ts: Date.now() })
+        .catch(error => console.warn('[BG] surface disconnect record:', error?.message || String(error)));
+    });
+    return;
+  }
   if (port.name === 'proxy-fetch') {
     port.onMessage.addListener(async (msg) => {
       if (msg.type !== 'PROXY_FETCH') return;
@@ -857,6 +1000,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ ...result, ...ack });
       })
       .catch(error => sendResponse({ delivered: false, error: error?.message || String(error) }));
+    return true;
+  }
+
+  // La entrega mismo-frame (provider-relay.js → relay-core.js por postMessage,
+  // ver AURORA_MAIN_DELIVER_REQUEST) inyecta el texto ella misma cuando no
+  // hay tabId (side panel) — pero el ACK server-side (marca la corrida como
+  // ya entregada, evita reinyectarla en un replay) solo vive acá, en
+  // background. Sin este mensaje, ese camino nunca quedaría marcado.
+  if (msg.type === 'AURORA_RELAY_ACK') {
+    acknowledgeRelayDelivery(msg.requestId)
+      .then(ack => sendResponse(ack))
+      .catch(error => sendResponse({ acknowledged: false, error: error?.message || String(error) }));
     return true;
   }
 
@@ -2172,9 +2327,14 @@ chrome.runtime.onInstalled.addListener(() => {
     .catch(error => console.warn('[BG] relay reinject install:', error?.message || String(error)));
 });
 
-// También cubre el botón Reload de chrome://extensions: ese ciclo no siempre
-// dispara onStartup y los couriers isolated anteriores quedan invalidados.
+// También cubre el botón Reload de chrome://extensions (y chrome.runtime.reload()
+// programático, como el que usa sol-debug --full-reload): ese ciclo no siempre
+// dispara onStartup ni onInstalled — los couriers isolated anteriores quedan
+// invalidados Y la superficie (sidepanel vs newtab) nunca se restauraba,
+// dejando al usuario sin su workspace tras cualquier hard-reload.
 setTimeout(() => {
   AuroraRelayReinjector.scan('worker_boot')
     .catch(error => console.warn('[BG] relay reinject boot:', error?.message || String(error)));
+  restoreWorkspaceSurface('worker_boot')
+    .catch(error => console.warn('[BG] restore workspace boot:', error?.message || String(error)));
 }, 500);

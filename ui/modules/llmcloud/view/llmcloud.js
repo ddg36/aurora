@@ -233,7 +233,15 @@ export default function LLMCloud() {
   // listener de `frame.load`, que sí debe limpiar todo).
   useEffect(() => () => {
     try {
-      window.parent.postMessage({ type: 'AURORA_LLM_PANES', panes: panesRef.current, hidden: true }, '*');
+      // `hidden:true` solo apaga pointer-events + aria-hidden en el bridge
+      // (ver aurora-bridge.js) — NINGUNO de los dos afecta lo que se ve. Sin
+      // encoger el rect, el iframe queda del mismo tamaño/posición de cuando
+      // esta vista estaba activa, tapando cualquier otra tab de Aurora hasta
+      // que algo MÁS (ej. Lyra) vuelva a mandar panes y lo pise. Mismo truco
+      // que ya usa el panel Cloud de Lyra: reducir a un rect casi-cero en vez
+      // de opacity/visibility (eso sí congelaría rAF de streaming en curso).
+      const panesOcultos = panesRef.current.map(p => ({ ...p, rect: { ...p.rect, width: 1, height: 1 } }));
+      window.parent.postMessage({ type: 'AURORA_LLM_PANES', panes: panesOcultos, hidden: true }, '*');
       window.parent.postMessage({ type: 'AURORA_LLM_MENU_CLOSE' }, '*');
     } catch (_) {}
   }, []);

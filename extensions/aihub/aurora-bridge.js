@@ -39,7 +39,17 @@ function initAuroraBridge(frame, opts) {
     }
   })();
 
+  // La tab helper que background.js abre para forzar sidePanel.open() (ver
+  // _abrirSidePanelForzado) es un newtab.html real, pero NO representa uso
+  // genuino del usuario — sin este corte, su propio 'init' se registraba
+  // como "newtab abierto", y el siguiente restore reabría un newtab de
+  // verdad que el usuario nunca había tenido abierto (confirmado en vivo:
+  // "recargar Aurora" con SOLO el sidepanel abierto terminaba abriendo
+  // también un newtab de la nada).
+  const _esHelperInterno = new URLSearchParams(location.search).get('aurora_helper') === '1';
+
   function reportarSuperficie(phase) {
+    if (_esHelperInterno) return;
     const payload = {
       type: 'AURORA_SURFACE_STATE',
       surface,
@@ -55,11 +65,31 @@ function initAuroraBridge(frame, opts) {
     } catch (_) {}
   }
 
-  queueMicrotask(() => reportarSuperficie('init'));
-  window.addEventListener('focus', () => reportarSuperficie('focus'), true);
-  window.addEventListener('blur', () => reportarSuperficie('blur'), true);
-  document.addEventListener('visibilitychange', () => reportarSuperficie('visibility'));
-  window.addEventListener('pagehide', () => reportarSuperficie('pagehide'));
+  if (!_esHelperInterno) {
+    // Puerto dedicado SOLO para detectar cierre real: `pagehide` + sendMessage
+    // async no siempre alcanza a completarse antes de que el navegador destruya
+    // la página (tab cerrada de golpe, proceso matado) — confirmado en vivo,
+    // el snapshot seguía marcando `open:true` después de cerrar la tab.
+    // onDisconnect del puerto SÍ dispara siempre que el otro extremo muere,
+    // sin depender de que la página misma alcance a avisar nada.
+    try {
+      const port = chrome.runtime.connect({ name: `aurora_surface:${surface}:${_surfaceInstanceId}` });
+      port.onDisconnect.addListener(() => {});
+    } catch (_) {}
+
+    queueMicrotask(() => reportarSuperficie('init'));
+    window.addEventListener('focus', () => reportarSuperficie('focus'), true);
+    window.addEventListener('blur', () => reportarSuperficie('blur'), true);
+    document.addEventListener('visibilitychange', () => reportarSuperficie('visibility'));
+    window.addEventListener('pagehide', () => reportarSuperficie('pagehide'));
+    // El chequeo de "¿hay algo abierto ahora?" del lado background descarta
+    // instancias con más de unos minutos sin reportarse (ver background.js) —
+    // sin este heartbeat, una tab genuinamente abierta pero quieta (el usuario
+    // leyendo, sin cambiar de foco/tab) podía "envejecer" y contarse como
+    // cerrada por error. Late cada minuto mientras exista, sin depender de
+    // ninguna interacción real del usuario.
+    setInterval(() => reportarSuperficie('heartbeat'), 60000);
+  }
 
   // ── Bridge logging (accesible via CDP desde background) ──────
   window.__aurora_bridgeLog = window.__aurora_bridgeLog || [];
@@ -409,6 +439,19 @@ function initAuroraBridge(frame, opts) {
       const matchedFrame = [..._llmFrames].find(([, iframe]) => iframe.contentWindow === e.source);
       const paneId = matchedFrame?.[0] || e.data.__llmPane || 'cloud';
       if (t === 'AURORA_CLOUD_READY' && matchedFrame?.[1]) bindRelayFrame(matchedFrame[1]);
+      // El relay navega el iframe DESDE ADENTRO (location.assign, ej. "Nuevo
+      // chat") sin pasar por syncLlmPanes — dataset.url (el bookkeeping que
+      // syncLlmPanes usa para decidir si reasignar f.src) queda desactualizado
+      // apenas eso pasa. Cuando React después actualiza cloudUrl al mismo
+      // valor YA correcto, syncLlmPanes lo compara contra el dataset.url
+      // VIEJO, ve una diferencia falsa y reasigna f.src — una SEGUNDA
+      // navegación real, redundante, a la misma URL (confirmado en vivo con
+      // el trace: dos relay_loaded ~550ms apartados por un solo click de
+      // "Nuevo chat"). El propio relay conoce su URL real al navegar — usarla
+      // para mantener el bookkeeping al día evita el eco.
+      if (matchedFrame?.[1] && e.data.url && (t === 'AURORA_CLOUD_NAV_CHANGED' || t === 'AURORA_CLOUD_NEW_CHAT_ANSWER')) {
+        matchedFrame[1].dataset.url = e.data.url;
+      }
       const forwarded = { ...e.data, __llmPane: paneId };
       if (t === 'AURORA_CLOUD_ANSWER' && e.data.requestId) {
         // Persistir primero; recién después entregar. Si storage falla, entregar

@@ -8,6 +8,11 @@
   const REQUIRED_OBSERVE = [
     'getInput', 'getLatestAssistant', 'readAssistant', 'getUserTurnCount',
     'isGenerating', 'getConversationKey',
+    // relay-core.js depende de estos dos en `contenedores()`/`sincronizarHilo`
+    // sin optional-chaining defensivo en todos los usos — un provider sin
+    // ellos no tira error, sencillamente nunca captura respuestas o duplica
+    // turnos de Lyra en el historial. Mejor fallar fuerte acá, al registrar.
+    'getAssistantTurns', 'getTurnId',
   ];
   const REQUIRED_ACT = ['insertText', 'submit'];
 
