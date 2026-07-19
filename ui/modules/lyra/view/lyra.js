@@ -278,6 +278,15 @@ export function Local({ active = true } = {}) {
   // de conversación. Se muestra al lado de "ChatGPT" en la cabecera del panel
   // para que el usuario sepa en qué sesión concreta está parado.
   const [cloudTitulo, setCloudTitulo]               = useState('');
+  // conv_id (cloud_conversaciones) del hilo activo del proveedor — resuelto
+  // por URL al detectar cambio de conversación. Los mensajes _via:direct-ai/
+  // pi-tool con OTRO _convId se ocultan del render (no se borran de DB ni del
+  // historial local): evita mezclar la memoria de un hilo de ChatGPT con la
+  // de otro cuando el usuario cambia de conversación en el sidebar del sitio.
+  // undefined = todavía no se resolvió el hilo activo (no filtrar nada
+  // todavía); null = resuelto, hilo SIN memoria propia (ocultar todo lo
+  // cloud); número = conv_id real del hilo con memoria.
+  const [cloudConvIdActivo, setCloudConvIdActivo]   = useState(undefined);
   // En extensión el iframe del LLM se monta a nivel de extensión (login OK),
   // no inline. Reactivo: el caps de la extensión llega async (HELLO).
   const [usaExtPane, setUsaExtPane]                 = useState(() => (globalThis.__aurora_extContext?.value?.caps || []).includes('llmPanes'));
@@ -977,9 +986,30 @@ export function Local({ active = true } = {}) {
       if (eraHiloEspecifico && esAhoraHome) {
         Toast().show('☁️ El hilo guardado ya no existe, se restauró el chat activo.', 'info', 3000);
       }
+      // Resuelve si ESTE hilo ya tiene memoria propia guardada (conv_id) —
+      // sin esto no hay forma de saber a qué mensajes _via:direct-ai/pi-tool
+      // corresponde este hilo específico vs. otro que el usuario visitó antes.
+      getJSON(`/db/llm/cloud/conversaciones/by-url?url=${encodeURIComponent(url)}`)
+        .then(r => setCloudConvIdActivo(r?.id ?? null))
+        .catch(() => setCloudConvIdActivo(null));
     };
     window.addEventListener('aurora:cloud-nav-changed', onNavChanged);
     return () => window.removeEventListener('aurora:cloud-nav-changed', onNavChanged);
+  }, [cloudUrl]);
+
+  // Autoritativo: cloud.js conoce el convId real que está usando AHORA para
+  // el turno en curso — evita la carrera donde by-url resuelve "sin memoria"
+  // (null) antes de que el turno cree la conversación, lo que ocultaría la
+  // propia respuesta recién generada (el filtro de _visiblesTodos la trataría
+  // como de "otro hilo").
+  useEffect(() => {
+    const onConvResolved = e => {
+      const { url, convId } = e.detail || {};
+      if (!url || convId == null || url !== cloudUrl) return;
+      setCloudConvIdActivo(convId);
+    };
+    window.addEventListener('aurora:cloud-conv-resolved', onConvResolved);
+    return () => window.removeEventListener('aurora:cloud-conv-resolved', onConvResolved);
   }, [cloudUrl]);
 
   const toggleCloud = useCallback(() => {
@@ -1159,7 +1189,17 @@ export function Local({ active = true } = {}) {
   // main thread y congela la app (y cuelga el loop de tools de la nube). Solo
   // los últimos MAX_RENDER se pintan; el resto sigue en historial/DB.
   const MAX_RENDER = 50;
-  const _visiblesTodos = historialVal.filter(m => !m._internal);
+  // Mensajes cloud (_via:direct-ai/pi-tool) etiquetados con el _convId del
+  // hilo que los generó. Si el usuario cambió de conversación en el sidebar
+  // del proveedor (cloudConvIdActivo ya resuelto contra ESE hilo), ocultar
+  // los que pertenecen a un hilo distinto — sin esto, cambiar de hilo en
+  // ChatGPT mezclaba visualmente memoria de conversaciones distintas.
+  const _visiblesTodos = historialVal.filter(m => {
+    if (m._internal) return false;
+    const esCloud = m._via === 'direct-ai' || m._via === 'pi-tool';
+    if (!esCloud || m._convId == null || cloudConvIdActivo === undefined) return true;
+    return m._convId === cloudConvIdActivo;
+  });
   const visibleMessages = _visiblesTodos.length > MAX_RENDER
     ? _visiblesTodos.slice(-MAX_RENDER)
     : _visiblesTodos;

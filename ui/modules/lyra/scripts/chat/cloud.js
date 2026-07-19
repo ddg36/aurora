@@ -249,21 +249,29 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
   const retomando = !!turnoPrevio;
   const turnId = turnoPrevio?.turnId || nuevoTurnId();
 
-  if (!retomando) {
-    agregar({
-      role: 'user',
-      content: texto,
-      _imagenes: images?.length ? images : undefined,
-      _adjuntos: (files?.length || 0) || undefined,
-    });
-  }
-
   cargando.value = true;
   cloudGenerando.value = true;
 
   const convId = turnoPrevio?.convId ?? await asegurarConversacion(aiId, url);
   aiId = turnoPrevio?.aiId || aiId;
   url = turnoPrevio?.url || url;
+  // El vigía de cambio de hilo (relay-core.js → AURORA_CLOUD_NAV_CHANGED)
+  // puede resolver "sin memoria" (convId null) ANTES de que este turno cree
+  // la conversación en DB — sin este aviso, el filtro de historial de
+  // lyra.js queda con cloudConvIdActivo desactualizado y oculta la propia
+  // respuesta que se acaba de generar. Autoritativo: este turno SABE el
+  // convId real que está usando ahora mismo.
+  if (convId) window.dispatchEvent(new CustomEvent('aurora:cloud-conv-resolved', { detail: { url, convId } }));
+
+  if (!retomando) {
+    agregar({
+      role: 'user',
+      content: texto,
+      _imagenes: images?.length ? images : undefined,
+      _adjuntos: (files?.length || 0) || undefined,
+      _convId: convId,
+    });
+  }
 
   // Primer sólo en turnos nuevos. En recuperación se usa el prompt exacto que
   // quedó persistido, incluido el cebado si correspondía.
@@ -321,7 +329,7 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
       const recuperandoEstaIter = retomando && iter === iterInicial && !!estadoRetomado;
       const placeholder = agregar({
         role: 'assistant', content: '', _via: 'direct-ai',
-        _toolIter: iter + 1, _toolMax: MAX_ITER,
+        _toolIter: iter + 1, _toolMax: MAX_ITER, _convId: convId,
       });
       assistantUiIdActual = placeholder?._uiId || null;
       const t0 = Date.now();
@@ -441,7 +449,7 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
           agregar({
             role: 'assistant', _via: 'pi-tool', _toolError: true,
             content: `🔧 cortacircuito\n\n[ERROR] ${aiId || 'Cloud'} repitió ${repeticionesFormato} veces la misma tool inválida. Se detuvo el loop.`,
-            _toolVisual: visual,
+            _toolVisual: visual, _convId: convId,
           });
           await completarTurnoCloud(turnId, 'failed');
           break;
@@ -459,7 +467,7 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
           role: 'assistant', _via: 'pi-tool', _toolError: true,
           _toolIter: iter + 1, _toolMax: MAX_ITER,
           content: `🔧 tool inválida · iteración ${iter + 1}/${MAX_ITER}\n\n[ERROR] ${error}`,
-          _toolVisual: visual,
+          _toolVisual: visual, _convId: convId,
         });
         resultados.push('Tool request error: ' + error);
       }
@@ -487,7 +495,7 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
           role: 'assistant', _via: 'pi-tool', _toolIter: iter + 1, _toolMax: MAX_ITER,
           _toolCallId: callId,
           content: `${etiqueta}\n\nIteración ${iter + 1}/${MAX_ITER} · ejecutando…`,
-          _toolVisual: visual,
+          _toolVisual: visual, _convId: convId,
         });
         return { call, etiqueta, callId, indice };
       };
@@ -576,7 +584,7 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
           role: 'assistant', _via: 'pi-tool', _toolError: true,
           _toolIter: iter + 1, _toolMax: MAX_ITER,
           content: `🔧 límite de seguridad\n\n[ERROR] Se alcanzó MAX_ITER=${MAX_ITER}. El loop Cloud se detuvo para evitar una ejecución infinita.`,
-          _toolVisual: visual,
+          _toolVisual: visual, _convId: convId,
         });
         await completarTurnoCloud(turnId, 'failed');
         break;
