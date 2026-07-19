@@ -1212,20 +1212,30 @@ export function Local({ active = true } = {}) {
   });
   // El signal `historial` es efímero: un reload de Aurora lo vacía (viene de
   // cargarMensajes, que solo lee la tabla `mensajes` de pi, NUNCA cloud). Si
-  // el hilo activo SÍ tiene memoria en DB (cloud_mensajes) pero no quedó
-  // ningún mensaje suyo en memoria, hidratar desde ahí — si no, la respuesta
-  // de un hilo real desaparecía tras cada reload aunque ChatGPT (el iframe)
-  // la siguiera mostrando con normalidad.
-  const tieneMemoriaEnVivo = cloudConvIdActivo != null
-    && _visiblesFiltrados.some(m => m._convId === cloudConvIdActivo);
-  const _visiblesTodos = (!tieneMemoriaEnVivo && cloudConvIdActivo != null && cloudHistorialPropio.length)
-    ? [
-        ..._visiblesFiltrados,
-        ...cloudHistorialPropio.map(m => ({
-          role: m.rol, content: m.contenido, ts: (m.capturado_en || 0) * 1000,
-          id: `cloud-hist-${m.id}`, _via: 'direct-ai', _convId: cloudConvIdActivo,
-        })),
-      ]
+  // el hilo activo tiene memoria en DB (cloud_mensajes), se fusiona SIEMPRE
+  // con lo que haya en memoria — no solo cuando memoria está vacía: un turno
+  // nuevo en curso (aún sin persistir()) coexiste con la memoria vieja
+  // hidratada de DB en vez de reemplazarla. Bug real verificado en vivo:
+  // con un "si no hay nada, hidratar" exclusivo, mandar UN mensaje nuevo
+  // hacía desaparecer toda la memoria hidratada del hilo en el siguiente
+  // render (tieneMemoriaEnVivo pasaba a true con solo ese mensaje nuevo).
+  // Dedup por rol+contenido (lo único estable entre ambas fuentes: DB no
+  // comparte id con el _uiId en memoria).
+  const _visiblesTodos = cloudConvIdActivo != null && cloudHistorialPropio.length
+    ? (() => {
+        const yaEnMemoria = new Set(
+          _visiblesFiltrados
+            .filter(m => m._convId === cloudConvIdActivo)
+            .map(m => `${m.role} ${m.content}`),
+        );
+        const hidratados = cloudHistorialPropio
+          .filter(m => !yaEnMemoria.has(`${m.rol} ${m.contenido}`))
+          .map(m => ({
+            role: m.rol, content: m.contenido, ts: (m.capturado_en || 0) * 1000,
+            id: `cloud-hist-${m.id}`, _via: 'direct-ai', _convId: cloudConvIdActivo,
+          }));
+        return [..._visiblesFiltrados, ...hidratados].sort((a, b) => (a.ts || 0) - (b.ts || 0));
+      })()
     : _visiblesFiltrados;
   const visibleMessages = _visiblesTodos.length > MAX_RENDER
     ? _visiblesTodos.slice(-MAX_RENDER)
