@@ -57,10 +57,11 @@ const AI_URLS = {
   claude:     'https://claude.ai',
   chatgpt:    'https://chatgpt.com',
   perplexity: 'https://www.perplexity.ai',
+  qwen:       'https://chat.qwen.ai',
   custom:     '',
 };
-const AI_LABELS = { gemini: 'Gemini', chatgpt: 'ChatGPT', claude: 'Claude', perplexity: 'Perplexity', custom: 'Custom' };
-const AI_ICONOS = { gemini: '◇', chatgpt: '◉', claude: '✶', perplexity: '⊕', custom: '🌐' };
+const AI_LABELS = { gemini: 'Gemini', chatgpt: 'ChatGPT', claude: 'Claude', perplexity: 'Perplexity', qwen: 'Qwen', custom: 'Custom' };
+const AI_ICONOS = { gemini: '◇', chatgpt: '◉', claude: '✶', perplexity: '⊕', qwen: '❖', custom: '🌐' };
 // Favicon real del proveedor en vez de un glifo fijo. El favicon.ico directo
 // del dominio no es confiable (probado: ChatGPT 403, Gemini 404, Grok 200
 // pero text/html de error) — el servicio de Google resuelve esto igual para
