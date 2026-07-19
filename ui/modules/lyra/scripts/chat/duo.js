@@ -69,7 +69,7 @@ export function crearDuoLyraCloud() {
   let cancelado = false;
   let ws = null;
 
-  async function iniciar({ iframe, model = '', maxRondas = 8, empieza = 'local',
+  async function iniciar({ iframe, model = '', maxRondas = 8, empieza = 'local', convId = null,
                            seed = 'Presentate en una frase y proponé un tema interesante para charlar.' },
                          callbacks = {}) {
     const { onEstado, onError } = callbacks;
@@ -102,7 +102,7 @@ export function crearDuoLyraCloud() {
         mensaje = resp;
         quien = 'cloud';
       } else {
-        const placeholder = agregarMensajeRico({ role: 'assistant', content: '', _via: 'duo-external' });
+        const placeholder = agregarMensajeRico({ role: 'assistant', content: '', _via: 'duo-external', _convId: convId });
         const uiId = placeholder?._uiId;
         let resp;
         cloudGenerando.value = true;

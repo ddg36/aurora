@@ -1051,11 +1051,11 @@ export function Local({ active = true } = {}) {
     setDuoActivo(true);
     Toast().show('⇆ Duo iniciado — Lyra ↔ ' + (AI_LABELS[cloudAiId] || 'Nube'), 'info', 2000);
     duo.iniciar(
-      { iframe: iframeRef.current, model: modeloSeleccionado.value },
+      { iframe: iframeRef.current, model: modeloSeleccionado.value, convId: cloudConvIdActivo },
       { onEstado: e => { if (['fin', 'cancelado', 'error'].includes(e)) setDuoActivo(false); },
         onError: m => Toast().show('Duo: ' + m, 'error', 3000) },
     );
-  }, [duoActivo, cloudVisible, cloudAiId, usaExtPane, lyraOnline]);
+  }, [duoActivo, cloudVisible, cloudAiId, usaExtPane, lyraOnline, cloudConvIdActivo]);
 
   const cycleCloudPanel = useCallback(() => {
     if (cloudExpanded) {
@@ -1206,7 +1206,7 @@ export function Local({ active = true } = {}) {
   // ChatGPT mezclaba visualmente memoria de conversaciones distintas.
   const _visiblesFiltrados = historialVal.filter(m => {
     if (m._internal) return false;
-    const esCloud = m._via === 'direct-ai' || m._via === 'pi-tool';
+    const esCloud = m._via === 'direct-ai' || m._via === 'pi-tool' || m._via === 'duo-external';
     if (!esCloud || m._convId == null || cloudConvIdActivo === undefined) return true;
     return m._convId === cloudConvIdActivo;
   });
