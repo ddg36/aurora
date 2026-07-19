@@ -286,6 +286,12 @@ function startAuroraRelayCore(injectedAdapter) {
       // aparecía especialmente al crear un hilo desde Lyra Cloud.
       if (policies.anchorAfterUser) {
         const ids = observe.getNewUserTurnIds?.(base.userIds) || [];
+        // Marcar temprano (apenas se detecta, antes de esperar la respuesta):
+        // así un futuro observador de "turno espontáneo" puede inferir que el
+        // assistant que sigue a este user-turn también es de Lyra, aunque el
+        // propio id del assistant aún no esté registrado (terminar() lo marca
+        // recién al final del turno).
+        for (const id of ids) marcarTurnoDeLyra(id);
         const posterior = observe.findAssistantAfterUserIds?.(ids, cs);
         if (posterior) return posterior;
       }
@@ -454,6 +460,11 @@ function startAuroraRelayCore(injectedAdapter) {
           markdownMs: Math.round(perfAudit.markdownMs * 10) / 10,
           markdownMaxMs: Math.round(perfAudit.markdownMaxMs * 10) / 10,
         });
+        // Marcar ESTE turno assistant como "de Lyra" solo en el camino feliz
+        // real (nunca cancelado/timeout) — un futuro observador de "turno
+        // espontáneo" lo usa para no re-reportar lo que ya se entregó por
+        // AURORA_CLOUD_ANSWER.
+        if (reason !== 'cancelled' && reason !== 'timeout') marcarTurnoDeLyra(idContainer(current));
         resolve({
           // Una cancelación nunca es una respuesta exitosa, aunque ya exista
           // texto parcial. Una respuesta SOLO-imagen (sin texto) igual es válida.
@@ -749,40 +760,65 @@ function startAuroraRelayCore(injectedAdapter) {
   //     en el DOM (confirmado en vivo: navega a /c/<id>, se queda sin turnos
   //     ~5-8s, termina en pathname '/'). Sin este vigía, Aurora seguía
   //     creyendo el hilo persistido (cloudUrl) válido para siempre.
-  // Se manda SIEMPRE que la clave cambia (no solo el caso b) — el consumidor
-  // decide qué hacer con la URL/título nuevos (restaurar historial si existe
-  // en DB, o vaciar si es un hilo sin memoria previa).
-  // Arranca en '' (no en la clave actual) para que la primera comparación ya
-  // dispare un aviso — así el consumidor conoce el título del hilo inicial
-  // sin tener que esperar a que el usuario cambie de conversación primero.
-  // Vigila TAMBIÉN el título solo (no solo el pathname): ChatGPT navega
-  // primero y actualiza <title> unos segundos después (async, vía su router)
-  // — confirmado en vivo: al momento del cambio de pathname el título aún
-  // decía el genérico "ChatGPT", el nombre real llegó ~2s más tarde.
-  // Intervalo corto (no 1000ms) para achicar la ventana de carrera: si el
-  // usuario cambia de hilo y escribe en Lyra casi al instante, cloudUrl en
-  // React puede seguir apuntando al hilo viejo por un ciclo — enviarACloud
-  // usaría ese url desactualizado para resolver/crear la conversación,
-  // persistiendo el mensaje bajo el conv_id INCORRECTO (corrupción real de
-  // cloud_mensajes, no solo un problema visual). 300ms no la elimina del
-  // todo (seguiría existiendo un poll, no un evento síncrono — el iframe es
-  // cross-origin, no se puede leer su location.href directo desde afuera),
-  // pero la reduce ~3x del riesgo previo sin tocar el protocolo de mensajería
-  // ya verificado hoy (mismo orden de magnitud que confirmarNuevoChatPendiente).
+  //
+  // MutationObserver, NO setInterval: un poll de tiempo fijo (probado antes,
+  // 300ms) generaba fetches pesados en el frontend por CADA cambio de
+  // <title> — ChatGPT lo actualiza varias veces mientras nombra un chat
+  // nuevo, no solo una vez. Confirmado en vivo: 15 disparos en 8s en una
+  // sola sesión de prueba, saturando el endpoint by-url innecesariamente.
+  // El propio archivo ya resuelve este tipo de detección en otro lado
+  // (siteObs/obs del turno, confirmarNuevoChatPendiente) con Observer +
+  // estabilidad, nunca con un timer ciego — mismo patrón acá.
+  //
+  // Pathname: crítico para integridad de datos (si el usuario escribe justo
+  // tras cambiar de hilo, enviarACloud podría resolver/crear la conversación
+  // bajo el conv_id VIEJO) — se avisa INMEDIATO en cuanto el observer lo
+  // detecta, sin esperar estabilidad. Reactivo a mutaciones reales del DOM
+  // (una navegación de hilo causa reflow masivo, se detecta en el siguiente
+  // microtask), mucho más rápido que cualquier poll de tiempo fijo.
+  //
+  // Título: solo cosmético (label de la cabecera) — ChatGPT navega primero y
+  // actualiza <title> asíncronamente después, oscilando un par de veces
+  // antes de asentarse (confirmado en vivo). Se espera estabilidad real
+  // (2200ms sin cambios, mismo umbral ya usado en confirmarNuevoChatPendiente
+  // de este archivo) antes de avisar — y NUNCA dispara fetch en el consumidor
+  // (reason:'title_only', el frontend solo actualiza el label).
   let claveConversacionPrevia = '';
-  let tituloPrevio = '';
-  setInterval(() => {
+  let tituloEstable = '';
+  let tituloCandidato = null;
+  let tituloTimer = null;
+  const avisarCambio = (reason, titulo) => {
+    if (leerMarcaNuevoChat()) return; // ese flujo se resuelve por su cuenta
+    trace('conversation_changed', { url: location.href, titulo, reason });
+    post({ type: 'AURORA_CLOUD_NAV_CHANGED', reason, url: location.href, titulo });
+  };
+  const chequearConversacion = () => {
     const clave = observe.getConversationKey();
+    if (clave !== claveConversacionPrevia) {
+      claveConversacionPrevia = clave;
+      tituloCandidato = null;
+      if (tituloTimer) { clearTimeout(tituloTimer); tituloTimer = null; }
+      tituloEstable = observe.getConversationTitle?.() || '';
+      avisarCambio('thread_changed', tituloEstable);
+      return;
+    }
     const titulo = observe.getConversationTitle?.() || '';
-    if (clave === claveConversacionPrevia && titulo === tituloPrevio) return;
-    claveConversacionPrevia = clave;
-    tituloPrevio = titulo;
-    // No avisar si fue un new-chat pedido por el usuario (ese flujo ya se
-    // resuelve por su cuenta vía NEW_CHAT_KEY/confirmarNuevoChatPendiente).
-    if (leerMarcaNuevoChat()) return;
-    trace('conversation_changed', { url: location.href, titulo });
-    post({ type: 'AURORA_CLOUD_NAV_CHANGED', reason: 'conversation_changed', url: location.href, titulo });
-  }, 300);
+    if (titulo === tituloEstable) { tituloCandidato = null; return; }
+    if (tituloCandidato !== titulo) {
+      tituloCandidato = titulo;
+      if (tituloTimer) clearTimeout(tituloTimer);
+      tituloTimer = setTimeout(() => {
+        tituloTimer = null;
+        const actual = observe.getConversationTitle?.() || '';
+        if (actual !== tituloCandidato) return; // volvió a cambiar, no estable
+        tituloEstable = actual;
+        avisarCambio('title_only', actual);
+      }, 2200);
+    }
+  };
+  chequearConversacion(); // primer chequeo inmediato, sin esperar la primera mutación
+  new MutationObserver(chequearConversacion)
+    .observe(document.documentElement, { childList: true, subtree: true, characterData: true });
 
   let ocupado = false, cancelActual = null, reqActual = null;
   let ultimoTurnoTerminado = 0;
@@ -801,6 +837,29 @@ function startAuroraRelayCore(injectedAdapter) {
       const current = leerAskPendiente();
       if (!requestId || current?.requestId === requestId) sessionStorage.removeItem(ASK_PENDING_KEY);
     } catch (_) {}
+  }
+
+  // ── Turnos generados por Lyra (no por escritura directa en el sitio) ────
+  // No existe hoy ningún identificador de "este mensaje vino de Lyra vs. lo
+  // escribió el usuario directo en el iframe" — necesario para un futuro
+  // observador de "turno espontáneo" que refleje en Lyra lo que pase en el
+  // hilo aunque no haya sido iniciado por un ASK (pedido explícito del
+  // usuario: hoy esos turnos no aparecen en Lyra en absoluto). data-message-id
+  // (ya expuesto por observe.getTurnId, real y estable de ChatGPT) es más
+  // confiable que marcar el texto (se corrompe con copy/paste, reformateo) o
+  // que heurísticas de timing (`!ocupado`, ventanas de carrera). Se marca el
+  // turno USER apenas se detecta (temprano en el ciclo, antes de esperar la
+  // respuesta) — así un futuro observador puede inferir que el assistant que
+  // lo sigue también es de Lyra aunque su propio id aún no esté registrado.
+  const LYRA_TURN_IDS_KEY = 'aurora_lyra_turn_ids_v1';
+  function marcarTurnoDeLyra(turnId) {
+    if (!turnId) return;
+    let arr;
+    try { arr = JSON.parse(sessionStorage.getItem(LYRA_TURN_IDS_KEY) || '[]'); } catch (_) { arr = []; }
+    if (arr.includes(turnId)) return;
+    arr.push(turnId);
+    if (arr.length > 200) arr = arr.slice(-200); // acotar: turnos viejos caen
+    try { sessionStorage.setItem(LYRA_TURN_IDS_KEY, JSON.stringify(arr)); } catch (_) {}
   }
 
   // El primer envío de una conversación suele navegar /app → /app/<id>.
