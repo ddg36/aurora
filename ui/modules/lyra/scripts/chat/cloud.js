@@ -8,7 +8,7 @@
 // AgentSession ni segundo LLM, y el resultado vuelve al origen.
 
 import { historial, cargando, cloudGenerando, agregarMensajeRico } from './mensajes.js';
-import { askCloud, confirmarCloudAnswer } from '../../../../components/shared/cloud-ask.js';
+import { askCloud, confirmarCloudAnswer, urlRealDelIframe } from '../../../../components/shared/cloud-ask.js';
 import { postJSON, getJSON, putJSON } from '../../../../components/shared/api.js';
 import { detectarToolDraft, toolVisual, emitirToolVisual } from '../../../../components/shared/cloud-tool-visual.js';
 import { getCloudToolPrimer } from '../../../../components/shared/cloud-tool-primer.js';
@@ -285,7 +285,14 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
   cargando.value = true;
   cloudGenerando.value = true;
 
-  const convId = turnoPrevio?.convId ?? await asegurarConversacion(aiId, url);
+  // Lectura fresca de la URL real del iframe justo antes de resolver/crear
+  // la conversación — no confiar en el `url` recibido como parámetro (viene
+  // de cloudUrl de React, que puede seguir apuntando al hilo VIEJO si el
+  // usuario cambió de hilo y escribió casi al instante). Verificado en vivo:
+  // sin esto, un mensaje real se persistía bajo el conv_id incorrecto aunque
+  // el ASK se inyectara correctamente en el iframe ya en el hilo nuevo.
+  if (!retomando) url = await urlRealDelIframe(iframe, url);
+  let convId = turnoPrevio?.convId ?? await asegurarConversacion(aiId, url);
   aiId = turnoPrevio?.aiId || aiId;
   url = turnoPrevio?.url || url;
   // El vigía de cambio de hilo (relay-core.js → AURORA_CLOUD_NAV_CHANGED)
@@ -396,6 +403,29 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
         thr.flush();
         adjImgs = undefined;
         adjFiles = undefined;
+
+        // Reconciliación: un chat NUEVO (--new-chat/"Nuevo chat") no tiene URL
+        // real (/c/<id>) hasta que ChatGPT redirige tras aceptar el PRIMER
+        // mensaje — imposible leerla fresca antes de enviar (la redirección
+        // es CONSECUENCIA de enviar, no algo previo). El turno se creó con la
+        // URL disponible en ese momento (home); ahora que la respuesta llegó,
+        // la URL real ya existe — si cambió, resolver la conversación
+        // correcta y migrar lo ya pintado/persistido de este turno.
+        if (iter === iterInicial && !retomando && !/\/c\//.test(url)) {
+          const urlReal = await urlRealDelIframe(fr, url);
+          if (urlReal !== url && /\/c\//.test(urlReal)) {
+            const convIdReal = await asegurarConversacion(aiId, urlReal);
+            if (convIdReal && convIdReal !== convId) {
+              url = urlReal;
+              convId = convIdReal;
+              window.dispatchEvent(new CustomEvent('aurora:cloud-conv-resolved', { detail: { url, convId } }));
+              await persistir(convId, 'user', texto);
+              historial.value = historial.value.map(m =>
+                (m._uiId === assistantUiIdActual || (m.role === 'user' && m.content === texto))
+                  ? { ...m, _convId: convId } : m);
+            }
+          }
+        }
 
         stateIter = {
           ...stateIter,

@@ -1079,6 +1079,17 @@ function startAuroraRelayCore(injectedAdapter) {
   }
   window.addEventListener('message', async (e) => {
     if (e.data?.type === 'AURORA_CLOUD_PING') { anunciar(); return; }
+    // Lectura fresca bajo demanda, no cacheada: cloudUrl en React puede seguir
+    // apuntando al hilo viejo justo tras un cambio de conversación (el vigía
+    // de conversation_changed es reactivo pero no instantáneo/síncrono desde
+    // afuera — el iframe es cross-origin). Verificado en vivo: escribir casi
+    // al instante tras cambiar de hilo persistía el mensaje bajo el conv_id
+    // INCORRECTO. enviarACloud pide esto justo antes de resolver/crear la
+    // conversación, en vez de confiar en el url que ya tenía como parámetro.
+    if (e.data?.type === 'AURORA_CLOUD_WHERE_AM_I') {
+      post({ type: 'AURORA_CLOUD_WHERE_AM_I_ANSWER', requestId: e.data.requestId, url: location.href });
+      return;
+    }
     if (e.data?.type === 'AURORA_CLOUD_STOP') { detenerNube(); return; }
     if (e.data?.type === 'AURORA_CLOUD_NEW_CHAT') {
       try { iniciarNuevoChat(e.data.requestId); }

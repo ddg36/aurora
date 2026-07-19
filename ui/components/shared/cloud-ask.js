@@ -131,6 +131,26 @@ export function detenerCloud(iframe, paneId = 'cloud') {
   try { postAlRelay(iframe, { type: 'AURORA_CLOUD_STOP', __llmPane: paneId }); } catch (_) {}
 }
 
+// Lectura fresca de la URL real del iframe, bajo demanda — no confiar en
+// cloudUrl de React, que puede seguir apuntando al hilo viejo justo tras un
+// cambio de conversación (verificado en vivo: escribir casi al instante tras
+// cambiar de hilo persistía el mensaje bajo el conv_id incorrecto). Fallback
+// al valor pasado si no hay respuesta en 500ms (relay caído/timeout) — mejor
+// seguir con un valor potencialmente viejo que bloquear el envío.
+export function urlRealDelIframe(iframe, fallback, paneId = 'cloud', timeoutMs = 500) {
+  return new Promise(resolve => {
+    const requestId = `where-${Date.now()}-${++_seq}`;
+    let done = false;
+    const finish = url => { if (done) return; done = true; window.removeEventListener('message', onMsg); resolve(url); };
+    const onMsg = e => {
+      if (e.data?.type === 'AURORA_CLOUD_WHERE_AM_I_ANSWER' && e.data.requestId === requestId) finish(e.data.url || fallback);
+    };
+    window.addEventListener('message', onMsg);
+    setTimeout(() => finish(fallback), timeoutMs);
+    try { postAlRelay(iframe, { type: 'AURORA_CLOUD_WHERE_AM_I', requestId, __llmPane: paneId }); } catch (_) { finish(fallback); }
+  });
+}
+
 // Abre y CONFIRMA una conversación limpia en el proveedor. El relay guarda un
 // marcador en sessionStorage para sobrevivir a la navegación y sólo responde
 // cuando el nuevo composer existe y el DOM del hilo anterior desapareció.

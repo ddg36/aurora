@@ -405,7 +405,7 @@ function initAuroraBridge(frame, opts) {
     // así que Aurora no puede hablarle directo. Reenviamos en ambos sentidos:
     // Respuestas del relay (origin = host del LLM) → Aurora.
     const t = e.data?.type;
-    if (t === 'AURORA_CLOUD_CHUNK' || t === 'AURORA_CLOUD_ANSWER' || t === 'AURORA_CLOUD_NEW_CHAT_ANSWER' || t === 'AURORA_CLOUD_READY' || t === 'AURORA_CLOUD_STATUS' || t === 'AURORA_CLOUD_RESETTING' || t === 'AURORA_RELAY_BOUND' || t === 'AURORA_CLOUD_NAV_CHANGED' || t === 'AURORA_CLOUD_SYNC_HILO') {
+    if (t === 'AURORA_CLOUD_CHUNK' || t === 'AURORA_CLOUD_ANSWER' || t === 'AURORA_CLOUD_NEW_CHAT_ANSWER' || t === 'AURORA_CLOUD_READY' || t === 'AURORA_CLOUD_STATUS' || t === 'AURORA_CLOUD_RESETTING' || t === 'AURORA_RELAY_BOUND' || t === 'AURORA_CLOUD_NAV_CHANGED' || t === 'AURORA_CLOUD_SYNC_HILO' || t === 'AURORA_CLOUD_WHERE_AM_I_ANSWER') {
       const matchedFrame = [..._llmFrames].find(([, iframe]) => iframe.contentWindow === e.source);
       const paneId = matchedFrame?.[0] || e.data.__llmPane || 'cloud';
       if (t === 'AURORA_CLOUD_READY' && matchedFrame?.[1]) bindRelayFrame(matchedFrame[1]);
@@ -424,7 +424,7 @@ function initAuroraBridge(frame, opts) {
       return;
     }
     // ASK/STOP/NEW_CHAT de Aurora → iframe del LLM que gestionamos.
-    if (e.origin === AURORA_URL && (t === 'AURORA_CLOUD_ASK' || t === 'AURORA_CLOUD_STOP' || t === 'AURORA_CLOUD_PING' || t === 'AURORA_CLOUD_NEW_CHAT')) {
+    if (e.origin === AURORA_URL && (t === 'AURORA_CLOUD_ASK' || t === 'AURORA_CLOUD_STOP' || t === 'AURORA_CLOUD_PING' || t === 'AURORA_CLOUD_NEW_CHAT' || t === 'AURORA_CLOUD_WHERE_AM_I')) {
       _llmFrames.get(e.data.__llmPane || 'cloud')?.contentWindow?.postMessage(e.data, '*');
       return;
     }
