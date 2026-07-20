@@ -1,25 +1,21 @@
 import { renderizarContenido } from '../scripts/chat/renderizar.js';
 import { copiarMensaje, añadirANotas, leerMensaje } from '../scripts/chat/acciones-rapidas.js';
-import { Chip, AutoFitChips } from '../../../components/index.js';
+import { Chip, AutoFitChips, Empty, Icon } from '../../../components/index.js';
 import { ToolVisualCard } from '../../../components/shared/cloud-tool-visual.js';
 
 const html = (...args) => globalThis.html(...args);
 const { useMemo } = globalThis.preactHooks;
 
-const AI_ICONOS = { gemini: '◇', chatgpt: '◉', claude: '✶', perplexity: '⊕', custom: '🌐' };
 const AI_LABELS = { gemini: 'Gemini', chatgpt: 'ChatGPT', claude: 'Claude', perplexity: 'Perplexity', custom: 'Custom' };
 
-const IconoCerebro = ({ vivo }) => html`
-  <svg class="thinking-brain-icon ${vivo ? 'is-live' : ''}" viewBox="0 0 24 24" width="14" height="14"
-    fill="none" stroke="currentColor" stroke-width="1.6"
-    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path opacity="0.9" d="M9 4.5c-1.7 0-3 1.3-3 3 0 .4.1.8.2 1.1C4.9 9.1 4 10.4 4 12c0 1.4.7 2.6 1.8 3.3-.1.3-.2.7-.2 1.1 0 1.9 1.5 3.4 3.4 3.6.3 1.2 1.4 2 2.6 2s2.3-.8 2.6-2c1.9-.2 3.4-1.7 3.4-3.6 0-.4-.1-.8-.2-1.1 1.1-.7 1.8-1.9 1.8-3.3 0-1.6-.9-2.9-2.2-3.4.1-.3.2-.7.2-1.1 0-1.7-1.3-3-3-3-.7 0-1.3.2-1.8.6C13.1 4.7 12.1 4 11 4c-.7 0-1.4.2-2 .5z"/>
-    <path opacity="0.6" d="M12 4v16"/>
-    <path class="spark" style="animation-delay:0s" d="M8 8.5c.8.5 1.8.5 2.6 0"/>
-    <path class="spark" style="animation-delay:0.3s" d="M13.4 8.5c.8.5 1.8.5 2.6 0"/>
-    <path class="spark" style="animation-delay:0.6s" d="M7 12.8c.9.4 2 .3 2.8-.3"/>
-  </svg>
+const RoleLabel = ({ role, external, cloudAiId }) => html`
+  <span class="inline-flex items-center gap-1.5">
+    <${Icon} name=${role === 'user' ? 'user' : external ? 'cloud' : 'bot'} size=${14}/>
+    ${role === 'user' ? 'Tú' : external ? (AI_LABELS[cloudAiId] || 'AI externa') : 'Lyria'}
+  </span>
 `;
+
+const IconoCerebro = ({ vivo }) => html`<${Icon} class=${`thinking-brain-icon ${vivo ? 'is-live' : ''}`} name="brain" size=${14}/>`;
 
 // El bloque de texto EN VIVO se re-renderiza en cada token (streamingActual
 // es un signal que fuerza un render del componente entero por cada delta,
@@ -52,12 +48,9 @@ export function MessageList({
         onScroll=${onChatScroll}
       >
       ${visibleMessages.length === 0 && !streamingVal && html`
-        <div class="empty-chat">
-          <p>⚡ Lyra — Local AI</p>
-          <p class="hint">${offline
-            ? 'Lyra offline. Inicia el servidor Aurora primero.'
-            : 'Envía un mensaje para comenzar'}</p>
-        </div>
+        <${Empty} icon="bot" title="Lyria · IA local">
+          ${offline ? 'Lyria está desconectada. Inicia el servidor Aurora.' : 'Envía un mensaje para comenzar.'}
+        <//>
       `}
 
       ${visibleMessages.map((msg, idx) => {
@@ -71,7 +64,7 @@ export function MessageList({
               <button
                 class="compaction-summary-toggle"
                 onClick=${() => setExpandedCompaction(prev => ({ ...prev, [idx]: !prev[idx] }))}
-              >🗜️ Compactado desde ${tokenStr} tokens ${expandido ? '▼' : '▶ (click para expandir)'}</button>
+              ><${Icon} name="package" size=${14}/> Compactado desde ${tokenStr} tokens ${expandido ? '· ocultar' : '· mostrar'}</button>
               ${expandido && html`
                 <div class="compaction-summary-content"
                   dangerouslySetInnerHTML=${{ __html: renderizarContenido(msg.content) }}
@@ -82,11 +75,7 @@ export function MessageList({
         }
 
         const esExterno = msg._via === 'direct-ai' || msg._via === 'duo-external';
-        const rolLabel = msg.role === 'user'
-          ? '👤 Tú'
-          : esExterno
-            ? `${AI_ICONOS[cloudAiId] || '☁'} ${AI_LABELS[cloudAiId] || 'AI ext'}`
-            : '🦙 Lyra';
+        const rolLabel = html`<${RoleLabel} role=${msg.role} external=${esExterno} cloudAiId=${cloudAiId}/>`;
 
         if (msg.role === 'assistant') {
           const parsed = Array.isArray(msg._piTurn?.blocks)
@@ -106,13 +95,13 @@ export function MessageList({
                     class=${'msg-pin-btn' + (estaFijado(msg) ? ' fijado' : '')}
                     onClick=${() => togglePin(msg)}
                     title=${estaFijado(msg) ? 'Desfijar mensaje' : 'Fijar mensaje'}
-                  >${estaFijado(msg) ? '📌' : '📍'}</button>
+                  ><${Icon} name="pin" size=${14}/></button>
                 `}
                 <button
                   class="msg-speak-btn"
                   onClick=${() => hablar(msg.content)}
                   title="Releer mensaje"
-                >🔊</button>
+                ><${Icon} name="volume" size=${14}/></button>
               </div>
               ${msg._toolVisual
                 ? html`<${ToolVisualCard} visual=${msg._toolVisual} />`
@@ -154,8 +143,8 @@ export function MessageList({
                   return html`
                     <div key=${key} class=${'message tool-execution ' + (p.isError ? 'tool-error' : 'tool-success')}>
                       <div class="tool-execution-header" onClick=${() => toggleTool(key)}>
-                        <span class="tool-toggle-chevron">${abierto ? '▼' : '▶'}</span>
-                        <span class="tool-execution-icon">${p.isError ? '✗' : '✓'}</span>
+                        <span class="tool-toggle-chevron"><${Icon} name=${abierto ? 'chevronDown' : 'chevronRight'} size=${12}/></span>
+                        <span class="tool-execution-icon"><${Icon} name=${p.isError ? 'warning' : 'check'} size=${13}/></span>
                         <span class="tool-execution-name">${p.nombre}</span>
                         <span class="tool-execution-preview">${String(p.args || '').replace(/\s+/g, ' ').slice(0, 100)}</span>
                       </div>
@@ -183,10 +172,10 @@ export function MessageList({
               `}
               <div class="message-quick-actions mt-2 pt-2 border-t border-aurora-border opacity-50 transition-opacity flex items-center flex-wrap gap-2">
                 <${AutoFitChips}>
-                  <${Chip} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles">📋 Copiar<//>
-                  <${Chip} onClick=${() => añadirANotas(msg.content)} title="Añadir a notas">✎ A notas<//>
-                  <${Chip} onClick=${() => reformularRespuesta(regenerarRespuesta, msg)} title="Regenerar respuesta">↻ Regenerar<//>
-                  <${Chip} onClick=${() => leerMensaje(msg.content)} title="Leer mensaje">🔊 Leer<//>
+                  <${Chip} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles"><${Icon} name="copy" size=${14}/> Copiar<//>
+                  <${Chip} onClick=${() => añadirANotas(msg.content)} title="Añadir a notas"><${Icon} name="note" size=${14}/> A notas<//>
+                  <${Chip} onClick=${() => reformularRespuesta(regenerarRespuesta, msg)} title="Regenerar respuesta"><${Icon} name="refresh" size=${14}/> Regenerar<//>
+                  <${Chip} onClick=${() => leerMensaje(msg.content)} title="Leer mensaje"><${Icon} name="volume" size=${14}/> Leer<//>
                 <//>
                 ${idx === visibleMessages.length - 1 && tpsTexto && html`
                   <span class="text-[10px] text-aurora-text-muted font-mono whitespace-nowrap" title="tok/s del último turno">${tpsTexto}</span>
@@ -197,11 +186,7 @@ export function MessageList({
         }
 
         const esExternoFinal = msg._via === 'direct-ai' || msg._via === 'duo-external';
-        const rolLabelFinal = msg.role === 'user'
-          ? '👤 Tú'
-          : esExternoFinal
-            ? `${AI_ICONOS[cloudAiId] || '☁'} ${AI_LABELS[cloudAiId] || 'AI ext'}`
-            : '🦙 Lyra';
+        const rolLabelFinal = html`<${RoleLabel} role=${msg.role} external=${esExternoFinal} cloudAiId=${cloudAiId}/>`;
         return html`
           <div key=${idx} class=${'message ' + msg.role + (esExternoFinal ? ' direct-ai' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
             <div class="message-header">
@@ -212,7 +197,7 @@ export function MessageList({
                   class=${'msg-pin-btn' + (estaFijado(msg) ? ' fijado' : '')}
                   onClick=${() => togglePin(msg)}
                   title=${estaFijado(msg) ? 'Desfijar mensaje' : 'Fijar mensaje'}
-                >${estaFijado(msg) ? '📌' : '📍'}</button>
+                ><${Icon} name="pin" size=${14}/></button>
               `}
             </div>
             <div class="message-content"
@@ -220,7 +205,7 @@ export function MessageList({
             ></div>
             ${msg._timing && html`
               <div class="text-[10px] text-aurora-text-muted font-mono mt-1 opacity-70">
-                ⏱ responde ${(msg._timing.responde / 1000).toFixed(1)}s · genera ${(msg._timing.genera / 1000).toFixed(1)}s
+                <${Icon} name="clock" size=${12}/> responde ${(msg._timing.responde / 1000).toFixed(1)}s · genera ${(msg._timing.genera / 1000).toFixed(1)}s
               </div>
             `}
           </div>
@@ -230,7 +215,7 @@ export function MessageList({
       ${(streamingVal || asistenteEnVivo.blocks.length > 0) && html`
         <div class="message assistant streaming">
           <div class="message-header">
-            <span class="role">🦙 Lyra</span>
+            <span class="role"><${RoleLabel} role="assistant" /></span>
             <span class="streaming-dot">●</span>
           </div>
           ${asistenteEnVivo.blocks.map((b, i) => {
@@ -256,8 +241,8 @@ export function MessageList({
               return html`
                 <div key=${'b' + i} class=${'message tool-execution ' + (b.status === 'error' ? 'tool-error' : b.status === 'running' ? 'tool-running' : 'tool-success')}>
                   <div class="tool-execution-header" onClick=${() => toggleTool(b.id)}>
-                    <span class="tool-toggle-chevron">${abierto ? '▼' : '▶'}</span>
-                    <span class="tool-execution-icon">${b.status === 'running' ? '⟳' : b.status === 'error' ? '✗' : '✓'}</span>
+                    <span class="tool-toggle-chevron"><${Icon} name=${abierto ? 'chevronDown' : 'chevronRight'} size=${12}/></span>
+                    <span class="tool-execution-icon"><${Icon} name=${b.status === 'running' ? 'refresh' : b.status === 'error' ? 'warning' : 'check'} size=${13}/></span>
                     <span class="tool-execution-name">${b.name}</span>
                     <span class="tool-execution-preview">${b.args}</span>
                   </div>
@@ -287,7 +272,7 @@ export function MessageList({
 
       ${cargandoVal && !streamingVal && !thinkingVal && !cloudGenerandoVal && html`
         <div class="message assistant loading">
-          <div class="message-header"><span class="role">🦙 Lyra</span></div>
+          <div class="message-header"><span class="role"><${RoleLabel} role="assistant" /></span></div>
           <div class="message-content">
             <span class="typing-indicator"><${IconoCerebro} vivo=${true}/> Pensando…</span>
           </div>
@@ -296,7 +281,7 @@ export function MessageList({
       ${cloudGenerandoVal && html`
         <div class="message assistant loading direct-ai">
           <div class="message-content">
-            <span class="typing-indicator">☁ generando…</span>
+            <span class="typing-indicator inline-flex items-center gap-1.5"><${Icon} name="cloud" size=${14}/> Generando…</span>
           </div>
         </div>
       `}

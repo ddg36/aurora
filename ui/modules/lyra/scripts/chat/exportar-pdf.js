@@ -22,7 +22,7 @@ function escaparHtml(texto) {
 
 export function exportarChatPDF(historial, modeloSeleccionado) {
   if (!historial.length) {
-    Toast().setStatus('⚠ El chat está vacío');
+    Toast().setStatus('El chat está vacío');
     return;
   }
 
@@ -135,7 +135,7 @@ export function exportarChatPDF(historial, modeloSeleccionado) {
 `;
 
   visibles.forEach(msg => {
-    const rolLabel = msg.role === 'user' ? '👤 Tú' : '🦙 Lyra';
+    const rolLabel = msg.role === 'user' ? 'Tú' : 'Lyria';
     const timestamp = formatearTimestamp(msg.ts || msg.timestamp);
     const contenidoHtml = renderMarkdownLight(msg.content);
 

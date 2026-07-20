@@ -1,5 +1,5 @@
 import { responderDialogo } from '../../../components/shared/lyra-ws.js';
-import { Button, Chip } from '../../../components/index.js';
+import { Button, Chip, Icon } from '../../../components/index.js';
 
 const html = (...args) => globalThis.html(...args);
 
@@ -10,8 +10,8 @@ export function ExtDialog({ dialogo, valor, onValorChange, onClose }) {
     <div class="comando-overlay-backdrop" onClick=${() => responder(null)}>
       <div class="comando-overlay-card" onClick=${e => e.stopPropagation()}>
         <div class="comando-overlay-header">
-          <span>🧩 ${dialogo.title || 'Extensión'}</span>
-          <${Button} iconOnly onClick=${() => responder(null)} title="Cancelar (Esc)">✕<//>
+          <span class="inline-flex items-center gap-2"><${Icon} name="puzzle" size=${16}/> ${dialogo.title || 'Extensión'}</span>
+          <${Button} icon="close" iconOnly onClick=${() => responder(null)} title="Cancelar (Esc)" />
         </div>
         <div class="comando-overlay-body">
           ${dialogo.method === 'select' && html`

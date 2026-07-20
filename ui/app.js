@@ -9,11 +9,11 @@ import { cargarTema } from './modules/ajustes/scripts/tema.js';
 
 import { aplicarTema } from './components/themes/manager.js';
 
-import { THEMES } from './components/themes/index.js?v=v4-interface-hud-1';
+import { THEMES } from './components/themes/index.js?v=v9-lyria-presence-1';
 
-import { BACKGROUND_LOADERS } from './components/themes/backgrounds/loaders.js?v=v4-interface-hud-1';
+import { BACKGROUND_LOADERS } from './components/themes/backgrounds/loaders.js?v=v20-scene-budget';
 
-import { HUD_LOADERS } from './components/themes/hud/loaders.js?v=v4-interface-hud-1';
+import { HUD_LOADERS } from './components/themes/hud/loaders.js?v=v9-lyria-presence-1';
 
 import { Footer } from './components/footer/footer.js';
 
@@ -24,6 +24,8 @@ import { UserSwitcher } from './components/nav/user-switcher.js';
 import { NotifCenter } from './components/nav/notif-center.js';
 
 import { AgentEye } from './components/agent-eye/index.js';
+
+import { AvatarVoiceOverlay } from './components/lyra/avatar-presence.js?v=v3-avatar-mood';
 
 import { iniciarTemaAuto } from './components/themes/tema-hora.js';
 
@@ -48,7 +50,7 @@ aurora:       () => import('./modules/aurora/view/aurora.js?v=v2-control-center-
 
 productividad: () => import('./modules/productividad/view/productividad.js?v=v2-productividad-1'),
 
-lyra:         () => import('./modules/lyra/view/lyra.js?v=v2-keepalive-1'),
+lyra:         () => import('./modules/lyra/view/lyra.js?v=v19-performance-tooling'),
 
 llmcloud:     () => import('./modules/llmcloud/view/llmcloud.js?v=v2-clean-ui-15'),
 
@@ -76,7 +78,7 @@ webnavigator: () => import('./modules/webnavigator/view/web-navigator.js?v=v2-cl
 
 stylecatalog: () => import('./modules/stylecatalog/view/stylecatalog.js?v=v2-clean-ui-14'),
 
-ajustes:      () => import('./modules/ajustes/view/ajustes.js?v=v4-interface-hud-1'),
+ajustes:      () => import('./modules/ajustes/view/ajustes.js?v=v12-ai-view'),
 
 };
 
@@ -344,7 +346,7 @@ return h(
 
 'div',
 
-{ class: 'relative h-screen overflow-hidden', style: 'background:var(--aurora-bg,#0a0a0f);color:var(--aurora-text,#fff)' },
+{ class: 'aurora-app relative h-screen overflow-hidden' },
 
 h('div', { class: 'aurora-bg-layer fixed inset-0 z-0 pointer-events-none overflow-hidden', 'data-bg': bgId }, h(Background, {})),
 
@@ -364,7 +366,7 @@ h(
 
 h(
   'div',
-  { class: 'flex-1 min-w-0 min-h-0 flex flex-col' },
+  { class: 'aurora-workspace flex-1 min-w-0 min-h-0 flex flex-col' },
 
   // overflow-y-auto (no "hidden"): views como Ajustes no manejan su propio
   // scroll interno — en desktop entraban igual por sobra de alto, en un
@@ -384,7 +386,7 @@ h(
   // nunca se restringe al ancho real disponible).
   h(
     'main',
-    { class: 'flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col' },
+    { class: 'aurora-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col' },
     h(PersistentLyraView, { active: tab === 'lyra' }),
     tab !== 'lyra' ? h(ModuleView, { tabId: tab }) : null,
   ),
@@ -406,6 +408,8 @@ h(UserSwitcherMount, {}),
 h(NotifMount, {}),
 
 h(AgentEye, {}),
+
+h(AvatarVoiceOverlay, {}),
 
 );
 

@@ -10,6 +10,22 @@
   border-top: 1px solid var(--surface3);
 }
 
+.thinking-toggle-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--aurora-text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.thinking-toggle-inline:hover { color: var(--aurora-text); }
+.thinking-toggle-inline .au-icon { color: currentColor; }
+.turn-interrupted{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border:1px solid color-mix(in srgb,var(--aurora-warning) 38%,var(--aurora-border));border-radius:999px;color:var(--aurora-warning);font-size:9px;letter-spacing:.03em}
+
 .thinking-content-inline {
   margin-top: 8px;
   padding: 8px;
@@ -452,7 +468,7 @@
 
 /* ── Indicadores ──────────────────────────────────────── */
 .streaming-dot {
-  color: var(--accent);
+  color: #60a5fa;
   animation: blink 0.8s infinite;
 }
 .typing-indicator {

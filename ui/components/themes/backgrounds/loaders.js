@@ -2,7 +2,7 @@
 // `mode` se entrega al componente para que adapte su paleta sin desmontarse por
 // una identidad visual distinta.
 const { h } = globalThis.preact;
-const V = '?v=v4-interface-hud-1';
+const V = '?v=v20-scene-budget';
 const load = (file) => import(`${file}${V}`);
 
 const DEFINITIONS = {
@@ -45,6 +45,10 @@ function frame(Comp, family, luminance, sceneId) {
       'aria-hidden': 'true',
     },
       h(Comp, { mode }),
+      sceneId === 'lyria' && family === 'remake'
+        ? h('div', { class: 'aurora-lyria-presence' },
+            h('img', { src: '/ui/assets/lyria-canon-v3-alpha.png', alt: '', decoding: 'async', loading: 'eager' }))
+        : null,
       h('div', { class: 'aurora-scene-scrim' }),
     );
   };
@@ -71,3 +75,4 @@ for (const [id, [file, darkExport, remakeExport, lightExport]] of Object.entries
 
 // Luna dejó de ser HUD: ahora es una escena de fondo adaptativa.
 BACKGROUND_LOADERS['luna-remake'] = remake('luna', 'RemakeLuna');
+BACKGROUND_LOADERS['lyria-remake'] = remake('lyria', 'RemakeLyria');

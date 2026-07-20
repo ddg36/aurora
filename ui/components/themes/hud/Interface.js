@@ -1,6 +1,6 @@
 const { html } = globalThis;
 
-// Los HUD v4 no dibujan una segunda escena. El wrapper de App ya expone
+// Los HUD v5 no dibujan una segunda escena. El wrapper de App ya expone
 // `data-hud`; este marcador mantiene un componente real y accesible mientras
 // interface.css aplica el lenguaje visual a controles y superficies existentes.
 function marker(id) {
@@ -20,3 +20,4 @@ export const Sonar = marker('sonar');
 export const Ember = marker('ember');
 export const Torii = marker('torii');
 export const Compass = marker('compass');
+export const Lyria = marker('lyria');

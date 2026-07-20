@@ -22,6 +22,7 @@ export { Empty }                                       from './Empty.js';
 export { Chip, ChipGroup }                             from './Chip.js';
 export { Input, Textarea, Select }                     from './Input.js';
 export { ChatMessage, ChatList }                       from './ChatMessage.js';
+export { Icon, iconSvg, resolveIconName, splitIconLabel } from './Icon.js';
 export { BTN_HEIGHT, BTN_SAFE, ICON_BTN_SIZE, ICON_BTN_SQUARE,
          TOOLBAR_ROW, TOOLBAR_GROUP, iconButtonClass,
          useFloatingMenu, useAutoFitRow, AutoFitChips }    from './shared/iconButton.js';

@@ -210,11 +210,36 @@ export function createAccentWatcher(_defaultHex = '#8b5cf6') {
   };
 }
 
+// Un canvas cinematográfico no gana nada perceptible dibujando a 60/120 Hz,
+// pero sí compite con todo Chrome por CPU/GPU. Este scheduler conserva la
+// animación a 30 fps (20 en calidad baja) y, a diferencia de un simple
+// "frame skip", sigue siendo cancelable aunque necesite varios RAF para
+// alcanzar el siguiente frame lógico.
+let _sceneFrameId = 0;
+const _sceneFrames = new Map();
+
 export function sceneFrame(callback) {
   if (document.documentElement.dataset.motion === 'off') return 0;
-  return requestAnimationFrame(callback);
+  const id = ++_sceneFrameId;
+  const startedAt = performance.now();
+  const minFrameMs = sceneQuality() === 'low' ? 50 : 33;
+  const tick = now => {
+    const job = _sceneFrames.get(id);
+    if (!job) return;
+    if (now - startedAt < minFrameMs) {
+      job.raf = requestAnimationFrame(tick);
+      return;
+    }
+    _sceneFrames.delete(id);
+    callback(now);
+  };
+  _sceneFrames.set(id, { raf: requestAnimationFrame(tick) });
+  return id;
 }
 
 export function cancelSceneFrame(id) {
-  if (id) cancelAnimationFrame(id);
+  const job = _sceneFrames.get(id);
+  if (!job) return;
+  cancelAnimationFrame(job.raf);
+  _sceneFrames.delete(id);
 }
