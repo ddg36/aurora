@@ -5,40 +5,74 @@
 // inválidos — devuelven { ok, errors[] } siempre. Clásico/IIFE, sin ESM.
 (() => {
   'use strict';
-  const health = globalThis.__auroraProviderHealth ||= {};
+
+  // ── Verificación canónica propia (no confiar ciegamente en types.js) ──
+  // Mismo mecanismo que types.js: el binding global debe estar bloqueado y
+  // el namespace debe portar la marca canónica + versión de contrato antes
+  // de instalar ningún validador. Si types.js todavía no corrió, o corrió
+  // un namespace falso/incompatible, esto lanza en vez de instalar
+  // validadores sobre una base no confiable.
+  const MARKER_KEY = Symbol.for('__auroraProviderHealth:canonical:v1');
+  const CONTRACT_VERSION = 1;
+
+  function isLockedDataDescriptor(desc) {
+    return !!desc && desc.writable === false && desc.configurable === false
+      && Object.prototype.hasOwnProperty.call(desc, 'value');
+  }
+
+  const globalDesc = Object.getOwnPropertyDescriptor(globalThis, '__auroraProviderHealth');
+  if (!isLockedDataDescriptor(globalDesc)) {
+    throw new Error('provider-health/validate.js: __auroraProviderHealth no está bloqueado — cargar types.js primero.');
+  }
+  const health = globalDesc.value;
+  const markerDesc = health && Object.getOwnPropertyDescriptor(health, MARKER_KEY);
+  const versionDesc = health && Object.getOwnPropertyDescriptor(health, '__contractVersion');
+  if (!isLockedDataDescriptor(markerDesc) || markerDesc.value !== true
+    || !isLockedDataDescriptor(versionDesc) || versionDesc.value !== CONTRACT_VERSION) {
+    throw new Error('provider-health/validate.js: namespace preexistente no supera la verificación canónica.');
+  }
   const types = health;
-  const defineLocked = types.__defineLocked || ((target, key, value) => {
-    if (!Object.prototype.hasOwnProperty.call(target, key)) {
-      Object.defineProperty(target, key, { value, writable: false, configurable: false, enumerable: true });
-    }
-    return target[key];
-  });
+
+  // Instala un miembro nuevo bloqueado; si ya existe (namespace ya
+  // verificado canónico arriba), se confía en el valor existente — mismo
+  // criterio que defineLocked de types.js, sin comparar identidad de
+  // closures entre evaluaciones distintas.
+  function defineLocked(key, value) {
+    if (Object.prototype.hasOwnProperty.call(health, key)) return health[key];
+    Object.defineProperty(health, key, { value, writable: false, configurable: false, enumerable: true });
+    return value;
+  }
 
   // ── Lectura segura de campos: nunca ejecuta getters de un input hostil ──
   // Un objeto que expone `evidenceId` como accessor (get evidenceId(){...})
   // podría lanzar, loguear, o devolver algo distinto en cada lectura —
   // ninguno de esos efectos debe ocurrir durante la validación. Solo se
   // aceptan propiedades PROPIAS de tipo dato (value), nunca heredadas ni
-  // accessor.
+  // accessor. getOwnPropertyDescriptor envuelto en try/catch: un Proxy con
+  // trampa hostil podría lanzar al reflejarse, y eso tampoco debe escapar.
   const ACCESSOR_REJECTED = Symbol('provider-health:accessor-rejected');
   const MISSING = Symbol('provider-health:missing-field');
 
   function readOwnDataField(obj, key) {
     if (!obj || typeof obj !== 'object') return MISSING;
-    const desc = Object.getOwnPropertyDescriptor(obj, key);
+    let desc;
+    try { desc = Object.getOwnPropertyDescriptor(obj, key); } catch (_) { return ACCESSOR_REJECTED; }
     if (!desc) return MISSING;
     if (desc.get || desc.set) return ACCESSOR_REJECTED;
     return desc.value;
   }
 
-  // Object.prototype.toString.call(x) === '[object Object]' ya excluye
-  // Array/Date/Map/Set/RegExp/etc. — sumado a la comprobación explícita de
-  // prototipo (Object.prototype o null), rechaza objetos con prototipo
-  // personalizado y cualquier campo requerido que sólo exista heredado.
+  // Deliberadamente NO usa Object.prototype.toString.call(v): esa operación
+  // lee Symbol.toStringTag, que puede ser un getter hostil y ejecutar
+  // código del input durante la validación — justo lo que este módulo debe
+  // evitar. Array.isArray + comparación de prototipo (ambas operaciones
+  // reflexivas, nunca ejecutan getters/valueOf/toString/Symbol.toStringTag)
+  // ya alcanzan para excluir Array/Date/Map/Set/prototipos personalizados.
   function isPlainObject(v) {
     if (v === null || typeof v !== 'object') return false;
-    if (Object.prototype.toString.call(v) !== '[object Object]') return false;
-    const proto = Object.getPrototypeOf(v);
+    if (Array.isArray(v)) return false;
+    let proto;
+    try { proto = Object.getPrototypeOf(v); } catch (_) { return false; }
     return proto === Object.prototype || proto === null;
   }
 
@@ -87,9 +121,20 @@
   // clave contenedora no está en la whitelist, así que no hace falta bajar
   // recursivamente a inspeccionar su contenido: nunca llega a validarse
   // como válido si la clave que lo porta no es una de las documentadas.
+  // Reflect.ownKeys (no Object.keys): incluye propiedades NO enumerables y
+  // símbolos, que Object.keys pasaba por alto — un campo privado escondido
+  // como no-enumerable o bajo una clave Symbol ya no escapa la whitelist.
+  // Solo se inspecciona el NOMBRE de la clave, nunca su valor — rechazar
+  // una clave desconocida no requiere (ni debe) leer lo que contiene.
   function rejectUnknownFields(errors, obj, allowedKeys, pathPrefix = '') {
     if (!isPlainObject(obj)) return;
-    for (const key of Object.keys(obj)) {
+    let keys;
+    try { keys = Reflect.ownKeys(obj); } catch (_) { keys = []; }
+    for (const key of keys) {
+      if (typeof key === 'symbol') {
+        errors.push({ path: `${pathPrefix}[symbol]`, reason: 'symbol_keys_not_allowed' });
+        continue;
+      }
       if (!allowedKeys.includes(key)) {
         errors.push({ path: `${pathPrefix}${key}`, reason: 'unknown_field_not_allowed' });
       }
@@ -456,25 +501,24 @@
     return errors.length ? fail(errors) : ok();
   }
 
-  // Dos funciones nunca son === entre cargas distintas del mismo script
-  // (closures nuevos cada vez) — tratarlas como compatibles por TIPO, no
-  // por identidad, es lo que permite que una segunda carga de validate.js
-  // sea segura y determinista (conserva la primera definición, no lanza).
-  const bothFunctions = (a, b) => typeof a === 'function' && typeof b === 'function';
+  // Namespace ya verificado canónico arriba: si alguna de estas claves ya
+  // existe (recarga legítima de este mismo validate.js), defineLocked
+  // conserva la definición existente sin comparar — no hay necesidad de
+  // "tratar funciones como compatibles por tipo": la confianza ya se
+  // estableció una sola vez, en la verificación canónica del namespace.
+  defineLocked('isAvailabilityState', isAvailabilityState);
+  defineLocked('isRequestActivityState', isRequestActivityState);
+  defineLocked('isJobState', isJobState);
+  defineLocked('isChannelState', isChannelState);
+  defineLocked('isConfidence', isConfidence);
+  defineLocked('isActiveRequestActivity', isActiveRequestActivity);
 
-  defineLocked(health, 'isAvailabilityState', isAvailabilityState, bothFunctions);
-  defineLocked(health, 'isRequestActivityState', isRequestActivityState, bothFunctions);
-  defineLocked(health, 'isJobState', isJobState, bothFunctions);
-  defineLocked(health, 'isChannelState', isChannelState, bothFunctions);
-  defineLocked(health, 'isConfidence', isConfidence, bothFunctions);
-  defineLocked(health, 'isActiveRequestActivity', isActiveRequestActivity, bothFunctions);
-
-  defineLocked(health, 'validateEvidenceEntry', validateEvidenceEntry, bothFunctions);
-  defineLocked(health, 'validateEvidenceList', validateEvidenceList, bothFunctions);
-  defineLocked(health, 'validateAttemptIdentity', validateAttemptIdentity, bothFunctions);
-  defineLocked(health, 'validatePartialArtifactRef', validatePartialArtifactRef, bothFunctions);
-  defineLocked(health, 'validateAvailabilityChangedEvent', validateAvailabilityChangedEvent, bothFunctions);
-  defineLocked(health, 'validateRequestActivityChangedEvent', validateRequestActivityChangedEvent, bothFunctions);
-  defineLocked(health, 'validateJobStateChangedEvent', validateJobStateChangedEvent, bothFunctions);
-  defineLocked(health, 'validateHealthSnapshot', validateHealthSnapshot, bothFunctions);
+  defineLocked('validateEvidenceEntry', validateEvidenceEntry);
+  defineLocked('validateEvidenceList', validateEvidenceList);
+  defineLocked('validateAttemptIdentity', validateAttemptIdentity);
+  defineLocked('validatePartialArtifactRef', validatePartialArtifactRef);
+  defineLocked('validateAvailabilityChangedEvent', validateAvailabilityChangedEvent);
+  defineLocked('validateRequestActivityChangedEvent', validateRequestActivityChangedEvent);
+  defineLocked('validateJobStateChangedEvent', validateJobStateChangedEvent);
+  defineLocked('validateHealthSnapshot', validateHealthSnapshot);
 })();

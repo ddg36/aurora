@@ -405,22 +405,123 @@ expectFail('N28b. null en availability event', health.validateAvailabilityChange
 // incoherentes, allowedConsumers sin validar elementos, snapshot sin
 // whitelist.
 
-// A1. Bindings públicos no reasignables (namespace protegido).
-{
-  const before = health.AvailabilityState;
-  try { health.AvailabilityState = { HACKED: 'HACKED' }; } catch (_) { /* modo estricto: puede lanzar, aceptado */ }
-  check('A1. AvailabilityState no se puede reasignar', health.AvailabilityState === before && health.AvailabilityState.HACKED === undefined);
-
-  const beforeFn = health.validateAvailabilityChangedEvent;
-  try { health.validateAvailabilityChangedEvent = () => ({ ok: true, errors: [] }); } catch (_) { /* aceptado */ }
-  check('A1b. validateAvailabilityChangedEvent no se puede reasignar', health.validateAvailabilityChangedEvent === beforeFn);
+// Helper: contexto vm FRESCO e independiente del realm principal, usado
+// exclusivamente para simular "algo más plantó un __auroraProviderHealth
+// ANTES de que types.js corra por primera vez" — el único momento en que
+// eso es posible es un realm nuevo (en el realm principal, una vez cargado
+// types.js, el binding ya queda bloqueado para siempre, ver tests 1-5).
+function freshSandbox(setup) {
+  const sandbox = {};
+  sandbox.globalThis = sandbox;
+  vm.createContext(sandbox);
+  if (setup) setup(sandbox);
+  return sandbox;
+}
+function tryLoadTypesIn(sandbox) {
+  try { new vm.Script(typesSrc, { filename: typesPath }).runInContext(sandbox); return { threw: false }; }
+  catch (error) { return { threw: true, error }; }
 }
 
-// A2 + A3 + A4. Namespace preexistente compatible / incompatible / segunda carga determinista.
+// 1-4. Binding global protegido contra reasignación/delete/redefinición.
 {
-  // Recarga literal de los mismos archivos: debe ser un no-op seguro, sin
-  // lanzar y conservando exactamente los mismos bindings (mismo enum,
-  // mismos validadores por tipo).
+  const globalDesc = Object.getOwnPropertyDescriptor(globalThis, '__auroraProviderHealth');
+  check('1. globalThis.__auroraProviderHealth: descriptor writable:false', globalDesc.writable === false);
+  check('1b. globalThis.__auroraProviderHealth: descriptor configurable:false', globalDesc.configurable === false);
+
+  const before = globalThis.__auroraProviderHealth;
+  try { globalThis.__auroraProviderHealth = { fake: true }; } catch (_) { /* modo estricto: puede lanzar, aceptado */ }
+  check('2. asignación directa no sustituye el namespace', globalThis.__auroraProviderHealth === before);
+
+  let deleteSucceeded = true;
+  try { deleteSucceeded = delete globalThis.__auroraProviderHealth; } catch (_) { deleteSucceeded = false; }
+  check('3. delete no elimina el namespace (delete falla o no tiene efecto)',
+    globalThis.__auroraProviderHealth === before && (deleteSucceeded === false || globalThis.__auroraProviderHealth === before));
+
+  let redefineThrew = false;
+  try {
+    Object.defineProperty(globalThis, '__auroraProviderHealth', { value: { fake: true }, writable: true, configurable: true });
+  } catch (_) { redefineThrew = true; }
+  check('4. Object.defineProperty no puede redefinir el binding (lanza o no tiene efecto)',
+    redefineThrew || globalThis.__auroraProviderHealth === before);
+
+  check('5a. tras los intentos, AvailabilityState sigue canónico', globalThis.__auroraProviderHealth.AvailabilityState === health.AvailabilityState);
+  check('5b. tras los intentos, validateEvidenceEntry sigue siendo el canónico', globalThis.__auroraProviderHealth.validateEvidenceEntry === health.validateEvidenceEntry);
+}
+
+// 6. Namespace de la MISMA versión con AvailabilityState mutable — se
+// simula en un realm nuevo (en el principal, ya no es posible plantar nada
+// antes de types.js: el binding ya está tomado para siempre).
+{
+  const sandbox = freshSandbox(s => {
+    s.__auroraProviderHealth = {
+      __contractVersion: 1,
+      AvailabilityState: { READY: 'READY', RATE_LIMITED: 'RATE_LIMITED' }, // forma parcial, MUTABLE, sin marca canónica
+    };
+  });
+  const result = tryLoadTypesIn(sandbox);
+  check('6. namespace misma versión con AvailabilityState mutable es rechazado', result.threw === true);
+}
+
+// 7. Namespace de la misma versión con un enum ya congelado pero con
+// contenido ADICIONAL (BUSY de más) — igual debe rechazarse: no basta con
+// que esté frozen, tiene que carecer de la marca canónica bloqueada.
+{
+  const sandbox = freshSandbox(s => {
+    s.__auroraProviderHealth = {
+      __contractVersion: 1,
+      AvailabilityState: Object.freeze({
+        READY: 'READY', RATE_LIMITED: 'RATE_LIMITED', QUOTA_EXHAUSTED: 'QUOTA_EXHAUSTED',
+        AUTH_REQUIRED: 'AUTH_REQUIRED', CHALLENGE_REQUIRED: 'CHALLENGE_REQUIRED',
+        TEMP_UNAVAILABLE: 'TEMP_UNAVAILABLE', RESTRICTED: 'RESTRICTED', UNKNOWN: 'UNKNOWN',
+        BUSY: 'BUSY', // contenido adicional no autorizado
+      }),
+    };
+  });
+  const result = tryLoadTypesIn(sandbox);
+  check('7. namespace misma versión con enum congelado + contenido extra es rechazado', result.threw === true);
+}
+
+// 8. Namespace de la misma versión con un validador falso.
+{
+  const sandbox = freshSandbox(s => {
+    s.__auroraProviderHealth = {
+      __contractVersion: 1,
+      validateEvidenceEntry: () => ({ ok: true, errors: [] }), // siempre aprueba TODO
+    };
+  });
+  const result = tryLoadTypesIn(sandbox);
+  check('8. namespace misma versión con validateEvidenceEntry falso es rechazado', result.threw === true);
+}
+
+// 9. Namespace de la misma versión con un __defineLocked falso.
+{
+  const sandbox = freshSandbox(s => {
+    s.__auroraProviderHealth = {
+      __contractVersion: 1,
+      __defineLocked: (key, value) => { s.__auroraProviderHealth[key] = value; return value; }, // sin bloquear nada
+    };
+  });
+  const result = tryLoadTypesIn(sandbox);
+  check('9. namespace misma versión con __defineLocked falso es rechazado', result.threw === true);
+}
+
+// 10. Namespace de la misma versión pero con bindings CONFIGURABLES
+// (no writable, pero sí configurable — no cumple el descriptor exacto
+// exigido) debe rechazarse igual.
+{
+  const sandbox = freshSandbox(s => {
+    const fake = {};
+    Object.defineProperty(fake, '__contractVersion', { value: 1, writable: false, configurable: true, enumerable: true });
+    Object.defineProperty(s, '__auroraProviderHealth', { value: fake, writable: false, configurable: false, enumerable: true });
+  });
+  const result = tryLoadTypesIn(sandbox);
+  check('10. namespace misma versión con bindings configurables (sin marca canónica) es rechazado', result.threw === true);
+}
+
+// 11. Namespace canónico previamente cargado se acepta en segunda carga
+// (recarga determinista, en el realm PRINCIPAL — el único caso real de
+// "namespace preexistente" que debe aceptarse).
+{
   const availabilityBefore = health.AvailabilityState;
   const validateBefore = health.validateAvailabilityChangedEvent;
   let secondLoadThrew = false;
@@ -428,18 +529,79 @@ expectFail('N28b. null en availability event', health.validateAvailabilityChange
     loadScript(typesSrc, typesPath);
     loadScript(validateSrc, validatePath);
   } catch (_) { secondLoadThrew = true; }
-  check('A2. segunda carga de types.js+validate.js no lanza (namespace preexistente COMPATIBLE)', !secondLoadThrew);
-  check('A3. segunda carga conserva el mismo AvailabilityState (recarga determinista)', globalThis.__auroraProviderHealth.AvailabilityState === availabilityBefore);
-  check('A4. segunda carga conserva el mismo validador (recarga determinista)', globalThis.__auroraProviderHealth.validateAvailabilityChangedEvent === validateBefore);
+  check('11. segunda carga canónica en el realm principal no lanza', !secondLoadThrew);
+  check('11b. segunda carga conserva el mismo AvailabilityState', globalThis.__auroraProviderHealth.AvailabilityState === availabilityBefore);
+  check('11c. segunda carga conserva el mismo validador', globalThis.__auroraProviderHealth.validateAvailabilityChangedEvent === validateBefore);
+}
 
-  // Namespace incompatible: una versión de contrato distinta bajo la misma
-  // clave global debe ser rechazada explícitamente, no adoptada en silencio.
-  const savedNamespace = globalThis.__auroraProviderHealth;
-  globalThis.__auroraProviderHealth = { __contractVersion: 999 };
-  let incompatibleThrew = false;
-  try { loadScript(typesSrc, typesPath); } catch (_) { incompatibleThrew = true; }
-  check('A5. namespace preexistente con __contractVersion distinta es rechazado', incompatibleThrew);
-  globalThis.__auroraProviderHealth = savedNamespace; // restaurar para el resto de los tests
+// 12-15. Symbol.toStringTag hostil: isPlainObject ya no llama a
+// Object.prototype.toString.call(v) — verificar que un getter en
+// Symbol.toStringTag NUNCA se ejecuta, ni siquiera para decidir el
+// resultado, y que si de todos modos existiera algún camino que lo tocara,
+// el resultado sigue siendo estructurado (nunca una excepción).
+{
+  let getterCalled = false;
+  const hostile = makeEvidence();
+  Object.defineProperty(hostile, Symbol.toStringTag, {
+    get() { getterCalled = true; throw new Error('Symbol.toStringTag no debería ejecutarse jamás'); },
+    configurable: true,
+  });
+  let threw = false;
+  let result = null;
+  try { result = health.validateEvidenceEntry(hostile); } catch (_) { threw = true; }
+  check('12. Symbol.toStringTag getter no se ejecuta durante la validación', getterCalled === false);
+  check('13. un getter de Symbol.toStringTag que lanzaría no escapa como excepción', threw === false);
+  check('14. el resultado es {ok:false, errors:[...]} estructurado', result && result.ok === false && Array.isArray(result.errors));
+  check('15. los errores resultantes tienen path y reason', result && result.errors.every(e => typeof e.path === 'string' && isNonEmptyString(e.reason)));
+}
+
+// 16-20. Claves NO enumerables desconocidas — deben rechazarse igual que
+// las enumerables (Reflect.ownKeys, no Object.keys).
+{
+  const ev = makeEvidence();
+  Object.defineProperty(ev, 'text', { value: 'contenido privado no enumerable', enumerable: false, configurable: true });
+  expectFail('16. EvidenceEntry con "text" NO enumerable rechazado', health.validateEvidenceEntry(ev), 'text');
+}
+{
+  const ev = makeEvidence();
+  Object.defineProperty(ev, 'secretoOculto', { value: 'x', enumerable: false, configurable: true });
+  expectFail('17. EvidenceEntry con clave desconocida NO enumerable rechazada', health.validateEvidenceEntry(ev), 'secretoOculto');
+}
+{
+  const ref = makePartialArtifactRef();
+  Object.defineProperty(ref, 'content', { value: 'contenido privado no enumerable', enumerable: false, configurable: true });
+  expectFail('18. PartialArtifactRef con "content" NO enumerable rechazado', health.validatePartialArtifactRef(ref), 'content');
+}
+{
+  const snap = makeHealthSnapshot();
+  Object.defineProperty(snap, 'prompt', { value: 'contenido privado no enumerable', enumerable: false, configurable: true });
+  expectFail('19. Snapshot con "prompt" NO enumerable rechazado', health.validateHealthSnapshot(snap), 'prompt');
+}
+{
+  const event = makeAvailabilityEvent();
+  Object.defineProperty(event, 'secretoOculto', { value: 'x', enumerable: false, configurable: true });
+  expectFail('20. Evento válido + clave NO enumerable desconocida rechazado', health.validateAvailabilityChangedEvent(event), 'secretoOculto');
+}
+
+// 21-24. Símbolos como clave — ninguno está autorizado en este checkpoint.
+expectFail('21. EvidenceEntry con Symbol("text") rechazado',
+  health.validateEvidenceEntry({ ...makeEvidence(), [Symbol('text')]: 'contenido privado' }));
+expectFail('22. PartialArtifactRef con símbolo desconocido rechazado',
+  health.validatePartialArtifactRef({ ...makePartialArtifactRef(), [Symbol('x')]: 'y' }));
+expectFail('23. Snapshot con símbolo desconocido rechazado',
+  health.validateHealthSnapshot({ ...makeHealthSnapshot(), [Symbol('x')]: 'y' }));
+expectFail('24. Evento con símbolo desconocido rechazado',
+  health.validateAvailabilityChangedEvent({ ...makeAvailabilityEvent(), [Symbol('x')]: 'y' }));
+
+// 25. Tras todos los intentos de mutación/sustitución del namespace de
+// arriba, las reglas de negocio siguen intactas.
+{
+  check('25a. BUSY sigue siendo un AvailabilityState inválido', health.isAvailabilityState('BUSY') === false);
+  expectFail('25b. prompt sigue rechazado en EvidenceEntry', health.validateEvidenceEntry(makeEvidence({ prompt: 'x' })), 'prompt');
+  expectFail('25c. source:"harness" sigue rechazado', health.validateAvailabilityChangedEvent(makeAvailabilityEvent({ source: 'harness' })), 'source');
+  expectFail('25d. currentAttempt:null sigue rechazado en ACTIVE',
+    health.validateJobStateChangedEvent(makeJobStateEvent({ state: 'ACTIVE', previousState: 'CREATED', currentAttempt: null })),
+    'null_not_allowed_for_state:ACTIVE');
 }
 
 // A6. UNKNOWN y valor arbitrario en isActiveRequestActivity.

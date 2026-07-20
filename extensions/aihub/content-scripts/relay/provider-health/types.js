@@ -4,65 +4,88 @@
 // patrón que relay-contract.js) — no ESM, para poder cargarse como content
 // script y también como script clásico desde tests.
 //
-// Namespace: cada miembro público se define con Object.defineProperty
-// (writable:false, configurable:false) — un consumidor no puede
-// reasignar AvailabilityState, EventName, etc. una vez cargado. El
-// objeto namespace en sí NO se congela (Object.freeze) para que
-// validate.js pueda seguir agregando SUS propios miembros después —
-// solo cada clave individual, una vez definida, queda fija.
+// Protección de namespace (dos capas):
+//   1. El binding `globalThis.__auroraProviderHealth` en sí queda bloqueado
+//      (writable:false, configurable:false) apenas se crea — una
+//      reasignación directa o un `delete` no tienen efecto sobre el
+//      namespace ya instalado.
+//   2. El objeto namespace en sí NO se congela (no Object.freeze) — sigue
+//      extensible para que validate.js pueda agregar SUS propios miembros
+//      después. En cambio, cada miembro conocido se instala con
+//      Object.defineProperty (writable:false, configurable:false): una vez
+//      definido, esa clave puntual no puede reasignarse ni redefinirse.
+//
+// Un namespace preexistente (p.ej. una recarga legítima de este mismo
+// script, o un objeto plantado por otro código en el mismo realm ANTES de
+// que este script corra) se acepta ÚNICAMENTE si:
+//   a) el binding global ya está bloqueado (mismo descriptor writable:false/
+//      configurable:false que instalamos nosotros), Y
+//   b) el objeto tiene, como propiedad propia también bloqueada, una marca
+//      canónica (Symbol.for de un nombre fijo) con valor `true`, Y
+//   c) `__contractVersion` coincide.
+// Cualquier otra forma se rechaza (throw) en vez de adoptarse en silencio.
+// Límite honesto: en un mismo realm de JS no existe secreto verdadero — un
+// script que replique exactamente este mecanismo (mismo Symbol.for, mismos
+// descriptores) podría en teoría suplantarlo. Esto cubre el caso realista
+// exigido por el contrato (namespace ajeno/no intencional, forma incorrecta,
+// binding no bloqueado), no un adversario que reimplemente el mecanismo
+// byte a byte.
 (() => {
   'use strict';
 
   const CONTRACT_VERSION = 1;
+  const MARKER_KEY = Symbol.for('__auroraProviderHealth:canonical:v1');
 
-  // Compatibilidad de recarga: dos objetos "iguales" (mismas claves,
-  // mismos valores primitivos) se tratan como el mismo contrato — permite
-  // cargar types.js dos veces sin error. Cualquier otra forma existente
-  // bajo la misma clave se considera un namespace incompatible.
-  function shallowEqualPlain(a, b) {
-    if (a === b) return true;
-    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
-    const ak = Object.keys(a);
-    const bk = Object.keys(b);
-    if (ak.length !== bk.length) return false;
-    return ak.every(k => a[k] === b[k]);
+  function isLockedDataDescriptor(desc) {
+    return !!desc && desc.writable === false && desc.configurable === false
+      && Object.prototype.hasOwnProperty.call(desc, 'value');
   }
 
-  function defineLocked(target, key, value, isCompatible = (a, b) => a === b) {
-    if (Object.prototype.hasOwnProperty.call(target, key)) {
-      const existing = target[key];
-      if (isCompatible(existing, value)) return existing; // recarga idéntica: conservar lo ya definido
-      throw new Error(
-        `__auroraProviderHealth: redefinición incompatible de "${key}" — namespace preexistente no coincide con el contrato v${CONTRACT_VERSION}.`,
-      );
+  function verifyCanonicalNamespace(ns) {
+    if (!ns || typeof ns !== 'object') return false;
+    const markerDesc = Object.getOwnPropertyDescriptor(ns, MARKER_KEY);
+    if (!isLockedDataDescriptor(markerDesc) || markerDesc.value !== true) return false;
+    const versionDesc = Object.getOwnPropertyDescriptor(ns, '__contractVersion');
+    if (!isLockedDataDescriptor(versionDesc) || versionDesc.value !== CONTRACT_VERSION) return false;
+    return true;
+  }
+
+  const globalDesc = Object.getOwnPropertyDescriptor(globalThis, '__auroraProviderHealth');
+  let health;
+  if (globalDesc === undefined) {
+    // Primera carga real en este proceso: crear el namespace desde cero y
+    // bloquear el binding global inmediatamente.
+    health = {};
+    Object.defineProperty(health, MARKER_KEY, { value: true, writable: false, configurable: false, enumerable: false });
+    Object.defineProperty(health, '__contractVersion', { value: CONTRACT_VERSION, writable: false, configurable: false, enumerable: true });
+    Object.defineProperty(globalThis, '__auroraProviderHealth', { value: health, writable: false, configurable: false, enumerable: true });
+  } else {
+    if (!isLockedDataDescriptor(globalDesc)) {
+      throw new Error('__auroraProviderHealth: binding global preexistente no está bloqueado (writable/configurable) — namespace no confiable.');
     }
-    Object.defineProperty(target, key, { value, writable: false, configurable: false, enumerable: true });
+    health = globalDesc.value;
+    if (!verifyCanonicalNamespace(health)) {
+      throw new Error('__auroraProviderHealth: namespace preexistente no supera la verificación canónica (marca o versión de contrato ausente/incorrecta).');
+    }
+    // Namespace ya verificado como canónico (recarga legítima de este mismo
+    // script, u otro script que ya pasó por este mismo bootstrap) — se
+    // reutiliza tal cual, sin volver a tocar sus miembros ya definidos.
+  }
+
+  // Instala un miembro nuevo bloqueado. Si la clave YA existe, el namespace
+  // completo ya pasó la verificación canónica de arriba — se confía en el
+  // valor existente y NO se compara/reemplaza (recarga determinista, sin
+  // depender de comparar identidad de closures entre dos evaluaciones).
+  function defineLocked(key, value) {
+    if (Object.prototype.hasOwnProperty.call(health, key)) return health[key];
+    Object.defineProperty(health, key, { value, writable: false, configurable: false, enumerable: true });
     return value;
   }
 
-  const existingNamespace = globalThis.__auroraProviderHealth;
-  if (existingNamespace !== undefined
-    && (typeof existingNamespace !== 'object' || existingNamespace === null)) {
-    throw new Error('__auroraProviderHealth: el namespace preexistente no es un objeto — incompatible.');
-  }
-  if (existingNamespace
-    && Object.prototype.hasOwnProperty.call(existingNamespace, '__contractVersion')
-    && existingNamespace.__contractVersion !== CONTRACT_VERSION) {
-    throw new Error(
-      `__auroraProviderHealth: versión de contrato incompatible (existente=${existingNamespace.__contractVersion}, actual=${CONTRACT_VERSION}).`,
-    );
-  }
-  const health = globalThis.__auroraProviderHealth = existingNamespace || {};
-
-  // Dos funciones nunca son === entre cargas del mismo script (closures
-  // nuevos cada vez) — tratarlas como compatibles por TIPO permite que una
-  // segunda carga sea segura y determinista (contrato: "segunda carga
-  // determinista/no debe lanzar").
-  const bothFunctions = (a, b) => typeof a === 'function' && typeof b === 'function';
-
-  defineLocked(health, '__contractVersion', CONTRACT_VERSION);
-  defineLocked(health, '__defineLocked', defineLocked, bothFunctions);
-  defineLocked(health, '__shallowEqualPlain', shallowEqualPlain, bothFunctions);
+  defineLocked('__defineLocked', defineLocked);
+  defineLocked('__isLockedDataDescriptor', isLockedDataDescriptor);
+  defineLocked('__verifyCanonicalNamespace', verifyCanonicalNamespace);
+  defineLocked('__MARKER_KEY', MARKER_KEY);
 
   // ── Availability — propiedad del proveedor/cuenta/sesión ───────────────
   // Autoridad exclusiva: un adapter. Nunca Endpoint Registry ni el harness
@@ -171,17 +194,15 @@
   // "endpoint_registry" y "harness" quedan explícitamente excluidos.
   const AVAILABILITY_SOURCE = 'adapter';
 
-  defineLocked(health, 'CONTRACT_VERSION', CONTRACT_VERSION);
-  defineLocked(health, 'AvailabilityState', AvailabilityState, shallowEqualPlain);
-  defineLocked(health, 'RequestActivityState', RequestActivityState, shallowEqualPlain);
-  defineLocked(health, 'ACTIVE_REQUEST_ACTIVITY_STATES', ACTIVE_REQUEST_ACTIVITY_STATES,
-    (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]));
-  defineLocked(health, 'JobState', JobState, shallowEqualPlain);
-  defineLocked(health, 'JOB_STATES_REQUIRING_ATTEMPT', JOB_STATES_REQUIRING_ATTEMPT,
-    (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]));
-  defineLocked(health, 'ChannelState', ChannelState, shallowEqualPlain);
-  defineLocked(health, 'CHANNEL_ONLINE_PROPOSED_DERIVED', CHANNEL_ONLINE_PROPOSED_DERIVED);
-  defineLocked(health, 'Confidence', Confidence, shallowEqualPlain);
-  defineLocked(health, 'EventName', EventName, shallowEqualPlain);
-  defineLocked(health, 'AVAILABILITY_SOURCE', AVAILABILITY_SOURCE);
+  defineLocked('CONTRACT_VERSION', CONTRACT_VERSION);
+  defineLocked('AvailabilityState', AvailabilityState);
+  defineLocked('RequestActivityState', RequestActivityState);
+  defineLocked('ACTIVE_REQUEST_ACTIVITY_STATES', ACTIVE_REQUEST_ACTIVITY_STATES);
+  defineLocked('JobState', JobState);
+  defineLocked('JOB_STATES_REQUIRING_ATTEMPT', JOB_STATES_REQUIRING_ATTEMPT);
+  defineLocked('ChannelState', ChannelState);
+  defineLocked('CHANNEL_ONLINE_PROPOSED_DERIVED', CHANNEL_ONLINE_PROPOSED_DERIVED);
+  defineLocked('Confidence', Confidence);
+  defineLocked('EventName', EventName);
+  defineLocked('AVAILABILITY_SOURCE', AVAILABILITY_SOURCE);
 })();
