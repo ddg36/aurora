@@ -1,22 +1,23 @@
 # Provider Health Sensor — Discovery, diagnóstico y diseño verificable
 
-**Fecha:** 2026-07-19 (v3, segunda corrección documental tras revisión de Navigator)
+**Fecha:** 2026-07-19 (v4, tercera y última corrección documental tras revisión de Navigator)
 **Repositorio:** `/media/almacen/deml/Downloads/core_instruction/aurora`
 **Branch:** `task/provider-health-sensor`
 **Worktree:** `/media/almacen/deml/Downloads/core_instruction/aurora-provider-health-sensor`
 **Base commit original:** `17e1e710c1e33058142eaf7ba519bbde51643c00` (`17e1e71`)
 **Commit v1 (revisado, `CHANGES_REQUIRED`):** `e197a5994de4406c27fcbbf13ea8bb7abe5194ac`
 **Commit v2 (revisado, `CHANGES_REQUIRED`):** `0dede036ec4d8edd4a1da427881df8cf8350d35e`
-**Commit v3 (esta versión):** ver `DRIVER_PROVIDER_HEALTH_CONTRACTS_FINALIZED` al final.
-**Estado inicial de esta corrección:** worktree en `task/provider-health-sensor`, HEAD `0dede036`, `git status` limpio (`HECHO_VERIFICADO`).
+**Commit v3 (revisado, `CHANGES_REQUIRED`):** `7ebbfd1bc1e58c57d2d4ad72e61afc4cbceb88f2`
+**Commit v4 (esta versión):** ver `DRIVER_PROVIDER_HEALTH_FINAL_BLOCKERS_RESOLVED` al final.
+**Estado inicial de esta corrección:** worktree en `task/provider-health-sensor`, HEAD `7ebbfd1b`, `git status` limpio (`HECHO_VERIFICADO`).
 
 ## Alcance de este documento
 
-Discovery, lectura, diagnóstico, diseño y planificación. Ningún archivo de producción fue modificado en ninguna de las tres versiones. Este archivo es el único artefacto de la fase.
+Discovery, lectura, diagnóstico, diseño y planificación. Ningún archivo de producción fue modificado en ninguna de las cuatro versiones. Este archivo es el único artefacto de la fase.
 
 ## Nota de versión
 
-v2 corrigió overclaims de v1 sobre `cloudGenerando`, el timeout de `askCloud()`, 13 filas de escenarios, privacidad de evidencia y convención de tests. **v3 corrige overclaims de v2** identificados por Navigator: `Activity` mezclaba tres scopes distintos (request/job/tools) bajo un solo eje — se separa en `RequestActivity`/`JobState`/`ToolLifecycle`; `ejecutarPreparada()` se presentaba incorrectamente como ejecutor de tools (la ejecución real es server-side); el evento `provider.activity.changed` era demasiado amplio y `Availability` todavía admitía `Endpoint Registry` como autoridad indebida; Channel afirmaba "mapeo 1:1" mientras agregaba un estado (`ONLINE`) no producido hoy; la reconciliación previa a un retry tenía 5 preguntas cuando el texto decía 6; `partialArtifact.text` viajaba embebido en el bus de eventos exponiendo contenido privado; y 5 filas de la tabla de escenarios (3, 7, 8, 11, 16) seguían con inconsistencias. Cada corrección está marcada explícitamente como "v3" donde reemplaza contenido de v2.
+v2 corrigió overclaims de v1 (`cloudGenerando`, timeout de `askCloud()`, 13 filas de escenarios, privacidad, tests). v3 corrigió overclaims de v2 (separación Activity→RequestActivity/JobState/ToolLifecycle, autoridad de ejecución de tools, eventos separados, Channel, 5 filas de escenarios, reconciliación, `partialArtifactRef`). **v4 resuelve los 6 blockers finales de v3** identificados por Navigator: (1) eliminada una sección obsoleta y duplicada que seguía atribuyendo ejecución de tools a `ejecutarPreparada()`, contradiciendo la cadena canónica de la sección 3; (2) corregida la semántica exacta de `AURORA_CLOUD_ACK` (consumo de respuesta, no aceptación del proveedor) y `/json-family/delivered` (journal de entrega técnica, no aceptación), con cuatro verdades independientes explícitas; (3) agregada identidad de proveedor (`currentAttempt.logicalProviderId`/`effectiveAdapterId`) a `cloud.job.state.changed`, ausente en v3; (4) definido completamente `JobState.ACTIVE` para cubrir todos los `RequestActivity` no terminales incluyendo `STALLED`; (5) filas 3 y 8 de la tabla de escenarios hechas conservadoras (ya no imponen terminalidad no demostrada); (6) terminología residual `partialArtifact` reemplazada por `partialArtifactRef` en la fila 15 y en el resto del documento. Cada corrección está marcada explícitamente como "v4" donde reemplaza contenido de v3.
 
 ## Exclusiones explícitas
 
@@ -150,7 +151,7 @@ WAITING_FEEDBACK | COMPLETED | FAILED | CANCELLED | UNKNOWN
 ```
 
 - `CREATED` — el job existe (`guardarTurnoCloud` inicial) pero el primer request todavía no se envió.
-- `ACTIVE` — hay un `RequestActivity` en curso para este job (cualquier valor entre `SUBMITTED` y `PROGRESSING`).
+- `ACTIVE` — **corrección v4 (§ activity_model_verdict):** `RequestActivity` no tiene un orden matemático formal, así que "entre `SUBMITTED` y `PROGRESSING`" (formulación de v3) era ambiguo e incompleto. Definición explícita: el job está `ACTIVE` cuando el `RequestActivity` del intento actual es cualquiera de los siguientes valores **no terminales**: `QUEUED`, `SUBMITTED`, `WAITING_FIRST_OUTPUT`, `PROGRESSING`, o **`STALLED`**. `STALLED` cuenta explícitamente como `ACTIVE` — un request estancado sigue siendo, por definición, un request sin cierre (no canceló, no se interrumpió con causa confirmada, no completó, no falló); es trabajo del `Availability`/las políticas de más arriba decidir después si ese estancamiento debe derivar en cancelar, interrumpir, pausar o fallar el job, pero mientras eso no ocurra, el job permanece `ACTIVE`. Los valores terminales de `RequestActivity` (`COMPLETED`, `FAILED`, `CANCELLED`, `INTERRUPTED`) **no** mantienen el job en `ACTIVE` por sí solos — si tras un request terminal el job tiene otra fase viva (`WAITING_TOOL`/`WAITING_RESULT`/`WAITING_FEEDBACK`), el job refleja esa fase, no `ACTIVE`; si no hay ninguna fase viva pendiente, el job pasa a su propio estado terminal (`COMPLETED`/`FAILED`/`CANCELLED`). `IDLE` (ausencia de request) nunca implica `ACTIVE` por sí mismo.
 - `PAUSED` — el job está detenido por una causa de `Availability` reversible por tiempo (`RATE_LIMITED` con `retryAfter`, por ejemplo) — sin request en vuelo, esperando una condición temporal.
 - `BLOCKED` — el job está detenido por una causa que requiere intervención externa antes de poder continuar (`QUOTA_EXHAUSTED`, `AUTH_REQUIRED`, `CHALLENGE_REQUIRED`).
 - `WAITING_TOOL` — la respuesta del proveedor fue parseada y contiene una tool detectada, pendiente de validación/ejecución (ver ToolLifecycle).
@@ -257,7 +258,9 @@ Corregido respecto a v2: se retira `partialArtifact.text` embebido (ver sección
 
 ### 4.3 `cloud.job.state.changed`
 
-Autoridad: el job lógico persistido (`JobState`, sección 3). Vive por `logicalJobId`, sobrevive a múltiples `attemptId`.
+Autoridad: el job lógico persistido (`JobState`, sección 3). Vive por `logicalJobId`, sobrevive a múltiples `attemptId` — **incluyendo sustituciones de proveedor** (un mismo job lógico puede reintentarse con un proveedor distinto).
+
+**Corrección v4 (§ event_contracts_verdict):** v3 omitía `logicalProviderId`/`effectiveAdapterId` en este evento pese a que los criterios de aceptación exigían diferenciarlos en los tres contratos. Como un `logicalJobId` puede sobrevivir a una sustitución de proveedor, esa identidad no es una propiedad fija del job completo — es una propiedad del **intento actual**. Se agrega `currentAttempt` como objeto anidado en vez de campos sueltos, precisamente para no insinuar que la identidad de proveedor es estable a lo largo de todo el job:
 
 ```ts
 {
@@ -265,7 +268,12 @@ Autoridad: el job lógico persistido (`JobState`, sección 3). Vive por `logical
   eventId: string,
   sequence: number,
   logicalJobId: string,
-  currentAttemptId: string | null,
+  currentAttempt: {                // NUEVO v4 — identidad del intento actual, no del job completo
+    attemptId: string,
+    logicalProviderId: string,
+    effectiveAdapterId: string,
+    requestId: string | null,
+  } | null,                        // null si el job no tiene ningún intento activo todavía (CREATED)
   turnId: string | null,
   paneId: string,
   previousState: JobState,
@@ -277,6 +285,8 @@ Autoridad: el job lógico persistido (`JobState`, sección 3). Vive por `logical
   observedAt: number,
 }
 ```
+
+Regla adicional (v4): una sustitución de proveedor sobre el mismo `logicalJobId` crea un `attemptId` nuevo con su propio `currentAttempt.logicalProviderId`/`effectiveAdapterId` — el evento nuevo refleja el intento actual, pero **nunca sobrescribe** el historial de intentos anteriores en el turno persistido (`guardarTurnoCloud` ya acumula estado por iteración, no lo reemplaza destructivamente). El evento es una fotografía del presente; el historial completo de intentos con sus proveedores respectivos vive en el registro persistido, no en el último evento emitido.
 
 ### 4.4 Channel — decisión explícita (corrige "pregunta abierta" de v2)
 
@@ -298,37 +308,27 @@ Agregado de solo lectura para UI: combina el último `provider.availability.chan
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | Stop visible y texto creciendo | READY | PROGRESSING | `getStop()=true` (authoritativeStop) + `lastText` cambia | HIGH (progreso), no del Stop aislado | Seguir esperando, streamear chunks | conservar | no aplica | no |
 | **2 (corregida)** | Stop visible sin cambios mucho tiempo | **UNKNOWN** (corrección: un Stop persistente sin texto nuevo NO prueba `READY` — puede ser un Stop obsoleto en un sitio sin `authoritativeStop`) | STALLED | Stop persiste + `Date.now()-lastChange > STALL_MS` | MEDIUM | Emitir aviso (no autoclic), ofrecer intervención manual | conservar | manual únicamente | recomendado |
-| **3 (corregida v3)** | Composer deshabilitado + banner de cuota | QUOTA_EXHAUSTED o RATE_LIMITED | RequestActivity: `FAILED` o `COMPLETED` según qué devolvió el último request observado; JobState: **`BLOCKED`** (cuota) o **`PAUSED`** (rate limit con `retryAfter`) — corrección v3: `PAUSED`/`BLOCKED` viven en `JobState`, no son valores de `RequestActivity` | Banner con `reasonCode` específico + composer disabled | HIGH si el patrón está validado por fixture | Detener nuevos requests para este job, `JobState=BLOCKED/PAUSED` | conservar el job persistido, liberar locks en memoria | prohibido automático | sí, para reanudar |
+| **3 (corregida v4)** | Composer deshabilitado + banner de cuota | QUOTA_EXHAUSTED o RATE_LIMITED | RequestActivity: **el último valor realmente observado, si existe alguno** — puede ser `COMPLETED`, `FAILED`, `INTERRUPTED`, `UNKNOWN`, o no haber ningún request previo observable en absoluto; corrección v4: no se infiere terminalidad únicamente a partir del banner, el banner es evidencia de `Availability`, no de cómo terminó el último request. JobState: **`BLOCKED`** (cuota) o **`PAUSED`** (rate limit con `retryAfter`) | Banner con `reasonCode` específico + composer disabled | HIGH si el patrón está validado por fixture | Detener nuevos requests para este job, `JobState=BLOCKED/PAUSED` | conservar el job persistido, liberar locks en memoria | prohibido automático | sí, para reanudar |
 | **4 (corregida)** | Composer habilitado, sin respuesta, sin banner | UNKNOWN | **WAITING_FIRST_OUTPUT** antes del umbral de stall; **STALLED** después | Ausencia de señales | LOW/UNKNOWN | No inventar causa; conservar evidencia; permitir diagnóstico manual | conservar | no | recomendado si se prolonga |
 | 5 | Sesión cerrada | AUTH_REQUIRED | UNKNOWN | Redirect a login detectado | HIGH si patrón específico | Detener automatización, pedir intervención | liberar | prohibido | sí, obligatorio |
 | 6 | CAPTCHA / challenge | CHALLENGE_REQUIRED | UNKNOWN | Challenge conocido detectado | HIGH si selector específico | Pausar, no resolver | liberar | prohibido | sí, obligatorio |
 | **7 (corregida v3)** | Error temporal del proveedor | TEMP_UNAVAILABLE | RequestActivity: `FAILED` (de este intento); JobState: `ACTIVE` si se decide reintentar | Error 5xx visible | MEDIUM | **Solo tras completar la reconciliación de la sección 8** (¿el request anterior fue aceptado? ¿sigue en vuelo? ¿produjo parcial?) crear un nuevo `attemptId` bajo el mismo `logicalJobId` — corrección v3: "parecer temporal" no basta por sí solo, la reconciliación es condición previa obligatoria, no opcional | conservar el `logicalJobId` | sí, vía nuevo attempt, acotado, solo tras reconciliar | no, salvo repetición |
-| **8 (corregida v3)** | Rate limit con fecha de reintento | RATE_LIMITED | RequestActivity: `COMPLETED` o `FAILED` del último request; JobState: **`PAUSED`** (misma corrección que fila 3 — no es un valor de RequestActivity) | Banner con `retryAfter` parseable | HIGH si se parsea | Pausar el job hasta `retryAfter` | conservar job persistido | programado, nunca ciego — `retryAfter` despierta una comprobación, no un reenvío automático | no |
+| **8 (corregida v4)** | Rate limit con fecha de reintento | RATE_LIMITED | RequestActivity: **el último valor realmente observado, si existe** (mismo criterio conservador que fila 3 — no se asume `COMPLETED`/`FAILED` sin evidencia); JobState: **`PAUSED`** | Banner con `retryAfter` parseable | HIGH si se parsea | Pausar el job hasta `retryAfter` | conservar job persistido | programado, nunca ciego — `retryAfter` despierta una comprobación, no un reenvío automático | no |
 | **9 (corregida)** | Job local finalizado pero DOM dice generating | READY debe justificarse por **evidencia separada de disponibilidad**, no inferirse del cierre del request (corrección: v1 mezclaba ambas) | COMPLETED | `AURORA_CLOUD_ANSWER` recibido cierra el REQUEST; no certifica disponibilidad futura de la cuenta | MEDIUM para activity (HIGH para el cierre del protocolo específicamente), evidencia de availability se evalúa aparte | Confiar en el cierre explícito del protocolo para `activity`; no inferir `availability` de esto | liberar activity | no aplica | no |
 | **11 (corregida v3)** | Reload durante generación | UNKNOWN transitorio | RequestActivity: **`INTERRUPTED`** (no `STALLED` — hay causa conocida y protocolo explícito: `AURORA_CLOUD_RESETTING{reason:'pane_reload'}` → `askCloud` resuelve `pane_reloaded`); JobState: `ACTIVE` (recuperable) | Evento explícito del protocolo | HIGH (protocolo ya existente) | `recuperarCloudPendiente` puede reanudar. **Comportamiento ACTUAL, `HECHO_VERIFICADO`:** `askCloud({resumeOnly:true, requestId})` reenvía el **mismo `requestId`** que ya traía el turno persistido (`cloud.js:378-380`, `turnoPrevio.requestId`) — reutiliza identidad, no crea una nueva. **Diseño futuro, `PROPUESTA`, no implementado:** un `attemptId` nuevo por cada reintento, distinto del `requestId` reutilizado por `resumeOnly` — son dos identidades a niveles distintos (`attemptId` a nivel del sensor/job lógico, `requestId` a nivel del protocolo `askCloud` existente), no se contradicen pero tampoco deben confundirse como si ya coexistieran hoy | transferir vía DB (turno persistido) | sí, vía `resumeOnly` (ya existente) | no |
 | 12 | Tab descartada y restaurada | UNKNOWN hasta reconfirmar | recuperable | `tab.discarded`, reinjector dispara `tab_resumed` | MEDIUM hasta que `probeMain` confirme `effectiveAdapterId` correcto | Re-probar adapter antes de asumir nada; degradar confianza si `effectiveAdapterId` no es el esperado | conservar turno en DB | reconectar canal | no, salvo si el adapter resultante es incorrecto |
 | **13 (corregida)** | Service worker reiniciado | UNKNOWN | recuperable vía DB — **evento distinto de un reload de la página Aurora** (corrección explícita de v1, que los mezclaba) | `endpoint-registry` persiste en `chrome.storage.session` (sobrevive a restart del SW); `cloudGenerando` (memoria de la página Aurora) NO sobrevive a un reload de la página Aurora, pero un restart del service worker por sí solo **no recarga la página de Aurora** — son dos procesos distintos de Chrome | MEDIUM | Reconstruir desde DB/turno persistido si la página Aurora también se recargó; si solo el SW reinició, la página Aurora puede seguir con su estado de memoria intacto | depende de cuál de los dos procesos reinició — no unificar | reanudar vía `recuperarCloudPendiente` solo si la página Aurora perdió memoria | no |
 | 14 | Adapter específico ausente, `generic` activo | UNKNOWN, confianza degradada explícitamente | UNKNOWN | `effectiveAdapterId !== logicalProviderId` esperado | LOW (generic no tiene señales específicas) | Degradar confianza automáticamente | conservar, marcar riesgo | no | recomendado revisar reinjector |
-| **15 (corregida)** | Respuesta parcial seguida de indisponibilidad | transición a X | **INTERRUPTED o FAILED con `partialArtifact`** (corrección: nunca `COMPLETED`) | Texto recibido antes del corte + banner posterior | MEDIUM | Conservar la respuesta parcial como artefacto recuperable, no como resultado final exitoso; `availability` se reclasifica por separado | conservar el resultado parcial | no reintentar el mismo contenido; posible continuación explícita | no, salvo pedir continuar |
+| **15 (corregida v4)** | Respuesta parcial seguida de indisponibilidad | transición a X | **INTERRUPTED o FAILED con `partialArtifactRef`** (corrección v4: terminología residual `partialArtifact` reemplazada — nunca `COMPLETED`) | Texto recibido antes del corte + banner posterior | MEDIUM | Conservar la referencia al artefacto parcial (`partialArtifactRef`, sin contenido embebido) como recuperable, no como resultado final exitoso; `availability` se reclasifica por separado | conservar el resultado parcial (vía referencia durable) | no reintentar el mismo contenido; posible continuación explícita | no, salvo pedir continuar |
 | **16 (corregida v3)** | `AURORA_CLOUD_ASK` enviado, sin `AURORA_CLOUD_ANSWER` todavía | **`UNKNOWN`** (corrección v3: sin evidencia separada de disponibilidad, no puede asumirse `READY`) | RequestActivity: `SUBMITTED`; JobState: `ACTIVE` — corrección v3 del título: la evidencia real disponible es únicamente "ASK enviado", **no** "tool enviada". No hay evidencia todavía de que el proveedor haya detectado, autorizado, despachado o ejecutado ninguna tool — esas fases (ToolLifecycle, sección 3) son posteriores a que exista siquiera una `AURORA_CLOUD_ANSWER` | `AURORA_CLOUD_ASK` enviado sin `AURORA_CLOUD_ANSWER` todavía | MEDIUM para RequestActivity, UNKNOWN para Availability | Seguir esperando dentro del timeout de `askCloud` (10min ya existente) | conservar | el propio `askCloud` ya reintenta el post en `resumeOnly` (protocolo existente) — no es un retry del sensor | no |
 | **17 (corregida)** | Menú/overlay abierto confundido con estado del proveedor | N/A — dimensión de **UI de Aurora**, no del proveedor | N/A | **Corrección de causalidad (v1 sobreafirmaba):** en esta sesión un menú de selección de modelo quedó abierto tras un click sintético del Driver, y se observaron `lyra_cloud_busy` posteriores. No existe evidencia de que el overlay haya ESCRITO `cloudGenerando` — un menú visual no toca esa signal en el código inspeccionado. La relación causal exacta entre "overlay abierto" y "busy reportado por el harness" queda **`NO_VERIFICADO`**, no confirmada como en v1. | — | El sensor NUNCA debe leer overlays de Aurora como señal de proveedor — son dimensiones distintas, independientemente de si esta instancia específica tuvo relación causal o coincidencia temporal | no aplica | no aplica | no aplica |
 | **18 (corregida)** | Proveedor en pantalla inicial sin conversación | **UNKNOWN** (corrección: no "READY probable" — ausencia de banner no es evidencia positiva, ver regla dura de la sección Availability) | IDLE | 0 turnos de usuario, sin banner — confirmado en vivo en sesión previa con Qwen en home | LOW | No asumir cuota agotada solo por esto; tampoco asumir disponibilidad | no hay job | no aplica | no |
 | 19 | Timeout sin evidencia suficiente | UNKNOWN | UNKNOWN | Ausencia total de señales | UNKNOWN explícito | Declarar incertidumbre, no inventar causa | conservar con evidencia | no automático | recomendado |
 | **20 (corregida)** | Recuperación del proveedor tras pausa | transición X→READY | IDLE (corrección: la recuperación de `availability` **habilita** una nueva decisión, no dispara reenvío automático del prompt) | Banner desaparece + composer acepta input | MEDIUM subiendo a HIGH con progreso confirmado de un intento nuevo | Notificar recuperación; **el reenvío requiere una decisión explícita** (humana o del Orchestrator), nunca automático | reactivar el job lógico como reintentable | sí, pero como decisión explícita, nuevo `attemptId` | recomendado, no obligatorio |
 
-### Fases de una tool, explícitamente distinguidas (exigido por Navigator, ausente en v1)
+### Fases de una tool
 
-1. prompt preparado (`status:'prepared'`)
-2. prompt enviado (`AURORA_CLOUD_ASK` posteado)
-3. request aceptado (relay confirma recepción — no siempre observable explícitamente hoy, `NO_VERIFICADO`)
-4. primer output (`AURORA_CLOUD_CHUNK`)
-5. respuesta cerrada (`AURORA_CLOUD_ANSWER`)
-6. tool parseada (`processCloudToolProtocol` detecta `calls`)
-7. tool autorizada (**concepto que hoy no existe explícitamente en el código** — `NO_VERIFICADO`/pregunta abierta: ¿hay algún gate de autorización antes de ejecutar, o toda tool detectada se ejecuta?)
-8. tool ejecutada (`ejecutarPreparada`)
-9. resultado recibido (`r = entry?.result`)
-10. resultado persistido (`guardarTurnoCloud` con `toolResults`)
-11. feedback entregado (siguiente `prompt` con el resultado, próxima iteración del loop)
+**Corrección v4 (§ lifecycle_separation_verdict):** esta subsección duplicaba, con una atribución de autoridad ya corregida en otro lugar (afirmaba que `ejecutarPreparada()` ejecuta la tool), la cadena que ya vive como **única fuente canónica en la sección 3, subsección "ToolLifecycle"**. Se elimina la duplicación — remitir siempre a esa sección para las 11 fases (detectada → parseada → validada → autorizada → despachada → ejecutada server-side → resultado recibido → persistido → feedback preparado → entregado → aceptado), incluyendo la autoridad correcta: la ejecución real ocurre en el backend (`/json-family/process`), nunca en `ejecutarPreparada()` del cliente.
 
 ---
 
@@ -442,10 +442,16 @@ Antes de crear un nuevo `attemptId` (o, en el diseño actual ya existente de `re
 11. **¿El feedback fue entregado al proveedor?** (nuevo `askCloud` con el prompt de feedback ya enviado) → si sí, no reenviar — evita que el proveedor reciba el mismo resultado de tool dos veces (el bug real de duplicación de esta misma sesión, con Qwen, tenía exactamente esta forma).
 12. **¿El proveedor aceptó el feedback o ya inició una continuación?** → si hay evidencia de una respuesta nueva del proveedor al feedback, el ciclo ya avanzó — no retroceder.
 13. **¿El intento anterior fue cancelado de forma autoritativa (`CANCELLED`, no `INTERRUPTED`)?** → una cancelación explícita del usuario nunca debe reabrirse automáticamente con un nuevo intento; requiere una nueva decisión explícita.
-14. **¿Existe ACK del backend?** (`acknowledgeRelayDelivery`/`confirmarCloudAnswer`, nivel servidor Aurora) → distinto de la pregunta 15; confirma que el **backend de Aurora** considera la entrega registrada.
-15. **¿Existe ACK del relay?** (`AURORA_CLOUD_ACK` a nivel `cloud-ask.js`, nivel canal MAIN↔ISOLATED↔background) → distinto de 14; confirma que el **canal de mensajería del navegador** considera la entrega recibida por el content script, independientemente de si el backend ya la procesó.
+14. **¿Existe `AURORA_CLOUD_ACK` (consumo de `AURORA_CLOUD_ANSWER`)?** — **Corrección v4:** este ACK lo emite `confirmarCloudAnswer()` (`cloud-ask.js:19-30`), a iniciativa del **cliente** (la página de Lyra), cuando ya leyó una `AURORA_CLOUD_ANSWER` recibida — su único efecto es borrar esa respuesta del outbox del bridge (`_pendingAnswers.delete(...)`) para que no se re-entregue en un replay. **No demuestra** que el proveedor haya aceptado ningún prompt; **no demuestra** que un content script recibió feedback de tool; **no demuestra** ninguna continuación del proveedor. Es exclusivamente "Aurora ya vio y consumió esta respuesta".
+15. **¿Existe registro en `/json-family/delivered` (`acknowledgeRelayDelivery`)?** — **Corrección v4:** este es un registro/journal del **backend** de que `deliverToOrigin` (background.js) reportó haber entregado el feedback de una tool al frame del proveedor (es decir, que el `chrome.scripting.executeScript`/`postMessage` de entrega se ejecutó sin error). **No demuestra por sí solo** que el proveedor interpretó o aceptó ese feedback como un turno real, ni que inició una continuación — solo que el mecanismo de entrega técnica no falló.
 
-**Distinción explícita exigida por Navigator:** ACK backend ≠ ACK relay ≠ entrega al proveedor (el `postAlRelay`/`act.submit()` que efectivamente escribe en el composer del sitio) ≠ aceptación por el proveedor (que el sitio haya procesado el texto como un turno real, observable por `getUserTurnCount()` u equivalente). Las cuatro son verdades independientes — confirmar una no permite asumir las otras, exactamente el mismo principio que causó (y luego resolvió) el bug de envío duplicado de Qwen documentado en esta misma sesión de trabajo.
+**Cuatro verdades independientes, ninguna implica la siguiente** (corrección v4, distinción exigida explícitamente por Navigator):
+1. **ACK de consumo de Cloud Answer/outbox** (`AURORA_CLOUD_ACK`) — Aurora ya leyó una respuesta.
+2. **Journal de entrega JSON Family** (`/json-family/delivered`) — el backend registró que la entrega técnica del feedback se reportó como exitosa.
+3. **Entrega al composer/interfaz del proveedor** — el `act.submit()`/clic real ocurrió en el DOM del sitio (observable solo por el driver/adapter específico, no por ningún ACK anterior).
+4. **Aceptación real por el proveedor o continuación observada** — el sitio procesó el texto como un turno real (ej. `getUserTurnCount()` sube, o aparece una respuesta nueva) — la única señal que certifica que el ciclo realmente avanzó.
+
+Confirmar 1 o 2 nunca permite asumir 3 o 4. Este es exactamente el principio cuya violación causó — y cuya restauración resolvió — el bug de envío duplicado de Qwen documentado en esta misma sesión de trabajo: la ausencia de una señal de tipo 4 confiable (el conteo de turnos de Qwen no subía) hacía que el sistema reintentara la entrega (tipo 3) creyendo, incorrectamente, que ni siquiera el tipo 3 había ocurrido.
 
 **Corrección explícita mantenida de v2:** nunca reutilizar el mismo `attemptId` al sustituir de proveedor o reintentar tras una pausa — cada intento nuevo es un `attemptId` nuevo bajo el mismo `logicalJobId` (con la salvedad documentada en la fila 11 sobre el comportamiento **actual** de `resumeOnly`, que sí reutiliza `requestId` a nivel de protocolo `askCloud`, una capa distinta). `retryAfter` despierta una comprobación de disponibilidad, nunca reenvía el prompt automáticamente.
 
@@ -521,7 +527,7 @@ Comandos mínimos propuestos para un futuro checkpoint (no ejecutados en esta fa
 7. ~~El overlay causó `lyra_cloud_busy`~~ → relación causal `NO_VERIFICADO`, no confirmada; el overlay no escribe la signal en el código inspeccionado.
 8. ~~Service worker restart implica pérdida de estado en memoria de Lyria~~ → son dos procesos distintos de Chrome; el SW puede reiniciar sin que la página de Aurora se recargue.
 9. ~~Pantalla inicial sin banner permite inferir `READY probable`~~ → ausencia de señal negativa no es evidencia positiva; corresponde `UNKNOWN`.
-10. ~~Respuesta parcial se clasifica como `COMPLETED`~~ → corresponde `INTERRUPTED`/`FAILED` con `partialArtifact` preservado.
+10. ~~Respuesta parcial se clasifica como `COMPLETED`~~ → corresponde `INTERRUPTED`/`FAILED` con `partialArtifactRef` preservado (sin contenido embebido en el bus).
 11. ~~`AURORA_CLOUD_ASK` enviado significa "tool enviada"~~ → son fases distintas de una cadena de 11 pasos (sección 5).
 12. ~~El reinjector solo actúa en discard/frozen~~ → actúa en cualquier `status:'complete'`, `tab_activated`, `worker_boot`, instalación, o invocación manual.
 13. ~~No existe convención de tests JS en el repo~~ → existe (`tests/ui/*.mjs`, Bun).
@@ -533,9 +539,9 @@ Comandos mínimos propuestos para un futuro checkpoint (no ejecutados en esta fa
 
 **Estado:** este documento corrige el contrato; **no se solicita autorización de implementación en esta entrega** (instrucción explícita del Orchestrator).
 
-Si en una fase futura se autoriza, el Checkpoint 1 debe contener **tres** archivos, con los tipos reflejando la separación final de esta v3 (corrección: v2 todavía citaba `ActivityState`/`ChannelState` como si fueran un solo eje cada uno):
+Si en una fase futura se autoriza, el Checkpoint 1 debe contener **tres** archivos, con los tipos reflejando el contrato final v4:
 
-1. `extensions/aihub/content-scripts/relay/provider-health/types.js` — constantes de `AvailabilityState`, `RequestActivityState`, `JobState`, `ChannelState` (los 6 estados verificados, `ONLINE` documentado aparte como `PROPUESTA_DERIVADA`), forma de `EvidenceEntry` (con `evidenceId`/`sourceClass`/`authority`/`correlationGroup`/`patternId`), `AttemptIdentity` (`logicalJobId`+`attemptId`), `PartialArtifactRef`, y forma de los tres contratos de evento (`provider.availability.changed`, `provider.request.activity.changed`, `cloud.job.state.changed`) — patrón IIFE clásico, sin ESM.
+1. `extensions/aihub/content-scripts/relay/provider-health/types.js` — constantes de `AvailabilityState`, `RequestActivityState`, `JobState` (con `ACTIVE` definido explícitamente sobre los 5 valores no terminales de `RequestActivityState`, incluyendo `STALLED`), `ChannelState` (los 6 estados verificados, `ONLINE` documentado aparte como `PROPUESTA_DERIVADA`), forma de `EvidenceEntry` (con `evidenceId`/`sourceClass`/`authority`/`correlationGroup`/`patternId`), `AttemptIdentity` (`logicalJobId`+`attemptId`+`logicalProviderId`+`effectiveAdapterId`), `PartialArtifactRef` (sin campo de texto), y forma de los tres contratos de evento (`provider.availability.changed` con `source` restringido a `"adapter"`, `provider.request.activity.changed`, `cloud.job.state.changed` con `currentAttempt` anidado) — patrón IIFE clásico, sin ESM. Si `validate.js` valida algo relacionado a ACKs, debe distinguir explícitamente `AURORA_CLOUD_ACK` (consumo de respuesta) de `/json-family/delivered` (journal de entrega) como campos/eventos separados, nunca como sinónimos de "aceptación del proveedor".
 2. `extensions/aihub/content-scripts/relay/provider-health/validate.js` — validadores puros de forma, mismo patrón que `validateProviderAdapter` de `relay-contract.js`.
 3. `tests/provider-health/test_contract.mjs` — pruebas deterministas de ambos archivos, siguiendo la convención ya existente de `tests/ui/*.mjs`.
 
@@ -559,30 +565,26 @@ Criterios de aceptación (actualizados v3): los tres ejes (`Availability`/`Reque
 
 ---
 
-## CHECKLIST_DELTA (v3, reemplaza completamente el de v2)
+## CHECKLIST_DELTA (v4, reemplaza completamente el de v3)
 
-**Hechos corregidos respecto a v2:**
-- `RequestActivity`/`JobState`/`ToolLifecycle` separados en tres nociones distintas — v2 los mezclaba bajo un solo eje `Activity`.
-- `ejecutarPreparada()` NO ejecuta tools — la ejecución real ocurre server-side vía `processJSONFamily → postJSON('/json-family/process')`; el cliente solo persiste/presenta resultados ya calculados. Confirmado leyendo `cloud.js:28-37` y `json-family-client.js:4-9`.
-- `resumeOnly` (comportamiento actual, `HECHO_VERIFICADO`) reutiliza el mismo `requestId` al reanudar un turno tras crash/reload — distinto del `attemptId` nuevo propuesto para reintentos por disponibilidad, que es diseño futuro no implementado.
-- Channel decidido: sin evento nuevo (`provider.channel.changed` descartado), `AuroraEndpointRegistry` permanece autoridad única, consultable directamente.
-- Channel "mapea 1:1" era falso — `ONLINE` no es producido hoy por `endpoint-registry.js`, se marca `PROPUESTA_DERIVADA`.
-- `Availability` solo puede emitirse con `source:"adapter"` — `endpoint_registry` retirado como fuente autoritativa (puede aportar evidencia contradictoria, nunca `state` directo).
+**Hechos corregidos respecto a v3 (los 6 blockers finales de Navigator):**
+- Eliminada la sección duplicada/obsoleta ("Fases de una tool") que seguía atribuyendo ejecución a `ejecutarPreparada()` — reemplazada por referencia única a la cadena canónica de ToolLifecycle (sección 3).
+- `AURORA_CLOUD_ACK` re-especificado con precisión: confirma que Aurora consumió una `AURORA_CLOUD_ANSWER` (borra del outbox), no que el proveedor aceptó nada.
+- `/json-family/delivered` re-especificado: journal de entrega técnica reportada por el backend, no aceptación por el proveedor.
+- Cuatro verdades independientes explícitas: ACK de consumo / journal de entrega JSON Family / entrega al composer / aceptación real por el proveedor.
+- `cloud.job.state.changed` ahora incluye `currentAttempt.{attemptId, logicalProviderId, effectiveAdapterId, requestId}` — ausente en v3 pese a que los criterios de aceptación ya lo exigían.
+- `JobState.ACTIVE` definido explícitamente para todos los `RequestActivity` no terminales, incluyendo `STALLED`.
+- Filas 3 y 8 de la tabla de escenarios ya no imponen `FAILED`/`COMPLETED` como único resultado posible del último request — reconocen `INTERRUPTED`/`UNKNOWN`/ausencia de request previo.
+- Fila 15 y otras referencias activas corregidas de `partialArtifact` a `partialArtifactRef`.
 
-**Sobreafirmaciones retiradas (v3, sobre v2):** las 7 listadas por Navigator en `remaining_overclaims` — Channel "1:1", `COMPLETED` atribuido prematuramente a `AURORA_CLOUD_ANSWER`, autoridad incorrecta de `ejecutarPreparada()`, conteo erróneo de preguntas de reconciliación (decía 6, había 5 — ahora son 15 explícitas y completas), Availability admitiendo Endpoint Registry, fila 16 presuponiendo `READY`, título "Tool enviada" describiendo en realidad un ASK.
+**Sobreafirmaciones retiradas (v4, sobre v3):** las 5 listadas por Navigator en `remaining_overclaims` — sección lifecycle duplicada, semántica incorrecta de ACK, terminalidad no demostrada en filas 3/8, identidad de proveedor faltante en el evento de job, terminología residual en fila 15.
 
-**Contratos finales:** `provider.availability.changed` (solo `adapter`), `provider.request.activity.changed` (RequestActivity por intento), `cloud.job.state.changed` (JobState por job lógico, incluye `partialArtifactRef`), `provider.health.snapshot` (vista derivada). Sin `provider.channel.changed` — decisión explícita, Opción B.
+**Contratos finales (sin cambios de v3, ya estables):** `provider.availability.changed` (solo `adapter`), `provider.request.activity.changed` (RequestActivity por intento), `cloud.job.state.changed` (JobState por job lógico, con `currentAttempt` e identidad de proveedor por intento), `provider.health.snapshot` (vista derivada). Sin `provider.channel.changed` — Opción B.
 
-**Escenarios corregidos en v3:** filas 3, 7, 8, 11, 16 (las 5 pendientes exigidas por Navigator tras v2), sumadas a las 13 ya corregidas en v2.
+**Reconciliación (sin cambios de estructura, semántica corregida):** 15 preguntas explícitas, con las preguntas 14-15 ahora nombrando exactamente `AURORA_CLOUD_ACK` y `/json-family/delivered` en vez de "ACK backend"/"ACK relay" genéricos.
 
-**Privacidad de evidencia:** además de lo ya corregido en v2, `partialArtifact.text` embebido retirado del bus de eventos — reemplazado por `partialArtifactRef` (referencia durable con `privacyClass`/`allowedConsumers`/TTL, sin contenido).
+**Preguntas abiertas cerradas en v4:** ninguna nueva se cierra en esta corrección — las 7 que quedaban abiertas tras v3 siguen siendo follow-up legítimo, explícitamente no bloqueante (ubicación del motor, transporte de eventos, AI-Cloud Memory, generalización de "Answer now", browser harness, gate de autorización de tools, solapamiento Duo/enviarACloud).
 
-**Reconciliación:** de 5 preguntas incompletas (v2) a 15 preguntas explícitas y completas, con distinción de ACK backend / ACK relay / entrega al proveedor / aceptación por el proveedor como cuatro verdades independientes.
-
-**Preguntas abiertas cerradas en v3:** scope/nombres de eventos, autoridad de Availability, tratamiento de Channel, privacidad de artefactos parciales, lista de reconciliación — ya no son preguntas abiertas, están decididas en este documento.
-
-**Preguntas abiertas que siguen legítimamente abiertas (follow-up, no bloquean):** ubicación del motor de clasificación, canal de transporte de eventos, relación con AI-Cloud Memory, generalización de "Answer now", browser harness para discard/SW-restart, existencia de gate de autorización de tools, posible solapamiento Duo/enviarACloud.
-
-**Siguiente acción exacta:** Navigator revisa el delta documental de esta v3 (commit exacto, ver abajo). Solo tras su aprobación, el Orchestrator decide si autoriza expresamente el Checkpoint 1 (3 archivos, tipos ya reflejando la separación final de v3).
+**Siguiente acción exacta:** Navigator revisa el delta documental de esta v4 (commit exacto, ver abajo). Si aprueba sin `CHANGES_REQUIRED`, el Orchestrator decide si autoriza expresamente el Checkpoint 1 (3 archivos, tipos ya reflejando el contrato final v4).
 
 **Puntos que todavía NO deben marcarse como completados:** discovery corregido aprobado; contrato canónico cerrado; Checkpoint 1 autorizado; Provider Health Sensor implementado; ninguna prueba viva de Qwen realizada; ninguna corrección del reinjector aplicada; ningún archivo de código (`types.js`/`validate.js`/tests) creado todavía.
