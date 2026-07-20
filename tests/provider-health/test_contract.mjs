@@ -766,6 +766,181 @@ expectFail('A29. contenido anidado bajo clave desconocida rechazado en bloque',
   check('A32. ningún input hostil hace lanzar a ningún validador', anyThrew === false);
 }
 
+// ══════════ TESTS HOSTILES DE REFLEXIÓN Y ARRAYS (ronda final) ══════════
+// Exigidos tras el veredicto CHANGES_REQUIRED sobre inputs hostiles:
+// Reflect.ownKeys() lanzando vía Proxy, y getters/holes dentro de arrays
+// canónicos (allowedConsumers, contradicts, evidence[]).
+
+// H1-H7. Proxy cuyo trap ownKeys lanza — debe rechazarse, nunca {ok:true}.
+{
+  const hiddenTextValue = 'CONTENIDO_PRIVADO_QUE_NUNCA_DEBE_APARECER';
+  const target = { ...makeEvidence(), text: hiddenTextValue }; // "text" prohibido, oculto tras la trampa
+  const proxy = new Proxy(target, {
+    ownKeys() { throw new Error('mensaje interno hostil del Proxy — no debe aparecer en ningún error'); },
+    getOwnPropertyDescriptor(t, key) { return Object.getOwnPropertyDescriptor(t, key); },
+  });
+  let threw = false;
+  let result = null;
+  try { result = health.validateEvidenceEntry(proxy); } catch (_) { threw = true; }
+  check('H1. Proxy EvidenceEntry con ownKeys hostil no lanza', threw === false);
+  check('H2. Proxy EvidenceEntry con ownKeys hostil produce ok:false', result && result.ok === false);
+  check('H3. el error tiene path y reason', result && result.errors.every(e => typeof e.path === 'string' && isNonEmptyString(e.reason)));
+  check('H4. el reason representa fallo de reflexión', result && result.errors.some(e => e.reason === 'own_keys_reflection_failed'));
+  check('H5. nunca termina en {ok:true, errors:[]}', !(result && result.ok === true));
+  const serialized = JSON.stringify(result);
+  check('H6. el contenido privado oculto tras la trampa no aparece en los errores', !serialized.includes(hiddenTextValue));
+  check('H7. el mensaje interno del Proxy no aparece en los errores', !serialized.includes('mensaje interno hostil'));
+}
+
+// H8-H15. Getter hostil en allowedConsumers[0].
+{
+  let flagFlipped = false;
+  const ref = makePartialArtifactRef();
+  const arr = ['driver'];
+  Object.defineProperty(arr, 0, { get() { flagFlipped = true; return 'driver'; }, enumerable: true, configurable: true });
+  ref.allowedConsumers = arr;
+  const result = health.validatePartialArtifactRef(ref);
+  check('H8. getter en allowedConsumers[0] no se ejecuta', flagFlipped === false);
+  check('H9. bandera permanece false tras validar', flagFlipped === false);
+  expectFail('H10. getter (no accessor-safe) en allowedConsumers[0] produce error estructurado', result, 'allowedConsumers');
+}
+{
+  const ref = makePartialArtifactRef();
+  const arr = ['driver'];
+  Object.defineProperty(arr, 0, { get() { throw new Error('allowedConsumers getter boom'); }, enumerable: true, configurable: true });
+  ref.allowedConsumers = arr;
+  let threw = false;
+  let result = null;
+  try { result = health.validatePartialArtifactRef(ref); } catch (_) { threw = true; }
+  check('H11. getter en allowedConsumers[0] que lanzaría no escapa', threw === false);
+  check('H12. produce error estructurado', result && result.ok === false);
+}
+{
+  const ref = makePartialArtifactRef();
+  const withHole = new Array(2);
+  withHole[1] = 'driver'; // índice 0 es un hole real
+  ref.allowedConsumers = withHole;
+  expectFail('H13. allowedConsumers con hole es rechazado', health.validatePartialArtifactRef(ref), 'array_hole_not_allowed');
+}
+{
+  const ref = makePartialArtifactRef();
+  const hostileArr = new Proxy(['driver'], { ownKeys() { throw new Error('boom'); } });
+  ref.allowedConsumers = hostileArr;
+  expectFail('H14. allowedConsumers Proxy-array con ownKeys hostil es rechazado', health.validatePartialArtifactRef(ref), 'array_reflection_failed');
+}
+{
+  const ref = makePartialArtifactRef();
+  const hostileArr = new Proxy(['driver'], {
+    getOwnPropertyDescriptor(t, key) { if (key === '0') throw new Error('boom'); return Reflect.getOwnPropertyDescriptor(t, key); },
+  });
+  ref.allowedConsumers = hostileArr;
+  let threw = false;
+  try { health.validatePartialArtifactRef(ref); } catch (_) { threw = true; }
+  check('H15. allowedConsumers Proxy-array con getOwnPropertyDescriptor hostil no lanza', threw === false);
+}
+
+// H16-H20. Getter hostil en contradicts[0], y regresión de reglas ya aprobadas.
+{
+  let flagFlipped = false;
+  const ev = makeEvidence({ evidenceId: 'ev-x' });
+  const arr = ['ev-y'];
+  Object.defineProperty(arr, 0, { get() { flagFlipped = true; return 'ev-y'; }, enumerable: true, configurable: true });
+  ev.contradicts = arr;
+  health.validateEvidenceEntry(ev);
+  check('H16. getter en contradicts[0] no se ejecuta', flagFlipped === false);
+}
+{
+  const ev = makeEvidence({ evidenceId: 'ev-x' });
+  const arr = ['ev-y'];
+  Object.defineProperty(arr, 0, { get() { throw new Error('contradicts getter boom'); }, enumerable: true, configurable: true });
+  ev.contradicts = arr;
+  let threw = false;
+  let result = null;
+  try { result = health.validateEvidenceEntry(ev); } catch (_) { threw = true; }
+  check('H17. getter en contradicts[0] que lanzaría no escapa', threw === false);
+  check('H18. produce error estructurado', result && result.ok === false);
+}
+{
+  const ev = makeEvidence({ evidenceId: 'ev-x' });
+  const withHole = new Array(1); // hole real en el índice 0
+  ev.contradicts = withHole;
+  expectFail('H19. contradicts con hole es rechazado', health.validateEvidenceEntry(ev), 'array_hole_not_allowed');
+}
+{
+  // H20: tras el endurecimiento, las reglas de contradicts ya aprobadas
+  // siguen funcionando exactamente igual con arrays ordinarios normales.
+  const evValid = makeEvidence({ evidenceId: 'ok-a', contradicts: ['ok-b'] });
+  const evB = makeEvidence({ evidenceId: 'ok-b' });
+  expectOk('H20a. referencia válida sigue pasando', health.validateEvidenceList([evValid, evB]));
+  expectFail('H20b. referencia inexistente sigue rechazada',
+    health.validateEvidenceList([makeEvidence({ evidenceId: 'ref-a', contradicts: ['no-existe'] })]), 'unknown_evidence_id');
+  expectFail('H20c. self-contradiction sigue rechazada',
+    health.validateEvidenceEntry(makeEvidence({ evidenceId: 'self-x', contradicts: ['self-x'] })), 'self_contradiction_not_allowed');
+  {
+    const cycA = makeEvidence({ evidenceId: 'cx-a', contradicts: ['cx-b'] });
+    const cycB = makeEvidence({ evidenceId: 'cx-b', contradicts: ['cx-a'] });
+    expectFail('H20d. ciclo sigue rechazado', health.validateEvidenceList([cycA, cycB]), 'contradiction_cycle_detected');
+  }
+}
+
+// H21-H28. Getter hostil en evidence[0] dentro de un evento completo, y
+// regresiones sobre evidence[] tras el endurecimiento.
+{
+  let flagFlipped = false;
+  const event = makeAvailabilityEvent();
+  const arr = [makeEvidence()];
+  Object.defineProperty(arr, 0, { get() { flagFlipped = true; return makeEvidence(); }, enumerable: true, configurable: true });
+  event.evidence = arr;
+  health.validateAvailabilityChangedEvent(event);
+  check('H21. getter en evidence[0] no se ejecuta', flagFlipped === false);
+}
+{
+  const event = makeAvailabilityEvent();
+  const arr = [makeEvidence()];
+  Object.defineProperty(arr, 0, { get() { throw new Error('evidence getter boom'); }, enumerable: true, configurable: true });
+  event.evidence = arr;
+  let threw = false;
+  let result = null;
+  try { result = health.validateAvailabilityChangedEvent(event); } catch (_) { threw = true; }
+  check('H22. getter en evidence[0] que lanzaría no escapa', threw === false);
+  check('H23. produce error estructurado', result && result.ok === false);
+}
+{
+  const event = makeAvailabilityEvent();
+  const withHole = new Array(1);
+  event.evidence = withHole;
+  expectFail('H24. evidence con hole es rechazado', health.validateAvailabilityChangedEvent(event), 'array_hole_not_allowed');
+}
+{
+  const event = makeAvailabilityEvent();
+  event.evidence = new Proxy([makeEvidence()], { ownKeys() { throw new Error('boom'); } });
+  expectFail('H25. evidence Proxy-array con traps hostiles rechazado',
+    health.validateAvailabilityChangedEvent(event), 'array_reflection_failed');
+}
+expectOk('H26. lista ordinaria válida sigue pasando', health.validateEvidenceList([makeEvidence({ evidenceId: 'ord-1' })]));
+{
+  const dup1 = makeEvidence({ evidenceId: 'ord-dup' });
+  const dup2 = makeEvidence({ evidenceId: 'ord-dup' });
+  const result = health.validateEvidenceList([dup1, dup2]);
+  check('H27. IDs duplicados siguen rechazándose', result.ok === false && result.errors.some(e => e.reason.startsWith('duplicate_evidence_id')));
+}
+{
+  // H28: el resultado es independiente del orden de las evidencias.
+  const evA = makeEvidence({ evidenceId: 'order-a' });
+  const evB = makeEvidence({ evidenceId: 'order-b', contradicts: ['order-a'] });
+  const forward = health.validateEvidenceList([evA, evB]);
+  const backward = health.validateEvidenceList([evB, evA]);
+  check('H28. resultado independiente del orden', forward.ok === backward.ok && forward.ok === true);
+}
+
+// H29. Ningún test anterior fue debilitado — smoke check final de que las
+// funciones canónicas siguen siendo las mismas y las garantías previas
+// (N1-N29b, A1-A32, 1-25) siguen intactas: ya se ejecutaron arriba sin
+// modificarlas; esto solo confirma que el namespace no quedó dañado por
+// los Proxies usados en esta sección.
+check('H29. AvailabilityState sigue siendo el canónico tras los tests hostiles', health.AvailabilityState.READY === 'READY' && Object.isFrozen(health.AvailabilityState));
+check('H29b. validateEvidenceEntry sigue siendo función', typeof health.validateEvidenceEntry === 'function');
+
 // ══════════════════════════ RESULTADO ══════════════════════════
 if (failures > 0) {
   console.error(`\n${failures} verificacion(es) fallaron.`);

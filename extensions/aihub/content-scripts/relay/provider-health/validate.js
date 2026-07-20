@@ -52,14 +52,62 @@
   // trampa hostil podría lanzar al reflejarse, y eso tampoco debe escapar.
   const ACCESSOR_REJECTED = Symbol('provider-health:accessor-rejected');
   const MISSING = Symbol('provider-health:missing-field');
+  // Distinto de ACCESSOR_REJECTED: esto significa que la propia reflexión
+  // (Object.getOwnPropertyDescriptor/Reflect.ownKeys) lanzó — típico de un
+  // Proxy con trampa hostil. Una reflexión que falla NUNCA debe
+  // interpretarse como "el campo no existe" ni como "sigamos sin él": debe
+  // rechazar el objeto completo, porque no hay forma segura de saber qué
+  // más podría estar ocultando.
+  const REFLECTION_FAILED = Symbol('provider-health:reflection-failed');
 
   function readOwnDataField(obj, key) {
     if (!obj || typeof obj !== 'object') return MISSING;
     let desc;
-    try { desc = Object.getOwnPropertyDescriptor(obj, key); } catch (_) { return ACCESSOR_REJECTED; }
+    try { desc = Object.getOwnPropertyDescriptor(obj, key); } catch (_) { return REFLECTION_FAILED; }
     if (!desc) return MISSING;
     if (desc.get || desc.set) return ACCESSOR_REJECTED;
     return desc.value;
+  }
+
+  // Lee un array denso de datos SIN ejecutar ningún código del input: nunca
+  // `array[i]`, `for...of`, `.forEach`, spread ni `Array.from` (todos ellos
+  // pueden disparar getters indexados, Symbol.iterator personalizado, o
+  // trampas de Proxy). Solo Reflect.ownKeys + Object.getOwnPropertyDescriptor,
+  // ambos con try/catch. Rechaza: no-arrays, fallo de reflexión, `length`
+  // inválido, huecos (holes), accessors por índice, y cualquier clave propia
+  // extra (símbolo o índice fuera de rango) que un array "denso" normal
+  // nunca tendría.
+  function safeReadOwnDataArray(value) {
+    if (!Array.isArray(value)) return { ok: false, reason: 'not_an_array' };
+
+    let ownKeys;
+    try { ownKeys = Reflect.ownKeys(value); } catch (_) { return { ok: false, reason: 'array_reflection_failed' }; }
+
+    let lengthDesc;
+    try { lengthDesc = Object.getOwnPropertyDescriptor(value, 'length'); } catch (_) { return { ok: false, reason: 'array_reflection_failed' }; }
+    if (!lengthDesc || typeof lengthDesc.value !== 'number'
+      || !Number.isInteger(lengthDesc.value) || lengthDesc.value < 0 || !Number.isSafeInteger(lengthDesc.value)) {
+      return { ok: false, reason: 'array_length_invalid' };
+    }
+    const length = lengthDesc.value;
+
+    const expectedKeys = new Set(['length']);
+    for (let i = 0; i < length; i++) expectedKeys.add(String(i));
+    for (const key of ownKeys) {
+      if (typeof key === 'symbol' || !expectedKeys.has(key)) {
+        return { ok: false, reason: 'array_extra_key_not_allowed' };
+      }
+    }
+
+    const items = [];
+    for (let i = 0; i < length; i++) {
+      let desc;
+      try { desc = Object.getOwnPropertyDescriptor(value, i); } catch (_) { return { ok: false, reason: 'array_reflection_failed' }; }
+      if (!desc) return { ok: false, reason: 'array_hole_not_allowed' };
+      if (desc.get || desc.set) return { ok: false, reason: 'array_accessor_not_allowed' };
+      items.push(desc.value);
+    }
+    return { ok: true, items };
   }
 
   // Deliberadamente NO usa Object.prototype.toString.call(v): esa operación
@@ -90,6 +138,10 @@
   // que el llamador pueda usarlo en chequeos condicionales posteriores.
   function requireField(errors, obj, key, isValid, reason) {
     const v = readOwnDataField(obj, key);
+    if (v === REFLECTION_FAILED) {
+      errors.push({ path: key, reason: 'field_reflection_failed' });
+      return v;
+    }
     if (v === ACCESSOR_REJECTED) {
       errors.push({ path: key, reason: 'accessor_field_not_allowed' });
       return v;
@@ -106,6 +158,10 @@
   // accessor, debe cumplir el validador.
   function optionalField(errors, obj, key, isValidOrNull, reason) {
     const v = readOwnDataField(obj, key);
+    if (v === REFLECTION_FAILED) {
+      errors.push({ path: key, reason: 'field_reflection_failed' });
+      return v;
+    }
     if (v === ACCESSOR_REJECTED) {
       errors.push({ path: key, reason: 'accessor_field_not_allowed' });
       return v;
@@ -126,10 +182,20 @@
   // como no-enumerable o bajo una clave Symbol ya no escapa la whitelist.
   // Solo se inspecciona el NOMBRE de la clave, nunca su valor — rechazar
   // una clave desconocida no requiere (ni debe) leer lo que contiene.
+  // Devuelve `false` cuando Reflect.ownKeys() lanzó (Proxy hostil) — en ese
+  // caso empuja UN solo error estructurado (own_keys_reflection_failed) y
+  // el llamador debe DETENERSE ahí mismo: una reflexión que falla nunca se
+  // trata como "sin claves" (eso permitiría que un Proxy oculte un campo
+  // privado simplemente rompiendo la enumeración). Cuando devuelve `true`,
+  // el chequeo de whitelist se completó con normalidad (con o sin errores
+  // de "campo desconocido" en la lista).
   function rejectUnknownFields(errors, obj, allowedKeys, pathPrefix = '') {
-    if (!isPlainObject(obj)) return;
+    if (!isPlainObject(obj)) return true;
     let keys;
-    try { keys = Reflect.ownKeys(obj); } catch (_) { keys = []; }
+    try { keys = Reflect.ownKeys(obj); } catch (_) {
+      errors.push({ path: pathPrefix || '$', reason: 'own_keys_reflection_failed' });
+      return false;
+    }
     for (const key of keys) {
       if (typeof key === 'symbol') {
         errors.push({ path: `${pathPrefix}[symbol]`, reason: 'symbol_keys_not_allowed' });
@@ -139,6 +205,7 @@
         errors.push({ path: `${pathPrefix}${key}`, reason: 'unknown_field_not_allowed' });
       }
     }
+    return true;
   }
 
   function invertEnum(enumObj, v) {
@@ -166,7 +233,7 @@
     const errors = [];
     if (!isPlainObject(entry)) return fail([{ path: '', reason: 'evidence_entry_must_be_plain_object' }]);
 
-    rejectUnknownFields(errors, entry, EVIDENCE_ALLOWED_FIELDS);
+    if (!rejectUnknownFields(errors, entry, EVIDENCE_ALLOWED_FIELDS)) return fail(errors);
 
     const evidenceId = requireField(errors, entry, 'evidenceId', isNonEmptyString, 'required_non_empty_string');
     requireField(errors, entry, 'sourceClass', isNonEmptyString, 'required_non_empty_string');
@@ -184,12 +251,21 @@
       errors.push({ path: 'expiresAt', reason: 'expires_before_observed' });
     }
 
-    const contradicts = readOwnDataField(entry, 'contradicts');
-    if (contradicts !== MISSING && contradicts !== ACCESSOR_REJECTED && contradicts !== null) {
-      if (!Array.isArray(contradicts)) {
-        errors.push({ path: 'contradicts', reason: 'must_be_array_or_null' });
+    const contradictsRaw = readOwnDataField(entry, 'contradicts');
+    if (contradictsRaw === REFLECTION_FAILED) {
+      errors.push({ path: 'contradicts', reason: 'field_reflection_failed' });
+    } else if (contradictsRaw === ACCESSOR_REJECTED) {
+      errors.push({ path: 'contradicts', reason: 'accessor_field_not_allowed' });
+    } else if (contradictsRaw !== MISSING && contradictsRaw !== null) {
+      // Nunca se itera contradictsRaw directamente (nada de forEach/for-of/
+      // spread sobre el array del input) — safeReadOwnDataArray solo usa
+      // reflexión con try/catch, sin ejecutar getters indexados ni
+      // Symbol.iterator.
+      const arr = safeReadOwnDataArray(contradictsRaw);
+      if (!arr.ok) {
+        errors.push({ path: 'contradicts', reason: arr.reason });
       } else {
-        contradicts.forEach((id, i) => {
+        arr.items.forEach((id, i) => {
           if (!isNonEmptyString(id)) {
             errors.push({ path: `contradicts[${i}]`, reason: 'must_be_non_empty_string' });
             return;
@@ -207,15 +283,24 @@
     return errors.length ? fail(errors) : ok();
   }
 
-  // Detecta ciclos en el grafo dirigido evidenceId -> contradicts[].
-  function findContradictionCycle(list) {
+  // Detecta ciclos en el grafo dirigido evidenceId -> contradicts[]. Recibe
+  // `items` ya extraídos de forma segura (un array PROPIO construido por
+  // safeReadOwnDataArray, no el array del input) — iterar `items` con
+  // for...of es seguro porque es nuestro, no del llamador.
+  function findContradictionCycle(items) {
     const graph = new Map();
-    for (const entry of list) {
+    for (const entry of items) {
       if (!isPlainObject(entry)) continue;
       const id = readOwnDataField(entry, 'evidenceId');
-      const contradicts = readOwnDataField(entry, 'contradicts');
+      const contradictsRaw = readOwnDataField(entry, 'contradicts');
       if (!isNonEmptyString(id)) continue;
-      graph.set(id, Array.isArray(contradicts) ? contradicts.filter(isNonEmptyString) : []);
+      let edges = [];
+      if (contradictsRaw !== MISSING && contradictsRaw !== ACCESSOR_REJECTED
+        && contradictsRaw !== REFLECTION_FAILED && contradictsRaw !== null) {
+        const arr = safeReadOwnDataArray(contradictsRaw);
+        if (arr.ok) edges = arr.items.filter(isNonEmptyString);
+      }
+      graph.set(id, edges);
     }
     const WHITE = 0; const GRAY = 1; const BLACK = 2;
     const color = new Map([...graph.keys()].map(id => [id, WHITE]));
@@ -234,18 +319,24 @@
   }
 
   function validateEvidenceList(list) {
-    if (!Array.isArray(list)) return fail([{ path: '', reason: 'evidence_must_be_array' }]);
+    // safeReadOwnDataArray es la ÚNICA lectura del array del input — nunca
+    // Array.isArray(list) seguido de list.forEach/for-of directo (eso ya
+    // ejecuta getters indexados o Symbol.iterator de un Proxy hostil antes
+    // de siquiera llegar a la whitelist de cada entrada).
+    const listArr = safeReadOwnDataArray(list);
+    if (!listArr.ok) return fail([{ path: '', reason: listArr.reason }]);
+    const items = listArr.items;
     const errors = [];
 
     const seenIds = new Map(); // id -> count
-    for (const entry of list) {
+    for (const entry of items) {
       if (!isPlainObject(entry)) continue;
       const id = readOwnDataField(entry, 'evidenceId');
       if (isNonEmptyString(id)) seenIds.set(id, (seenIds.get(id) || 0) + 1);
     }
     const knownEvidenceIds = new Set(seenIds.keys());
 
-    list.forEach((entry, i) => {
+    items.forEach((entry, i) => {
       const result = validateEvidenceEntry(entry, { knownEvidenceIds });
       result.errors.forEach(e => errors.push({ path: `[${i}].${e.path}`, reason: e.reason }));
     });
@@ -254,7 +345,7 @@
       if (count > 1) errors.push({ path: `[*].evidenceId`, reason: `duplicate_evidence_id:${id}` });
     }
 
-    if (findContradictionCycle(list)) {
+    if (findContradictionCycle(items)) {
       errors.push({ path: '[*].contradicts', reason: 'contradiction_cycle_detected' });
     }
 
@@ -272,7 +363,7 @@
     if (attempt === null) return ok();
     const errors = [];
     if (!isPlainObject(attempt)) return fail([{ path: '', reason: 'attempt_must_be_plain_object_or_null' }]);
-    rejectUnknownFields(errors, attempt, ATTEMPT_ALLOWED_FIELDS);
+    if (!rejectUnknownFields(errors, attempt, ATTEMPT_ALLOWED_FIELDS)) return fail(errors);
     requireField(errors, attempt, 'attemptId', isNonEmptyString, 'required_non_empty_string');
     requireField(errors, attempt, 'logicalProviderId', isNonEmptyString, 'required_non_empty_string');
     requireField(errors, attempt, 'effectiveAdapterId', isNonEmptyString, 'required_non_empty_string');
@@ -291,7 +382,7 @@
     if (ref === null) return ok();
     const errors = [];
     if (!isPlainObject(ref)) return fail([{ path: '', reason: 'artifact_ref_must_be_plain_object_or_null' }]);
-    rejectUnknownFields(errors, ref, ARTIFACT_ALLOWED_FIELDS);
+    if (!rejectUnknownFields(errors, ref, ARTIFACT_ALLOWED_FIELDS)) return fail(errors);
 
     requireField(errors, ref, 'artifactId', isNonEmptyString, 'required_non_empty_string');
     requireField(errors, ref, 'ownerLogicalJobId', isNonEmptyString, 'required_non_empty_string');
@@ -306,18 +397,26 @@
     }
 
     const allowedConsumers = readOwnDataField(ref, 'allowedConsumers');
-    if (allowedConsumers === ACCESSOR_REJECTED) {
+    if (allowedConsumers === REFLECTION_FAILED) {
+      errors.push({ path: 'allowedConsumers', reason: 'field_reflection_failed' });
+    } else if (allowedConsumers === ACCESSOR_REJECTED) {
       errors.push({ path: 'allowedConsumers', reason: 'accessor_field_not_allowed' });
     } else if (allowedConsumers === MISSING) {
       errors.push({ path: 'allowedConsumers', reason: 'required_field_missing' });
-    } else if (!Array.isArray(allowedConsumers)) {
-      errors.push({ path: 'allowedConsumers', reason: 'required_array' });
     } else {
-      allowedConsumers.forEach((consumer, i) => {
-        if (!isNonEmptyString(consumer)) {
-          errors.push({ path: `allowedConsumers[${i}]`, reason: 'must_be_non_empty_string' });
-        }
-      });
+      // Nunca .forEach/for-of directo sobre el array del input — un getter
+      // indexado o una trampa de Proxy en allowedConsumers[i] no debe
+      // ejecutarse jamás durante la validación.
+      const arr = safeReadOwnDataArray(allowedConsumers);
+      if (!arr.ok) {
+        errors.push({ path: 'allowedConsumers', reason: arr.reason });
+      } else {
+        arr.items.forEach((consumer, i) => {
+          if (!isNonEmptyString(consumer)) {
+            errors.push({ path: `allowedConsumers[${i}]`, reason: 'must_be_non_empty_string' });
+          }
+        });
+      }
     }
 
     return errors.length ? fail(errors) : ok();
@@ -342,7 +441,7 @@
   function validateAvailabilityChangedEvent(event) {
     const errors = [];
     if (!isPlainObject(event)) return fail([{ path: '', reason: 'event_must_be_plain_object' }]);
-    rejectUnknownFields(errors, event, AVAILABILITY_EVENT_FIELDS);
+    if (!rejectUnknownFields(errors, event, AVAILABILITY_EVENT_FIELDS)) return fail(errors);
     validateCommonEventFields(errors, event);
     requireField(errors, event, 'logicalProviderId', isNonEmptyString, 'required_non_empty_string');
     requireField(errors, event, 'effectiveAdapterId', isNonEmptyString, 'required_non_empty_string');
@@ -358,10 +457,12 @@
     requireField(errors, event, 'source', v => v === types.AVAILABILITY_SOURCE, 'must_be_adapter_only');
 
     const evidence = readOwnDataField(event, 'evidence');
-    if (evidence === ACCESSOR_REJECTED) errors.push({ path: 'evidence', reason: 'accessor_field_not_allowed' });
+    if (evidence === REFLECTION_FAILED) errors.push({ path: 'evidence', reason: 'field_reflection_failed' });
+    else if (evidence === ACCESSOR_REJECTED) errors.push({ path: 'evidence', reason: 'accessor_field_not_allowed' });
     else if (evidence === MISSING) errors.push({ path: 'evidence', reason: 'required_field_missing' });
-    else if (!Array.isArray(evidence)) errors.push({ path: 'evidence', reason: 'required_array' });
     else {
+      // validateEvidenceList ya usa safeReadOwnDataArray internamente —
+      // rechaza no-arrays y arrays hostiles con el mismo mecanismo.
       const result = validateEvidenceList(evidence);
       result.errors.forEach(e => errors.push({ path: `evidence${e.path}`, reason: e.reason }));
     }
@@ -379,7 +480,7 @@
   function validateRequestActivityChangedEvent(event) {
     const errors = [];
     if (!isPlainObject(event)) return fail([{ path: '', reason: 'event_must_be_plain_object' }]);
-    rejectUnknownFields(errors, event, REQUEST_EVENT_FIELDS);
+    if (!rejectUnknownFields(errors, event, REQUEST_EVENT_FIELDS)) return fail(errors);
     validateCommonEventFields(errors, event);
     requireField(errors, event, 'logicalProviderId', isNonEmptyString, 'required_non_empty_string');
     requireField(errors, event, 'effectiveAdapterId', isNonEmptyString, 'required_non_empty_string');
@@ -413,7 +514,7 @@
   function validateJobStateChangedEvent(event) {
     const errors = [];
     if (!isPlainObject(event)) return fail([{ path: '', reason: 'event_must_be_plain_object' }]);
-    rejectUnknownFields(errors, event, JOB_EVENT_FIELDS);
+    if (!rejectUnknownFields(errors, event, JOB_EVENT_FIELDS)) return fail(errors);
     validateCommonEventFields(errors, event);
     requireField(errors, event, 'logicalJobId', isNonEmptyString, 'required_non_empty_string');
     requireField(errors, event, 'turnId', v => v === null || isNonEmptyString(v), 'must_be_string_or_null');
@@ -490,7 +591,7 @@
   function validateHealthSnapshot(snapshot) {
     const errors = [];
     if (!isPlainObject(snapshot)) return fail([{ path: '', reason: 'snapshot_must_be_plain_object' }]);
-    rejectUnknownFields(errors, snapshot, SNAPSHOT_FIELDS);
+    if (!rejectUnknownFields(errors, snapshot, SNAPSHOT_FIELDS)) return fail(errors);
     requireField(errors, snapshot, 'logicalProviderId', isNonEmptyString, 'required_non_empty_string');
     requireField(errors, snapshot, 'paneId', isNonEmptyString, 'required_non_empty_string');
     requireField(errors, snapshot, 'availability', v => v === null || isAvailabilityState(v), 'must_be_availability_state_or_null');
