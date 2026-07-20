@@ -1,135 +1,278 @@
 // Provider Health Sensor — Checkpoint 1: validadores puros de forma.
 // Contrato canónico: docs/audits/provider-health-sensor-discovery-claude.md (v4).
 // Mismo patrón que validateProviderAdapter (relay-contract.js): funciones
-// puras, sin mutar el input, sin lanzar por inputs ordinarios inválidos —
-// devuelven { ok, errors[] }. Clásico/IIFE, sin ESM.
+// puras, sin mutar el input, sin lanzar por inputs ordinarios (ni hostiles)
+// inválidos — devuelven { ok, errors[] } siempre. Clásico/IIFE, sin ESM.
 (() => {
   'use strict';
   const health = globalThis.__auroraProviderHealth ||= {};
   const types = health;
+  const defineLocked = types.__defineLocked || ((target, key, value) => {
+    if (!Object.prototype.hasOwnProperty.call(target, key)) {
+      Object.defineProperty(target, key, { value, writable: false, configurable: false, enumerable: true });
+    }
+    return target[key];
+  });
 
-  const isPlainObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+  // ── Lectura segura de campos: nunca ejecuta getters de un input hostil ──
+  // Un objeto que expone `evidenceId` como accessor (get evidenceId(){...})
+  // podría lanzar, loguear, o devolver algo distinto en cada lectura —
+  // ninguno de esos efectos debe ocurrir durante la validación. Solo se
+  // aceptan propiedades PROPIAS de tipo dato (value), nunca heredadas ni
+  // accessor.
+  const ACCESSOR_REJECTED = Symbol('provider-health:accessor-rejected');
+  const MISSING = Symbol('provider-health:missing-field');
+
+  function readOwnDataField(obj, key) {
+    if (!obj || typeof obj !== 'object') return MISSING;
+    const desc = Object.getOwnPropertyDescriptor(obj, key);
+    if (!desc) return MISSING;
+    if (desc.get || desc.set) return ACCESSOR_REJECTED;
+    return desc.value;
+  }
+
+  // Object.prototype.toString.call(x) === '[object Object]' ya excluye
+  // Array/Date/Map/Set/RegExp/etc. — sumado a la comprobación explícita de
+  // prototipo (Object.prototype o null), rechaza objetos con prototipo
+  // personalizado y cualquier campo requerido que sólo exista heredado.
+  function isPlainObject(v) {
+    if (v === null || typeof v !== 'object') return false;
+    if (Object.prototype.toString.call(v) !== '[object Object]') return false;
+    const proto = Object.getPrototypeOf(v);
+    return proto === Object.prototype || proto === null;
+  }
+
   const isNonEmptyString = v => typeof v === 'string' && v.length > 0;
   const isFiniteNumber = v => typeof v === 'number' && Number.isFinite(v);
-  const isNullableString = v => v === null || isNonEmptyString(v);
-  const isNullableNumber = v => v === null || isFiniteNumber(v);
+  const isBoolean = v => typeof v === 'boolean';
 
   const ok = () => ({ ok: true, errors: [] });
   const fail = errors => ({ ok: false, errors });
 
-  function pushIf(errors, cond, path, reason) {
-    if (cond) errors.push({ path, reason });
+  // ── Helper central de campos ────────────────────────────────────────────
+  // Lee un campo propio de tipo dato, y aplica un validador. Nunca lanza:
+  // accessor/heredado/ausente se reportan como error estructurado, no como
+  // excepción. Devuelve el valor leído (o MISSING/ACCESSOR_REJECTED) para
+  // que el llamador pueda usarlo en chequeos condicionales posteriores.
+  function requireField(errors, obj, key, isValid, reason) {
+    const v = readOwnDataField(obj, key);
+    if (v === ACCESSOR_REJECTED) {
+      errors.push({ path: key, reason: 'accessor_field_not_allowed' });
+      return v;
+    }
+    if (v === MISSING) {
+      errors.push({ path: key, reason: 'required_field_missing' });
+      return v;
+    }
+    if (!isValid(v)) errors.push({ path: key, reason });
+    return v;
   }
 
-  // ── Helpers de pertenencia a enum ──────────────────────────────────────
-  // Los enums son { KEY: 'KEY' } — key === value, así que el propio objeto
-  // sirve como set de pertenencia vía hasOwnProperty, sin reconstruir un Set.
-  const inEnum = (enumObj, v) => typeof v === 'string' && Object.prototype.hasOwnProperty.call(enumObj, v);
-  const isAvailabilityState = v => inEnum(types.AvailabilityState, v);
-  const isRequestActivityState = v => inEnum(types.RequestActivityState, v);
-  const isJobState = v => inEnum(types.JobState, v);
-  const isChannelState = v => inEnum(types.ChannelState, v);
-  const isConfidence = v => inEnum(types.Confidence, v);
+  // Campo opcional (puede faltar o ser null) pero si está presente y no es
+  // accessor, debe cumplir el validador.
+  function optionalField(errors, obj, key, isValidOrNull, reason) {
+    const v = readOwnDataField(obj, key);
+    if (v === ACCESSOR_REJECTED) {
+      errors.push({ path: key, reason: 'accessor_field_not_allowed' });
+      return v;
+    }
+    if (v === MISSING) return v;
+    if (!isValidOrNull(v)) errors.push({ path: key, reason });
+    return v;
+  }
+
+  // Whitelist estricta top-level: cualquier clave propia enumerable fuera
+  // de `allowed` se rechaza en bloque. Esta es la política elegida (no
+  // recursiva) — un objeto anidado desconocido ya queda rechazado porque su
+  // clave contenedora no está en la whitelist, así que no hace falta bajar
+  // recursivamente a inspeccionar su contenido: nunca llega a validarse
+  // como válido si la clave que lo porta no es una de las documentadas.
+  function rejectUnknownFields(errors, obj, allowedKeys, pathPrefix = '') {
+    if (!isPlainObject(obj)) return;
+    for (const key of Object.keys(obj)) {
+      if (!allowedKeys.includes(key)) {
+        errors.push({ path: `${pathPrefix}${key}`, reason: 'unknown_field_not_allowed' });
+      }
+    }
+  }
+
+  function invertEnum(enumObj, v) {
+    return typeof v === 'string' && Object.prototype.hasOwnProperty.call(enumObj, v);
+  }
+  const isAvailabilityState = v => invertEnum(types.AvailabilityState, v);
+  const isRequestActivityState = v => invertEnum(types.RequestActivityState, v);
+  const isJobState = v => invertEnum(types.JobState, v);
+  const isChannelState = v => invertEnum(types.ChannelState, v);
+  const isConfidence = v => invertEnum(types.Confidence, v);
 
   // JobState.ACTIVE corresponde exactamente a un RequestActivity no
-  // terminal (contrato § 3: definición explícita de ACTIVE). QUEUED,
-  // SUBMITTED, WAITING_FIRST_OUTPUT, PROGRESSING, STALLED cuentan; IDLE y
-  // los terminales (COMPLETED/FAILED/CANCELLED/INTERRUPTED) no por sí solos.
+  // terminal (contrato § 3). QUEUED, SUBMITTED, WAITING_FIRST_OUTPUT,
+  // PROGRESSING, STALLED cuentan; IDLE y los terminales no por sí solos.
   const isActiveRequestActivity = v => types.ACTIVE_REQUEST_ACTIVITY_STATES.includes(v);
 
-  // ── EvidenceEntry (contrato § 6) ────────────────────────────────────────
-  // Prohibido por defecto: texto libre/contenido sensible. Ver contrato § 7.
-  const FORBIDDEN_EVIDENCE_FIELDS = ['text', 'rawText', 'normalizedText', 'content', 'hash', 'textHash'];
+  // ── EvidenceEntry (contrato § 6, privacidad § 7) ───────────────────────
+  const EVIDENCE_ALLOWED_FIELDS = Object.freeze([
+    'evidenceId', 'sourceClass', 'authority', 'correlationGroup', 'patternId',
+    'reasonCode', 'logicalProviderId', 'effectiveAdapterId', 'observedAt',
+    'expiresAt', 'previousState', 'contradicts',
+  ]);
 
   function validateEvidenceEntry(entry, { knownEvidenceIds = null } = {}) {
     const errors = [];
-    if (!isPlainObject(entry)) return fail([{ path: '', reason: 'evidence_entry_must_be_object' }]);
+    if (!isPlainObject(entry)) return fail([{ path: '', reason: 'evidence_entry_must_be_plain_object' }]);
 
-    pushIf(errors, !isNonEmptyString(entry.evidenceId), 'evidenceId', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(entry.sourceClass), 'sourceClass', 'required_non_empty_string');
-    pushIf(errors, entry.authority !== 'structural' && entry.authority !== 'heuristic',
-      'authority', 'must_be_structural_or_heuristic');
-    pushIf(errors, !isNonEmptyString(entry.correlationGroup), 'correlationGroup', 'required_non_empty_string');
-    pushIf(errors, entry.patternId !== null && !isNonEmptyString(entry.patternId),
-      'patternId', 'must_be_string_or_null');
-    pushIf(errors, !isNonEmptyString(entry.reasonCode), 'reasonCode', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(entry.logicalProviderId), 'logicalProviderId', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(entry.effectiveAdapterId), 'effectiveAdapterId', 'required_non_empty_string');
-    pushIf(errors, !isFiniteNumber(entry.observedAt), 'observedAt', 'required_finite_number');
-    pushIf(errors, !isFiniteNumber(entry.expiresAt), 'expiresAt', 'required_finite_number');
-    pushIf(errors, !isNullableString(entry.previousState), 'previousState', 'must_be_string_or_null');
+    rejectUnknownFields(errors, entry, EVIDENCE_ALLOWED_FIELDS);
 
-    if (entry.contradicts !== null && entry.contradicts !== undefined) {
-      if (!Array.isArray(entry.contradicts)) {
+    const evidenceId = requireField(errors, entry, 'evidenceId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, entry, 'sourceClass', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, entry, 'authority', v => v === 'structural' || v === 'heuristic', 'must_be_structural_or_heuristic');
+    requireField(errors, entry, 'correlationGroup', isNonEmptyString, 'required_non_empty_string');
+    optionalField(errors, entry, 'patternId', v => v === null || isNonEmptyString(v), 'must_be_string_or_null');
+    requireField(errors, entry, 'reasonCode', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, entry, 'logicalProviderId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, entry, 'effectiveAdapterId', isNonEmptyString, 'required_non_empty_string');
+    const observedAt = requireField(errors, entry, 'observedAt', isFiniteNumber, 'required_finite_number');
+    const expiresAt = requireField(errors, entry, 'expiresAt', isFiniteNumber, 'required_finite_number');
+    optionalField(errors, entry, 'previousState', v => v === null || isNonEmptyString(v), 'must_be_string_or_null');
+
+    if (isFiniteNumber(observedAt) && isFiniteNumber(expiresAt) && expiresAt < observedAt) {
+      errors.push({ path: 'expiresAt', reason: 'expires_before_observed' });
+    }
+
+    const contradicts = readOwnDataField(entry, 'contradicts');
+    if (contradicts !== MISSING && contradicts !== ACCESSOR_REJECTED && contradicts !== null) {
+      if (!Array.isArray(contradicts)) {
         errors.push({ path: 'contradicts', reason: 'must_be_array_or_null' });
       } else {
-        entry.contradicts.forEach((id, i) => {
-          pushIf(errors, !isNonEmptyString(id), `contradicts[${i}]`, 'must_be_non_empty_string');
-          // Referencial: si se provee el conjunto de evidenceId conocidos
-          // (todas las evidencias del mismo evento), toda referencia debe
-          // resolver a una entrada real — contrato § 6 (contradicts referencia
-          // evidenceId real, no texto libre).
-          if (knownEvidenceIds && isNonEmptyString(id) && !knownEvidenceIds.has(id)) {
+        contradicts.forEach((id, i) => {
+          if (!isNonEmptyString(id)) {
+            errors.push({ path: `contradicts[${i}]`, reason: 'must_be_non_empty_string' });
+            return;
+          }
+          if (isNonEmptyString(evidenceId) && id === evidenceId) {
+            errors.push({ path: `contradicts[${i}]`, reason: 'self_contradiction_not_allowed' });
+          }
+          if (knownEvidenceIds && !knownEvidenceIds.has(id)) {
             errors.push({ path: `contradicts[${i}]`, reason: 'unknown_evidence_id' });
           }
         });
       }
     }
 
-    for (const forbidden of FORBIDDEN_EVIDENCE_FIELDS) {
-      pushIf(errors, Object.prototype.hasOwnProperty.call(entry, forbidden),
-        forbidden, 'forbidden_sensitive_field');
+    return errors.length ? fail(errors) : ok();
+  }
+
+  // Detecta ciclos en el grafo dirigido evidenceId -> contradicts[].
+  function findContradictionCycle(list) {
+    const graph = new Map();
+    for (const entry of list) {
+      if (!isPlainObject(entry)) continue;
+      const id = readOwnDataField(entry, 'evidenceId');
+      const contradicts = readOwnDataField(entry, 'contradicts');
+      if (!isNonEmptyString(id)) continue;
+      graph.set(id, Array.isArray(contradicts) ? contradicts.filter(isNonEmptyString) : []);
+    }
+    const WHITE = 0; const GRAY = 1; const BLACK = 2;
+    const color = new Map([...graph.keys()].map(id => [id, WHITE]));
+    let cycleFound = false;
+    function visit(id) {
+      if (cycleFound || color.get(id) === BLACK) return;
+      if (color.get(id) === GRAY) { cycleFound = true; return; }
+      color.set(id, GRAY);
+      for (const next of graph.get(id) || []) {
+        if (graph.has(next)) visit(next);
+      }
+      color.set(id, BLACK);
+    }
+    for (const id of graph.keys()) { if (!cycleFound) visit(id); }
+    return cycleFound;
+  }
+
+  function validateEvidenceList(list) {
+    if (!Array.isArray(list)) return fail([{ path: '', reason: 'evidence_must_be_array' }]);
+    const errors = [];
+
+    const seenIds = new Map(); // id -> count
+    for (const entry of list) {
+      if (!isPlainObject(entry)) continue;
+      const id = readOwnDataField(entry, 'evidenceId');
+      if (isNonEmptyString(id)) seenIds.set(id, (seenIds.get(id) || 0) + 1);
+    }
+    const knownEvidenceIds = new Set(seenIds.keys());
+
+    list.forEach((entry, i) => {
+      const result = validateEvidenceEntry(entry, { knownEvidenceIds });
+      result.errors.forEach(e => errors.push({ path: `[${i}].${e.path}`, reason: e.reason }));
+    });
+
+    for (const [id, count] of seenIds) {
+      if (count > 1) errors.push({ path: `[*].evidenceId`, reason: `duplicate_evidence_id:${id}` });
+    }
+
+    if (findContradictionCycle(list)) {
+      errors.push({ path: '[*].contradicts', reason: 'contradiction_cycle_detected' });
     }
 
     return errors.length ? fail(errors) : ok();
   }
 
-  function validateEvidenceList(list) {
-    if (!Array.isArray(list)) return fail([{ path: '', reason: 'evidence_must_be_array' }]);
-    const knownEvidenceIds = new Set(
-      list.filter(e => isPlainObject(e) && isNonEmptyString(e.evidenceId)).map(e => e.evidenceId),
-    );
-    const errors = [];
-    list.forEach((entry, i) => {
-      const result = validateEvidenceEntry(entry, { knownEvidenceIds });
-      result.errors.forEach(e => errors.push({ path: `[${i}].${e.path}`, reason: e.reason }));
-    });
-    return errors.length ? fail(errors) : ok();
-  }
-
   // ── AttemptIdentity / currentAttempt (contrato § 4.3, § 8) ─────────────
+  const ATTEMPT_ALLOWED_FIELDS = Object.freeze(['attemptId', 'logicalProviderId', 'effectiveAdapterId', 'requestId']);
+
+  // Valida la FORMA de un currentAttempt no-nulo. La decisión de si `null`
+  // es aceptable para un JobState dado vive en validateJobStateChangedEvent
+  // (contrato: null solo es válido en estados sin intento activo, p.ej.
+  // CREATED — nunca "siempre válido" de forma aislada).
   function validateAttemptIdentity(attempt) {
-    if (attempt === null) return ok(); // JobState.CREATED sin intento todavía
+    if (attempt === null) return ok();
     const errors = [];
-    if (!isPlainObject(attempt)) return fail([{ path: '', reason: 'attempt_must_be_object_or_null' }]);
-    pushIf(errors, !isNonEmptyString(attempt.attemptId), 'attemptId', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(attempt.logicalProviderId), 'logicalProviderId', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(attempt.effectiveAdapterId), 'effectiveAdapterId', 'required_non_empty_string');
-    pushIf(errors, !isNullableString(attempt.requestId), 'requestId', 'must_be_string_or_null');
+    if (!isPlainObject(attempt)) return fail([{ path: '', reason: 'attempt_must_be_plain_object_or_null' }]);
+    rejectUnknownFields(errors, attempt, ATTEMPT_ALLOWED_FIELDS);
+    requireField(errors, attempt, 'attemptId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, attempt, 'logicalProviderId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, attempt, 'effectiveAdapterId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, attempt, 'requestId', v => v === null || isNonEmptyString(v), 'must_be_string_or_null');
     return errors.length ? fail(errors) : ok();
   }
 
   // ── PartialArtifactRef (contrato § 7) ──────────────────────────────────
-  const FORBIDDEN_ARTIFACT_FIELDS = ['text', 'content', 'raw', 'rawText', 'body', 'prompt', 'response'];
-  const PRIVACY_CLASSES = ['PRIVATE', 'TEAM', 'MISSION', 'SHAREABLE'];
+  const ARTIFACT_ALLOWED_FIELDS = Object.freeze([
+    'artifactId', 'ownerLogicalJobId', 'privacyClass', 'createdAt', 'expiresAt',
+    'allowedConsumers', 'hasContent', 'approxSize',
+  ]);
+  const PRIVACY_CLASSES = Object.freeze(['PRIVATE', 'TEAM', 'MISSION', 'SHAREABLE']);
 
   function validatePartialArtifactRef(ref) {
     if (ref === null) return ok();
     const errors = [];
-    if (!isPlainObject(ref)) return fail([{ path: '', reason: 'artifact_ref_must_be_object_or_null' }]);
-    pushIf(errors, !isNonEmptyString(ref.artifactId), 'artifactId', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(ref.ownerLogicalJobId), 'ownerLogicalJobId', 'required_non_empty_string');
-    pushIf(errors, !PRIVACY_CLASSES.includes(ref.privacyClass), 'privacyClass', 'required_privacy_class');
-    pushIf(errors, !isFiniteNumber(ref.createdAt), 'createdAt', 'required_finite_number');
-    pushIf(errors, !isFiniteNumber(ref.expiresAt), 'expiresAt', 'required_finite_number');
-    pushIf(errors, !Array.isArray(ref.allowedConsumers), 'allowedConsumers', 'required_array');
-    pushIf(errors, typeof ref.hasContent !== 'boolean', 'hasContent', 'required_boolean');
-    pushIf(errors, ref.approxSize !== null && ref.approxSize !== undefined && !isFiniteNumber(ref.approxSize),
-      'approxSize', 'must_be_number_or_null');
+    if (!isPlainObject(ref)) return fail([{ path: '', reason: 'artifact_ref_must_be_plain_object_or_null' }]);
+    rejectUnknownFields(errors, ref, ARTIFACT_ALLOWED_FIELDS);
 
-    for (const forbidden of FORBIDDEN_ARTIFACT_FIELDS) {
-      pushIf(errors, Object.prototype.hasOwnProperty.call(ref, forbidden),
-        forbidden, 'forbidden_embedded_content');
+    requireField(errors, ref, 'artifactId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, ref, 'ownerLogicalJobId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, ref, 'privacyClass', v => PRIVACY_CLASSES.includes(v), 'required_privacy_class');
+    const createdAt = requireField(errors, ref, 'createdAt', isFiniteNumber, 'required_finite_number');
+    const expiresAt = requireField(errors, ref, 'expiresAt', isFiniteNumber, 'required_finite_number');
+    requireField(errors, ref, 'hasContent', isBoolean, 'required_boolean');
+    optionalField(errors, ref, 'approxSize', v => v === null || isFiniteNumber(v), 'must_be_number_or_null');
+
+    if (isFiniteNumber(createdAt) && isFiniteNumber(expiresAt) && expiresAt < createdAt) {
+      errors.push({ path: 'expiresAt', reason: 'expires_before_created' });
+    }
+
+    const allowedConsumers = readOwnDataField(ref, 'allowedConsumers');
+    if (allowedConsumers === ACCESSOR_REJECTED) {
+      errors.push({ path: 'allowedConsumers', reason: 'accessor_field_not_allowed' });
+    } else if (allowedConsumers === MISSING) {
+      errors.push({ path: 'allowedConsumers', reason: 'required_field_missing' });
+    } else if (!Array.isArray(allowedConsumers)) {
+      errors.push({ path: 'allowedConsumers', reason: 'required_array' });
+    } else {
+      allowedConsumers.forEach((consumer, i) => {
+        if (!isNonEmptyString(consumer)) {
+          errors.push({ path: `allowedConsumers[${i}]`, reason: 'must_be_non_empty_string' });
+        }
+      });
     }
 
     return errors.length ? fail(errors) : ok();
@@ -137,36 +280,44 @@
 
   // ── Eventos ──────────────────────────────────────────────────────────
 
-  function validateCommonEventFields(event, errors) {
-    pushIf(errors, event.eventVersion !== types.CONTRACT_VERSION, 'eventVersion', 'must_match_contract_version');
-    pushIf(errors, !isNonEmptyString(event.eventId), 'eventId', 'required_non_empty_string');
-    pushIf(errors, !isFiniteNumber(event.sequence) || event.sequence < 0,
-      'sequence', 'required_non_negative_number');
-    pushIf(errors, !isFiniteNumber(event.observedAt), 'observedAt', 'required_finite_number');
+  function validateCommonEventFields(errors, event) {
+    requireField(errors, event, 'eventVersion', v => v === types.CONTRACT_VERSION, 'must_match_contract_version');
+    requireField(errors, event, 'eventId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'sequence', v => isFiniteNumber(v) && v >= 0, 'required_non_negative_number');
+    requireField(errors, event, 'observedAt', isFiniteNumber, 'required_finite_number');
   }
 
   // provider.availability.changed (contrato § 4.1) — source SOLO "adapter".
+  const AVAILABILITY_EVENT_FIELDS = Object.freeze([
+    'eventVersion', 'eventId', 'sequence', 'logicalProviderId', 'effectiveAdapterId',
+    'paneId', 'sessionId', 'previousState', 'state', 'reasonCode', 'confidence',
+    'evidence', 'retryAfter', 'observedAt', 'source',
+  ]);
+
   function validateAvailabilityChangedEvent(event) {
     const errors = [];
-    if (!isPlainObject(event)) return fail([{ path: '', reason: 'event_must_be_object' }]);
-    validateCommonEventFields(event, errors);
-    pushIf(errors, !isNonEmptyString(event.logicalProviderId), 'logicalProviderId', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(event.effectiveAdapterId), 'effectiveAdapterId', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(event.paneId), 'paneId', 'required_non_empty_string');
-    pushIf(errors, !isNullableString(event.sessionId), 'sessionId', 'must_be_string_or_null');
-    pushIf(errors, !isAvailabilityState(event.previousState), 'previousState', 'must_be_availability_state');
-    pushIf(errors, !isAvailabilityState(event.state), 'state', 'must_be_availability_state');
-    pushIf(errors, !isNonEmptyString(event.reasonCode), 'reasonCode', 'required_non_empty_string');
-    pushIf(errors, !isConfidence(event.confidence), 'confidence', 'must_be_confidence_value');
-    pushIf(errors, !isNullableNumber(event.retryAfter), 'retryAfter', 'must_be_number_or_null');
+    if (!isPlainObject(event)) return fail([{ path: '', reason: 'event_must_be_plain_object' }]);
+    rejectUnknownFields(errors, event, AVAILABILITY_EVENT_FIELDS);
+    validateCommonEventFields(errors, event);
+    requireField(errors, event, 'logicalProviderId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'effectiveAdapterId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'paneId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'sessionId', v => v === null || isNonEmptyString(v), 'must_be_string_or_null');
+    requireField(errors, event, 'previousState', isAvailabilityState, 'must_be_availability_state');
+    requireField(errors, event, 'state', isAvailabilityState, 'must_be_availability_state');
+    requireField(errors, event, 'reasonCode', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'confidence', isConfidence, 'must_be_confidence_value');
+    requireField(errors, event, 'retryAfter', v => v === null || isFiniteNumber(v), 'must_be_number_or_null');
     // Única fuente autoritativa válida: "adapter". endpoint_registry y
     // harness quedan explícitamente rechazados (contrato § 4.1, § 12).
-    pushIf(errors, event.source !== types.AVAILABILITY_SOURCE, 'source', 'must_be_adapter_only');
+    requireField(errors, event, 'source', v => v === types.AVAILABILITY_SOURCE, 'must_be_adapter_only');
 
-    if (!Array.isArray(event.evidence)) {
-      errors.push({ path: 'evidence', reason: 'required_array' });
-    } else {
-      const result = validateEvidenceList(event.evidence);
+    const evidence = readOwnDataField(event, 'evidence');
+    if (evidence === ACCESSOR_REJECTED) errors.push({ path: 'evidence', reason: 'accessor_field_not_allowed' });
+    else if (evidence === MISSING) errors.push({ path: 'evidence', reason: 'required_field_missing' });
+    else if (!Array.isArray(evidence)) errors.push({ path: 'evidence', reason: 'required_array' });
+    else {
+      const result = validateEvidenceList(evidence);
       result.errors.forEach(e => errors.push({ path: `evidence${e.path}`, reason: e.reason }));
     }
 
@@ -174,61 +325,112 @@
   }
 
   // provider.request.activity.changed (contrato § 4.2) — nunca PAUSED/BLOCKED.
+  const REQUEST_EVENT_FIELDS = Object.freeze([
+    'eventVersion', 'eventId', 'sequence', 'logicalProviderId', 'effectiveAdapterId',
+    'paneId', 'sessionId', 'logicalJobId', 'attemptId', 'requestId',
+    'previousActivity', 'activity', 'lastProgressAt', 'terminalReason', 'observedAt',
+  ]);
+
   function validateRequestActivityChangedEvent(event) {
     const errors = [];
-    if (!isPlainObject(event)) return fail([{ path: '', reason: 'event_must_be_object' }]);
-    validateCommonEventFields(event, errors);
-    pushIf(errors, !isNonEmptyString(event.logicalProviderId), 'logicalProviderId', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(event.effectiveAdapterId), 'effectiveAdapterId', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(event.paneId), 'paneId', 'required_non_empty_string');
-    pushIf(errors, !isNullableString(event.sessionId), 'sessionId', 'must_be_string_or_null');
-    pushIf(errors, !isNonEmptyString(event.logicalJobId), 'logicalJobId', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(event.attemptId), 'attemptId', 'required_non_empty_string');
-    pushIf(errors, !isNullableString(event.requestId), 'requestId', 'must_be_string_or_null');
-    pushIf(errors, !isRequestActivityState(event.previousActivity), 'previousActivity', 'must_be_request_activity_state');
-    pushIf(errors, !isRequestActivityState(event.activity), 'activity', 'must_be_request_activity_state');
-    // JobState nunca es un valor válido de RequestActivity — PAUSED/BLOCKED
-    // pertenecen a otro eje (contrato § 3, § 5 filas 3/8).
-    pushIf(errors, event.activity === 'PAUSED' || event.activity === 'BLOCKED',
-      'activity', 'paused_and_blocked_belong_to_job_state_not_request_activity');
-    pushIf(errors, !isNullableNumber(event.lastProgressAt), 'lastProgressAt', 'must_be_number_or_null');
-    pushIf(errors, !isNullableString(event.terminalReason), 'terminalReason', 'must_be_string_or_null');
+    if (!isPlainObject(event)) return fail([{ path: '', reason: 'event_must_be_plain_object' }]);
+    rejectUnknownFields(errors, event, REQUEST_EVENT_FIELDS);
+    validateCommonEventFields(errors, event);
+    requireField(errors, event, 'logicalProviderId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'effectiveAdapterId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'paneId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'sessionId', v => v === null || isNonEmptyString(v), 'must_be_string_or_null');
+    requireField(errors, event, 'logicalJobId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'attemptId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'requestId', v => v === null || isNonEmptyString(v), 'must_be_string_or_null');
+    requireField(errors, event, 'previousActivity', isRequestActivityState, 'must_be_request_activity_state');
+    // JobState (PAUSED/BLOCKED) nunca es un valor válido de RequestActivity
+    // — pertenecen a otro eje (contrato § 3, § 5 filas 3/8). isRequestActivityState
+    // ya los excluye (no están en RequestActivityState), pero se deja el
+    // chequeo explícito para un mensaje de error más claro.
+    const activity = requireField(errors, event, 'activity', isRequestActivityState, 'must_be_request_activity_state');
+    if (activity === 'PAUSED' || activity === 'BLOCKED') {
+      errors.push({ path: 'activity', reason: 'paused_and_blocked_belong_to_job_state_not_request_activity' });
+    }
+    requireField(errors, event, 'lastProgressAt', v => v === null || isFiniteNumber(v), 'must_be_number_or_null');
+    requireField(errors, event, 'terminalReason', v => v === null || isNonEmptyString(v), 'must_be_string_or_null');
 
     return errors.length ? fail(errors) : ok();
   }
 
   // cloud.job.state.changed (contrato § 4.3) — incluye currentAttempt.
+  const JOB_EVENT_FIELDS = Object.freeze([
+    'eventVersion', 'eventId', 'sequence', 'logicalJobId', 'currentAttempt',
+    'turnId', 'paneId', 'previousState', 'state', 'pauseReason', 'blockedReason',
+    'durableClaim', 'partialArtifactRef', 'observedAt',
+  ]);
+
   function validateJobStateChangedEvent(event) {
     const errors = [];
-    if (!isPlainObject(event)) return fail([{ path: '', reason: 'event_must_be_object' }]);
-    validateCommonEventFields(event, errors);
-    pushIf(errors, !isNonEmptyString(event.logicalJobId), 'logicalJobId', 'required_non_empty_string');
-    pushIf(errors, !isNullableString(event.turnId), 'turnId', 'must_be_string_or_null');
-    pushIf(errors, !isNonEmptyString(event.paneId), 'paneId', 'required_non_empty_string');
-    pushIf(errors, !isJobState(event.previousState), 'previousState', 'must_be_job_state');
-    pushIf(errors, !isJobState(event.state), 'state', 'must_be_job_state');
+    if (!isPlainObject(event)) return fail([{ path: '', reason: 'event_must_be_plain_object' }]);
+    rejectUnknownFields(errors, event, JOB_EVENT_FIELDS);
+    validateCommonEventFields(errors, event);
+    requireField(errors, event, 'logicalJobId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'turnId', v => v === null || isNonEmptyString(v), 'must_be_string_or_null');
+    requireField(errors, event, 'paneId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, event, 'previousState', isJobState, 'must_be_job_state');
+    const state = requireField(errors, event, 'state', isJobState, 'must_be_job_state');
 
-    if (!Object.prototype.hasOwnProperty.call(event, 'currentAttempt')) {
+    const currentAttempt = readOwnDataField(event, 'currentAttempt');
+    if (currentAttempt === ACCESSOR_REJECTED) {
+      errors.push({ path: 'currentAttempt', reason: 'accessor_field_not_allowed' });
+    } else if (currentAttempt === MISSING) {
       errors.push({ path: 'currentAttempt', reason: 'required_field_missing' });
     } else {
-      const result = validateAttemptIdentity(event.currentAttempt);
-      result.errors.forEach(e => errors.push({ path: `currentAttempt.${e.path}`, reason: e.reason }));
+      const requiresAttempt = types.JOB_STATES_REQUIRING_ATTEMPT.includes(state);
+      if (currentAttempt === null && requiresAttempt) {
+        errors.push({ path: 'currentAttempt', reason: `null_not_allowed_for_state:${state}` });
+      } else {
+        const result = validateAttemptIdentity(currentAttempt);
+        result.errors.forEach(e => errors.push({ path: `currentAttempt.${e.path}`, reason: e.reason }));
+      }
     }
 
-    pushIf(errors, event.state === types.JobState.PAUSED && !isNonEmptyString(event.pauseReason),
-      'pauseReason', 'required_when_state_is_paused');
-    pushIf(errors, event.state === types.JobState.BLOCKED && !isNonEmptyString(event.blockedReason),
-      'blockedReason', 'required_when_state_is_blocked');
-    pushIf(errors, event.pauseReason !== null && event.pauseReason !== undefined && !isNonEmptyString(event.pauseReason),
-      'pauseReason', 'must_be_string_or_null');
-    pushIf(errors, event.blockedReason !== null && event.blockedReason !== undefined && !isNonEmptyString(event.blockedReason),
-      'blockedReason', 'must_be_string_or_null');
-    pushIf(errors, !isNullableString(event.durableClaim), 'durableClaim', 'must_be_string_or_null');
+    const pauseReason = readOwnDataField(event, 'pauseReason');
+    const blockedReason = readOwnDataField(event, 'blockedReason');
+    const pauseReasonPresent = pauseReason !== null && pauseReason !== MISSING && pauseReason !== ACCESSOR_REJECTED;
+    const blockedReasonPresent = blockedReason !== null && blockedReason !== MISSING && blockedReason !== ACCESSOR_REJECTED;
 
-    if (!Object.prototype.hasOwnProperty.call(event, 'partialArtifactRef')) {
+    if (pauseReason === ACCESSOR_REJECTED) errors.push({ path: 'pauseReason', reason: 'accessor_field_not_allowed' });
+    else if (pauseReason !== MISSING && pauseReason !== null && !isNonEmptyString(pauseReason)) {
+      errors.push({ path: 'pauseReason', reason: 'must_be_string_or_null' });
+    }
+    if (blockedReason === ACCESSOR_REJECTED) errors.push({ path: 'blockedReason', reason: 'accessor_field_not_allowed' });
+    else if (blockedReason !== MISSING && blockedReason !== null && !isNonEmptyString(blockedReason)) {
+      errors.push({ path: 'blockedReason', reason: 'must_be_string_or_null' });
+    }
+
+    // Reglas estrictas de coherencia estado↔razón (exigidas por Navigator):
+    // PAUSED exige pauseReason y rechaza blockedReason; BLOCKED exige
+    // blockedReason y rechaza pauseReason; cualquier otro estado rechaza
+    // ambas; ambas simultáneas siempre se rechazan sea cual sea el estado.
+    if (pauseReasonPresent && blockedReasonPresent) {
+      errors.push({ path: 'pauseReason', reason: 'pause_and_blocked_reason_cannot_coexist' });
+    } else if (state === types.JobState.PAUSED) {
+      if (!pauseReasonPresent) errors.push({ path: 'pauseReason', reason: 'required_when_state_is_paused' });
+      if (blockedReasonPresent) errors.push({ path: 'blockedReason', reason: 'not_allowed_when_state_is_paused' });
+    } else if (state === types.JobState.BLOCKED) {
+      if (!blockedReasonPresent) errors.push({ path: 'blockedReason', reason: 'required_when_state_is_blocked' });
+      if (pauseReasonPresent) errors.push({ path: 'pauseReason', reason: 'not_allowed_when_state_is_blocked' });
+    } else {
+      if (pauseReasonPresent) errors.push({ path: 'pauseReason', reason: 'not_allowed_unless_state_is_paused' });
+      if (blockedReasonPresent) errors.push({ path: 'blockedReason', reason: 'not_allowed_unless_state_is_blocked' });
+    }
+
+    requireField(errors, event, 'durableClaim', v => v === null || isNonEmptyString(v), 'must_be_string_or_null');
+
+    const partialArtifactRef = readOwnDataField(event, 'partialArtifactRef');
+    if (partialArtifactRef === ACCESSOR_REJECTED) {
+      errors.push({ path: 'partialArtifactRef', reason: 'accessor_field_not_allowed' });
+    } else if (partialArtifactRef === MISSING) {
       errors.push({ path: 'partialArtifactRef', reason: 'required_field_missing' });
     } else {
-      const result = validatePartialArtifactRef(event.partialArtifactRef);
+      const result = validatePartialArtifactRef(partialArtifactRef);
       result.errors.forEach(e => errors.push({ path: `partialArtifactRef.${e.path}`, reason: e.reason }));
     }
 
@@ -236,36 +438,43 @@
   }
 
   // provider.health.snapshot (contrato § 4.5) — vista derivada, no autoridad.
+  const SNAPSHOT_FIELDS = Object.freeze([
+    'logicalProviderId', 'paneId', 'availability', 'requestActivity', 'jobState', 'channel', 'observedAt',
+  ]);
+
   function validateHealthSnapshot(snapshot) {
     const errors = [];
-    if (!isPlainObject(snapshot)) return fail([{ path: '', reason: 'snapshot_must_be_object' }]);
-    pushIf(errors, !isNonEmptyString(snapshot.logicalProviderId), 'logicalProviderId', 'required_non_empty_string');
-    pushIf(errors, !isNonEmptyString(snapshot.paneId), 'paneId', 'required_non_empty_string');
-    pushIf(errors, snapshot.availability !== null && !isAvailabilityState(snapshot.availability),
-      'availability', 'must_be_availability_state_or_null');
-    pushIf(errors, snapshot.requestActivity !== null && !isRequestActivityState(snapshot.requestActivity),
-      'requestActivity', 'must_be_request_activity_state_or_null');
-    pushIf(errors, snapshot.jobState !== null && !isJobState(snapshot.jobState),
-      'jobState', 'must_be_job_state_or_null');
-    pushIf(errors, snapshot.channel !== null && !isChannelState(snapshot.channel),
-      'channel', 'must_be_channel_state_or_null');
-    pushIf(errors, !isFiniteNumber(snapshot.observedAt), 'observedAt', 'required_finite_number');
+    if (!isPlainObject(snapshot)) return fail([{ path: '', reason: 'snapshot_must_be_plain_object' }]);
+    rejectUnknownFields(errors, snapshot, SNAPSHOT_FIELDS);
+    requireField(errors, snapshot, 'logicalProviderId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, snapshot, 'paneId', isNonEmptyString, 'required_non_empty_string');
+    requireField(errors, snapshot, 'availability', v => v === null || isAvailabilityState(v), 'must_be_availability_state_or_null');
+    requireField(errors, snapshot, 'requestActivity', v => v === null || isRequestActivityState(v), 'must_be_request_activity_state_or_null');
+    requireField(errors, snapshot, 'jobState', v => v === null || isJobState(v), 'must_be_job_state_or_null');
+    requireField(errors, snapshot, 'channel', v => v === null || isChannelState(v), 'must_be_channel_state_or_null');
+    requireField(errors, snapshot, 'observedAt', isFiniteNumber, 'required_finite_number');
     return errors.length ? fail(errors) : ok();
   }
 
-  health.isAvailabilityState = isAvailabilityState;
-  health.isRequestActivityState = isRequestActivityState;
-  health.isJobState = isJobState;
-  health.isChannelState = isChannelState;
-  health.isConfidence = isConfidence;
-  health.isActiveRequestActivity = isActiveRequestActivity;
+  // Dos funciones nunca son === entre cargas distintas del mismo script
+  // (closures nuevos cada vez) — tratarlas como compatibles por TIPO, no
+  // por identidad, es lo que permite que una segunda carga de validate.js
+  // sea segura y determinista (conserva la primera definición, no lanza).
+  const bothFunctions = (a, b) => typeof a === 'function' && typeof b === 'function';
 
-  health.validateEvidenceEntry = validateEvidenceEntry;
-  health.validateEvidenceList = validateEvidenceList;
-  health.validateAttemptIdentity = validateAttemptIdentity;
-  health.validatePartialArtifactRef = validatePartialArtifactRef;
-  health.validateAvailabilityChangedEvent = validateAvailabilityChangedEvent;
-  health.validateRequestActivityChangedEvent = validateRequestActivityChangedEvent;
-  health.validateJobStateChangedEvent = validateJobStateChangedEvent;
-  health.validateHealthSnapshot = validateHealthSnapshot;
+  defineLocked(health, 'isAvailabilityState', isAvailabilityState, bothFunctions);
+  defineLocked(health, 'isRequestActivityState', isRequestActivityState, bothFunctions);
+  defineLocked(health, 'isJobState', isJobState, bothFunctions);
+  defineLocked(health, 'isChannelState', isChannelState, bothFunctions);
+  defineLocked(health, 'isConfidence', isConfidence, bothFunctions);
+  defineLocked(health, 'isActiveRequestActivity', isActiveRequestActivity, bothFunctions);
+
+  defineLocked(health, 'validateEvidenceEntry', validateEvidenceEntry, bothFunctions);
+  defineLocked(health, 'validateEvidenceList', validateEvidenceList, bothFunctions);
+  defineLocked(health, 'validateAttemptIdentity', validateAttemptIdentity, bothFunctions);
+  defineLocked(health, 'validatePartialArtifactRef', validatePartialArtifactRef, bothFunctions);
+  defineLocked(health, 'validateAvailabilityChangedEvent', validateAvailabilityChangedEvent, bothFunctions);
+  defineLocked(health, 'validateRequestActivityChangedEvent', validateRequestActivityChangedEvent, bothFunctions);
+  defineLocked(health, 'validateJobStateChangedEvent', validateJobStateChangedEvent, bothFunctions);
+  defineLocked(health, 'validateHealthSnapshot', validateHealthSnapshot, bothFunctions);
 })();

@@ -13,18 +13,28 @@ import vm from 'node:vm';
 const here = dirname(fileURLToPath(import.meta.url));
 const typesPath = join(here, '../../extensions/aihub/content-scripts/relay/provider-health/types.js');
 const validatePath = join(here, '../../extensions/aihub/content-scripts/relay/provider-health/validate.js');
+const typesSrc = readFileSync(typesPath, 'utf8');
+const validateSrc = readFileSync(validatePath, 'utf8');
 
 // types.js/validate.js son scripts clásicos (IIFE, sin export/import) por
-// diseño — deben poder cargarse como content script real. Los evaluamos en
-// un contexto aislado propio (node:vm) en vez de usar el global del test
-// runner, para no contaminarlo ni depender de un side-effect global real.
-const sandbox = {};
-sandbox.globalThis = sandbox;
-vm.createContext(sandbox);
-vm.runInContext(readFileSync(typesPath, 'utf8'), sandbox, { filename: typesPath });
-vm.runInContext(readFileSync(validatePath, 'utf8'), sandbox, { filename: validatePath });
+// diseño — deben poder cargarse como content script real. Se evalúan con
+// runInThisContext (no un sandbox/contexto separado): un content script
+// real de una sola tab comparte el MISMO realm que la página que lo aloja,
+// así que los fixtures de este test (objetos `{}` normales) y el código
+// validado comparten idéntico `Object.prototype` — igual que en producción.
+// Un `vm.createContext` separado rompería exactamente esa identidad
+// (cada realm tiene su propio Object.prototype) y haría que isPlainObject()
+// rechace fixtures legítimos por una razón ajena al contrato.
+function loadScript(source, filename) {
+  new vm.Script(source, { filename }).runInThisContext();
+}
 
-const health = sandbox.__auroraProviderHealth;
+loadScript(typesSrc, typesPath);
+loadScript(validateSrc, validatePath);
+
+const health = globalThis.__auroraProviderHealth;
+
+const isNonEmptyString = v => typeof v === 'string' && v.length > 0;
 
 let failures = 0;
 function check(label, cond) {
@@ -386,6 +396,212 @@ expectFail('N28b. null en availability event', health.validateAvailabilityChange
   const evidenceSnapshot = JSON.parse(JSON.stringify(evidenceOriginal));
   health.validateEvidenceEntry(evidenceOriginal);
   check('N29b. validar no muta el EvidenceEntry original', JSON.stringify(evidenceOriginal) === JSON.stringify(evidenceSnapshot));
+}
+
+// ══════════════════════ TESTS ADVERSARIALES (endurecimiento) ══════════════
+// Exigidos tras el veredicto CHANGES_REQUIRED de Navigator sobre el primer
+// Checkpoint 1: namespace mutable, plain-object laxo, getters ejecutados,
+// currentAttempt:null mal restringido, razones de pausa/bloqueo
+// incoherentes, allowedConsumers sin validar elementos, snapshot sin
+// whitelist.
+
+// A1. Bindings públicos no reasignables (namespace protegido).
+{
+  const before = health.AvailabilityState;
+  try { health.AvailabilityState = { HACKED: 'HACKED' }; } catch (_) { /* modo estricto: puede lanzar, aceptado */ }
+  check('A1. AvailabilityState no se puede reasignar', health.AvailabilityState === before && health.AvailabilityState.HACKED === undefined);
+
+  const beforeFn = health.validateAvailabilityChangedEvent;
+  try { health.validateAvailabilityChangedEvent = () => ({ ok: true, errors: [] }); } catch (_) { /* aceptado */ }
+  check('A1b. validateAvailabilityChangedEvent no se puede reasignar', health.validateAvailabilityChangedEvent === beforeFn);
+}
+
+// A2 + A3 + A4. Namespace preexistente compatible / incompatible / segunda carga determinista.
+{
+  // Recarga literal de los mismos archivos: debe ser un no-op seguro, sin
+  // lanzar y conservando exactamente los mismos bindings (mismo enum,
+  // mismos validadores por tipo).
+  const availabilityBefore = health.AvailabilityState;
+  const validateBefore = health.validateAvailabilityChangedEvent;
+  let secondLoadThrew = false;
+  try {
+    loadScript(typesSrc, typesPath);
+    loadScript(validateSrc, validatePath);
+  } catch (_) { secondLoadThrew = true; }
+  check('A2. segunda carga de types.js+validate.js no lanza (namespace preexistente COMPATIBLE)', !secondLoadThrew);
+  check('A3. segunda carga conserva el mismo AvailabilityState (recarga determinista)', globalThis.__auroraProviderHealth.AvailabilityState === availabilityBefore);
+  check('A4. segunda carga conserva el mismo validador (recarga determinista)', globalThis.__auroraProviderHealth.validateAvailabilityChangedEvent === validateBefore);
+
+  // Namespace incompatible: una versión de contrato distinta bajo la misma
+  // clave global debe ser rechazada explícitamente, no adoptada en silencio.
+  const savedNamespace = globalThis.__auroraProviderHealth;
+  globalThis.__auroraProviderHealth = { __contractVersion: 999 };
+  let incompatibleThrew = false;
+  try { loadScript(typesSrc, typesPath); } catch (_) { incompatibleThrew = true; }
+  check('A5. namespace preexistente con __contractVersion distinta es rechazado', incompatibleThrew);
+  globalThis.__auroraProviderHealth = savedNamespace; // restaurar para el resto de los tests
+}
+
+// A6. UNKNOWN y valor arbitrario en isActiveRequestActivity.
+check('A6a. isActiveRequestActivity("UNKNOWN") === false', health.isActiveRequestActivity('UNKNOWN') === false);
+check('A6b. isActiveRequestActivity("no-existe") === false', health.isActiveRequestActivity('no-existe') === false);
+check('A6c. isActiveRequestActivity(undefined) === false', health.isActiveRequestActivity(undefined) === false);
+
+// A7-A9. Campos sensibles agregados (prompt/response/body).
+expectFail('A7. EvidenceEntry con prompt prohibido', health.validateEvidenceEntry(makeEvidence({ prompt: 'texto del usuario' })), 'prompt');
+expectFail('A8. EvidenceEntry con response prohibido', health.validateEvidenceEntry(makeEvidence({ response: 'texto del proveedor' })), 'response');
+expectFail('A9. EvidenceEntry con body prohibido', health.validateEvidenceEntry(makeEvidence({ body: 'contenido' })), 'body');
+
+// A10. IDs de evidencia duplicados dentro de una lista.
+{
+  const dup1 = makeEvidence({ evidenceId: 'dup-1' });
+  const dup2 = makeEvidence({ evidenceId: 'dup-1' });
+  const result = health.validateEvidenceList([dup1, dup2]);
+  check('A10. IDs de evidencia duplicados rechazados', result.ok === false && result.errors.some(e => e.reason.startsWith('duplicate_evidence_id')));
+}
+
+// A11. Self-contradiction (una evidencia se contradice a sí misma).
+expectFail('A11. self-contradiction rechazada',
+  health.validateEvidenceEntry(makeEvidence({ evidenceId: 'self-1', contradicts: ['self-1'] })), 'self_contradiction_not_allowed');
+
+// A12. Ciclo de dos evidencias (A contradice a B, B contradice a A).
+{
+  const evA = makeEvidence({ evidenceId: 'cyc-a', contradicts: ['cyc-b'] });
+  const evB = makeEvidence({ evidenceId: 'cyc-b', contradicts: ['cyc-a'] });
+  const result = health.validateEvidenceList([evA, evB]);
+  check('A12. ciclo de dos evidencias rechazado', result.ok === false && result.errors.some(e => e.reason === 'contradiction_cycle_detected'));
+}
+
+// A13. expiresAt anterior a observedAt (EvidenceEntry) — inconsistencia temporal.
+expectFail('A13. EvidenceEntry con expiresAt < observedAt', health.validateEvidenceEntry(makeEvidence({ observedAt: 1000, expiresAt: 500 })), 'expires_before_observed');
+
+// A14. Objeto con prototipo personalizado.
+{
+  class Custom {}
+  const custom = new Custom();
+  Object.assign(custom, makeEvidence());
+  expectFail('A14. EvidenceEntry con prototipo personalizado rechazado', health.validateEvidenceEntry(custom));
+}
+
+// A15. Campos requeridos heredados (no propios) no cuentan como presentes.
+{
+  const base = makeEvidence();
+  const child = Object.create(base); // hereda TODOS los campos de base, ninguno propio
+  expectFail('A15. EvidenceEntry con campos sólo heredados es rechazada', health.validateEvidenceEntry(child));
+}
+
+// A16. Getter normal (no lanza) no debe alterar el resultado esperado y su valor SÍ se usa si es dato... pero como es accessor, debe rechazarse igual (regla: nunca se ejecutan accessors, sin excepción).
+{
+  const withGetter = makeEvidence();
+  Object.defineProperty(withGetter, 'reasonCode', { get() { return 'quota_banner_matched'; }, enumerable: true, configurable: true });
+  expectFail('A16. EvidenceEntry con getter normal en reasonCode igual se rechaza (nunca se ejecuta)', health.validateEvidenceEntry(withGetter), 'reasonCode');
+}
+
+// A17. Getter que lanza: debe convertirse en error estructurado, NUNCA escapar como excepción.
+{
+  const withThrowingGetter = makeEvidence();
+  Object.defineProperty(withThrowingGetter, 'evidenceId', {
+    get() { throw new Error('input hostil: no deberías haber leído esto'); },
+    enumerable: true, configurable: true,
+  });
+  let threw = false;
+  let result = null;
+  try { result = health.validateEvidenceEntry(withThrowingGetter); } catch (_) { threw = true; }
+  check('A17. getter que lanza NO escapa como excepción', threw === false);
+  check('A17b. getter que lanza se reporta como error estructurado', result && result.ok === false
+    && result.errors.some(e => e.path === 'evidenceId' && e.reason === 'accessor_field_not_allowed'));
+}
+
+// A18. currentAttempt:null válido en CREATED.
+expectOk('A18. currentAttempt:null válido en JobState.CREATED',
+  health.validateJobStateChangedEvent(makeJobStateEvent({ state: 'CREATED', previousState: 'CREATED', currentAttempt: null })));
+
+// A19. currentAttempt:null inválido en ACTIVE.
+expectFail('A19. currentAttempt:null inválido en JobState.ACTIVE',
+  health.validateJobStateChangedEvent(makeJobStateEvent({ state: 'ACTIVE', previousState: 'CREATED', currentAttempt: null })),
+  'null_not_allowed_for_state:ACTIVE');
+
+// A20. null inválido en el resto de los estados que requieren intento.
+for (const st of ['PAUSED', 'BLOCKED', 'WAITING_TOOL', 'WAITING_RESULT', 'WAITING_FEEDBACK']) {
+  const overrides = { state: st, previousState: 'ACTIVE', currentAttempt: null };
+  if (st === 'PAUSED') overrides.pauseReason = 'rate_limited';
+  if (st === 'BLOCKED') overrides.blockedReason = 'quota_exhausted';
+  expectFail(`A20. currentAttempt:null inválido en JobState.${st}`,
+    health.validateJobStateChangedEvent(makeJobStateEvent(overrides)),
+    `null_not_allowed_for_state:${st}`);
+}
+
+// A21. pauseReason presente en un estado que no es PAUSED.
+expectFail('A21. pauseReason en estado incompatible (ACTIVE) rechazado',
+  health.validateJobStateChangedEvent(makeJobStateEvent({ state: 'ACTIVE', previousState: 'CREATED', pauseReason: 'no_deberia_estar_aqui' })),
+  'not_allowed_unless_state_is_paused');
+
+// A22. blockedReason presente en un estado que no es BLOCKED.
+expectFail('A22. blockedReason en estado incompatible (ACTIVE) rechazado',
+  health.validateJobStateChangedEvent(makeJobStateEvent({ state: 'ACTIVE', previousState: 'CREATED', blockedReason: 'no_deberia_estar_aqui' })),
+  'not_allowed_unless_state_is_blocked');
+
+// A23. Ambas razones simultáneas (incluso en un estado donde alguna sería válida por sí sola).
+expectFail('A23. pauseReason y blockedReason simultáneos siempre rechazados',
+  health.validateJobStateChangedEvent(makeJobStateEvent({ state: 'PAUSED', pauseReason: 'rate_limited', blockedReason: 'quota_exhausted' })),
+  'pause_and_blocked_reason_cannot_coexist');
+
+// A24-A26. allowedConsumers con elementos inválidos.
+expectFail('A24. allowedConsumers con número', health.validatePartialArtifactRef(makePartialArtifactRef({ allowedConsumers: [42] })), 'allowedConsumers[0]');
+expectFail('A25. allowedConsumers con null', health.validatePartialArtifactRef(makePartialArtifactRef({ allowedConsumers: [null] })), 'allowedConsumers[0]');
+expectFail('A26. allowedConsumers con objeto', health.validatePartialArtifactRef(makePartialArtifactRef({ allowedConsumers: [{ role: 'driver' }] })), 'allowedConsumers[0]');
+expectFail('A26b. allowedConsumers con string vacío', health.validatePartialArtifactRef(makePartialArtifactRef({ allowedConsumers: [''] })), 'allowedConsumers[0]');
+
+// A27. Expiración de artefacto anterior a su creación.
+expectFail('A27. PartialArtifactRef con expiresAt < createdAt',
+  health.validatePartialArtifactRef(makePartialArtifactRef({ createdAt: 1000, expiresAt: 500 })), 'expires_before_created');
+
+// A28. Campo privado desconocido en snapshot (whitelist estricta).
+expectFail('A28. snapshot con campo desconocido "text" rechazado',
+  health.validateHealthSnapshot(makeHealthSnapshot({ text: 'contenido privado del proveedor' })), 'text');
+expectFail('A28b. snapshot con campo desconocido "prompt" rechazado',
+  health.validateHealthSnapshot(makeHealthSnapshot({ prompt: 'contenido privado' })), 'prompt');
+
+// A29. Política de contenido anidado: una clave desconocida que envuelve
+// contenido sensible se rechaza en bloque por no estar en la whitelist —
+// no hace falta bajar recursivamente, nunca llega a validarse como válida.
+expectFail('A29. contenido anidado bajo clave desconocida rechazado en bloque',
+  health.validateAvailabilityChangedEvent(makeAvailabilityEvent({ metadata: { text: 'secreto anidado' } })), 'metadata');
+
+// A30. Cada error esperado contiene simultáneamente path y reason.
+{
+  const result = health.validateAvailabilityChangedEvent({});
+  check('A30. todos los errores tienen path Y reason como string no vacío',
+    result.errors.length > 0 && result.errors.every(e => typeof e.path === 'string' && isNonEmptyString(e.reason)));
+}
+
+// A31. Validadores no mutan inputs (cobertura adicional sobre eventos de job/partial ref).
+{
+  const jobEvent = makeJobStateEvent();
+  const jobSnapshot = JSON.parse(JSON.stringify(jobEvent));
+  health.validateJobStateChangedEvent(jobEvent);
+  check('A31. validar cloud.job.state.changed no muta el evento original', JSON.stringify(jobEvent) === JSON.stringify(jobSnapshot));
+}
+
+// A32. Inputs hostiles no hacen lanzar excepciones (superficie amplia).
+{
+  const hostileInputs = [
+    undefined, null, 42, 'texto', true, [1, 2, 3], () => {}, new Date(), new Map(), new Set(),
+    Object.create(null), Symbol('x'),
+  ];
+  let anyThrew = false;
+  for (const input of hostileInputs) {
+    try {
+      health.validateEvidenceEntry(input);
+      health.validatePartialArtifactRef(input);
+      health.validateAvailabilityChangedEvent(input);
+      health.validateRequestActivityChangedEvent(input);
+      health.validateJobStateChangedEvent(input);
+      health.validateHealthSnapshot(input);
+      health.validateAttemptIdentity(input);
+    } catch (_) { anyThrew = true; }
+  }
+  check('A32. ningún input hostil hace lanzar a ningún validador', anyThrew === false);
 }
 
 // ══════════════════════════ RESULTADO ══════════════════════════

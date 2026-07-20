@@ -3,12 +3,66 @@
 // Sin DOM, sin chrome.*, sin red, sin estado runtime. Clásico/IIFE (mismo
 // patrón que relay-contract.js) — no ESM, para poder cargarse como content
 // script y también como script clásico desde tests.
+//
+// Namespace: cada miembro público se define con Object.defineProperty
+// (writable:false, configurable:false) — un consumidor no puede
+// reasignar AvailabilityState, EventName, etc. una vez cargado. El
+// objeto namespace en sí NO se congela (Object.freeze) para que
+// validate.js pueda seguir agregando SUS propios miembros después —
+// solo cada clave individual, una vez definida, queda fija.
 (() => {
   'use strict';
-  const health = globalThis.__auroraProviderHealth ||= {};
 
-  // Versión del contrato completo (no de cada evento individual).
   const CONTRACT_VERSION = 1;
+
+  // Compatibilidad de recarga: dos objetos "iguales" (mismas claves,
+  // mismos valores primitivos) se tratan como el mismo contrato — permite
+  // cargar types.js dos veces sin error. Cualquier otra forma existente
+  // bajo la misma clave se considera un namespace incompatible.
+  function shallowEqualPlain(a, b) {
+    if (a === b) return true;
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+    const ak = Object.keys(a);
+    const bk = Object.keys(b);
+    if (ak.length !== bk.length) return false;
+    return ak.every(k => a[k] === b[k]);
+  }
+
+  function defineLocked(target, key, value, isCompatible = (a, b) => a === b) {
+    if (Object.prototype.hasOwnProperty.call(target, key)) {
+      const existing = target[key];
+      if (isCompatible(existing, value)) return existing; // recarga idéntica: conservar lo ya definido
+      throw new Error(
+        `__auroraProviderHealth: redefinición incompatible de "${key}" — namespace preexistente no coincide con el contrato v${CONTRACT_VERSION}.`,
+      );
+    }
+    Object.defineProperty(target, key, { value, writable: false, configurable: false, enumerable: true });
+    return value;
+  }
+
+  const existingNamespace = globalThis.__auroraProviderHealth;
+  if (existingNamespace !== undefined
+    && (typeof existingNamespace !== 'object' || existingNamespace === null)) {
+    throw new Error('__auroraProviderHealth: el namespace preexistente no es un objeto — incompatible.');
+  }
+  if (existingNamespace
+    && Object.prototype.hasOwnProperty.call(existingNamespace, '__contractVersion')
+    && existingNamespace.__contractVersion !== CONTRACT_VERSION) {
+    throw new Error(
+      `__auroraProviderHealth: versión de contrato incompatible (existente=${existingNamespace.__contractVersion}, actual=${CONTRACT_VERSION}).`,
+    );
+  }
+  const health = globalThis.__auroraProviderHealth = existingNamespace || {};
+
+  // Dos funciones nunca son === entre cargas del mismo script (closures
+  // nuevos cada vez) — tratarlas como compatibles por TIPO permite que una
+  // segunda carga sea segura y determinista (contrato: "segunda carga
+  // determinista/no debe lanzar").
+  const bothFunctions = (a, b) => typeof a === 'function' && typeof b === 'function';
+
+  defineLocked(health, '__contractVersion', CONTRACT_VERSION);
+  defineLocked(health, '__defineLocked', defineLocked, bothFunctions);
+  defineLocked(health, '__shallowEqualPlain', shallowEqualPlain, bothFunctions);
 
   // ── Availability — propiedad del proveedor/cuenta/sesión ───────────────
   // Autoridad exclusiva: un adapter. Nunca Endpoint Registry ni el harness
@@ -65,6 +119,18 @@
     UNKNOWN: 'UNKNOWN',
   });
 
+  // JobState en los que currentAttempt NO puede ser null — el job tiene (o
+  // debería tener) un intento real en curso (contrato § 4.3 + corrección
+  // exigida por Navigator/Orchestrator sobre currentAttempt:null).
+  const JOB_STATES_REQUIRING_ATTEMPT = Object.freeze([
+    JobState.ACTIVE,
+    JobState.PAUSED,
+    JobState.BLOCKED,
+    JobState.WAITING_TOOL,
+    JobState.WAITING_RESULT,
+    JobState.WAITING_FEEDBACK,
+  ]);
+
   // ── Channel — propiedad del endpoint físico ──────────────────────────────
   // Únicamente los estados que endpoint-registry.js produce hoy (verificado
   // por lectura de código). ONLINE queda fuera del enum canónico — ver
@@ -105,14 +171,17 @@
   // "endpoint_registry" y "harness" quedan explícitamente excluidos.
   const AVAILABILITY_SOURCE = 'adapter';
 
-  health.CONTRACT_VERSION = CONTRACT_VERSION;
-  health.AvailabilityState = AvailabilityState;
-  health.RequestActivityState = RequestActivityState;
-  health.ACTIVE_REQUEST_ACTIVITY_STATES = ACTIVE_REQUEST_ACTIVITY_STATES;
-  health.JobState = JobState;
-  health.ChannelState = ChannelState;
-  health.CHANNEL_ONLINE_PROPOSED_DERIVED = CHANNEL_ONLINE_PROPOSED_DERIVED;
-  health.Confidence = Confidence;
-  health.EventName = EventName;
-  health.AVAILABILITY_SOURCE = AVAILABILITY_SOURCE;
+  defineLocked(health, 'CONTRACT_VERSION', CONTRACT_VERSION);
+  defineLocked(health, 'AvailabilityState', AvailabilityState, shallowEqualPlain);
+  defineLocked(health, 'RequestActivityState', RequestActivityState, shallowEqualPlain);
+  defineLocked(health, 'ACTIVE_REQUEST_ACTIVITY_STATES', ACTIVE_REQUEST_ACTIVITY_STATES,
+    (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]));
+  defineLocked(health, 'JobState', JobState, shallowEqualPlain);
+  defineLocked(health, 'JOB_STATES_REQUIRING_ATTEMPT', JOB_STATES_REQUIRING_ATTEMPT,
+    (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]));
+  defineLocked(health, 'ChannelState', ChannelState, shallowEqualPlain);
+  defineLocked(health, 'CHANNEL_ONLINE_PROPOSED_DERIVED', CHANNEL_ONLINE_PROPOSED_DERIVED);
+  defineLocked(health, 'Confidence', Confidence, shallowEqualPlain);
+  defineLocked(health, 'EventName', EventName, shallowEqualPlain);
+  defineLocked(health, 'AVAILABILITY_SOURCE', AVAILABILITY_SOURCE);
 })();
