@@ -36,8 +36,8 @@ import { ToolVisualCard } from '../../../components/shared/cloud-tool-visual.js'
 import { Empty, Icon } from '../../../components/index.js';
 import { ParamsPanel } from './params-panel.js';
 import { ComandoOverlay } from './comando-overlay.js';
-import { AvatarStage, LyriaLocalDock } from '../../../components/lyra/avatar-presence.js?v=v3-avatar-mood';
-import { avatarStateLabel } from '../../../components/lyra/avatar-manifest.js?v=v2-avatar-mood';
+import { AvatarScene, LyriaLocalDock } from '../../../components/lyra/avatar-presence.js?v=v4-avatar-duo';
+import { avatarStateLabel, createCloudAvatarManifest, LYRIA_AVATAR } from '../../../components/lyra/avatar-manifest.js?v=v3-avatar-duo';
 import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 import { usePersistedState } from '../../../components/shared/persisted-state.js';
 import {
@@ -321,6 +321,7 @@ export function Local({ active = true } = {}) {
   }), [canvasLang, canvasTab]);
   const [duoActivo, setDuoActivo]                   = useState(false);
   const duoRef                                      = useRef(null);
+  const [duoVisual, setDuoVisual]                   = useState({ activeSpeaker: 'local', text: '', round: 0, phase: 'idle' });
   const [cloudMenu, setCloudMenu]                   = useState(null);
   const [plusOpen, setPlusOpen]                     = useState(null);
   const [pendingFiles, setPendingFiles]             = useState([]);
@@ -888,12 +889,11 @@ export function Local({ active = true } = {}) {
         run: ({ text }) => { setMensaje(text); return { chars: text.length, sent: false }; },
       },
       set_avatar_mode: {
-        description: 'Activa o desactiva el escenario Avatar local.',
+        description: 'Activa o desactiva la presentación Avatar sin cambiar el modo de conversación.',
         input: { enabled: { type: 'boolean', required: true } },
         run: ({ enabled }) => {
-          if (enabled && cloudVisible) throw new Error('Cierra Cloud antes de activar el modo Avatar local');
           setAvatarMode(enabled);
-          return { avatarMode: enabled };
+          return { avatarMode: enabled, conversationMode: duoActivo ? 'duo' : 'single' };
         },
       },
       set_presence: {
@@ -902,7 +902,7 @@ export function Local({ active = true } = {}) {
         run: ({ visible }) => { setLocalDockVisible(visible); return { visible }; },
       },
     },
-  }), [lyraOnline, avatarMode, localDockVisible, cloudVisible]);
+  }), [lyraOnline, avatarMode, localDockVisible, cloudVisible, duoActivo]);
 
   const regenerarRespuesta = useCallback(async (msg) => {
     if (!msg || cargando.value) return;
@@ -1260,20 +1260,38 @@ export function Local({ active = true } = {}) {
     });
   }, [cloudUrl, recargarCloudIframe]);
 
-  // Duo Lyra ↔ Nube: pi y el LLM externo conversan por turnos en el hilo.
+  // Duo es el modo de conversación; Avatar/chat es una dimensión visual aparte.
   const toggleDuo = useCallback(() => {
-    if (duoActivo) { duoRef.current?.detener(); setDuoActivo(false); return; }
+    if (duoActivo) {
+      duoRef.current?.detener();
+      setDuoActivo(false);
+      setDuoVisual(prev => ({ ...prev, phase: 'cancelado' }));
+      return;
+    }
     if (!cloudVisible || (!usaExtPane && !iframeRef.current)) { Toast().show('Abre Cloud primero', 'warning', 2500); return; }
-    if (!lyraOnline) { Toast().show('Lyra local está offline — Duo necesita ambos agentes', 'warning', 3000); return; }
-    if (cargando.value) { Toast().show('Esperá a que Lyra termine', 'warning', 2000); return; }
+    if (!lyraOnline) { Toast().show('Lyria local está offline — Duo necesita ambos agentes', 'warning', 3000); return; }
+    if (cargando.value) { Toast().show('Esperá a que Lyria termine', 'warning', 2000); return; }
     const duo = crearDuoLyraCloud();
     duoRef.current = duo;
     setDuoActivo(true);
+    setDuoVisual({ activeSpeaker: 'local', text: '', round: 0, phase: 'conectando' });
     Toast().show('Duo iniciado — Lyria y ' + (AI_LABELS[cloudAiId] || 'Nube'), 'info', 2000);
     duo.iniciar(
       { iframe: iframeRef.current, model: modeloSeleccionado.value, convId: cloudConvIdActivo },
-      { onEstado: e => { if (['fin', 'cancelado', 'error'].includes(e)) setDuoActivo(false); },
-        onError: m => Toast().show('Duo: ' + m, 'error', 3000) },
+      {
+        onEstado: phase => {
+          setDuoVisual(prev => ({ ...prev, phase }));
+          if (['fin', 'cancelado', 'error'].includes(phase)) setDuoActivo(false);
+        },
+        onTurn: turn => setDuoVisual({
+          activeSpeaker: turn.speaker,
+          text: turn.text || '',
+          round: turn.round,
+          phase: turn.phase,
+          error: turn.error || null,
+        }),
+        onError: m => Toast().show('Duo: ' + m, 'error', 3000),
+      },
     );
   }, [duoActivo, cloudVisible, cloudAiId, usaExtPane, lyraOnline, cloudConvIdActivo]);
 
@@ -1290,11 +1308,16 @@ export function Local({ active = true } = {}) {
   }, [cloudExpanded, cloudHidden]);
 
   const closeCloud = useCallback(() => {
+    if (duoActivo) {
+      duoRef.current?.detener();
+      setDuoActivo(false);
+      setDuoVisual(prev => ({ ...prev, phase: 'cancelado' }));
+    }
     invalidarCloudRelay(iframeRef.current);
     setCloudVisible(false);
     setCloudExpanded(false);
     setCloudHidden(false);
-  }, []);
+  }, [duoActivo]);
 
   // AURORA CONTROLA al iframe de la extensión (no al revés): reporta el rect
   // del placeholder y la extensión dibuja el iframe EXACTAMENTE ahí. Debe
@@ -1315,7 +1338,7 @@ export function Local({ active = true } = {}) {
       // Oculto manualmente o detrás de otra vista: el placeholder no tiene un
       // rect útil. Avisar hidden:true para que el iframe externo no tape Home,
       // pero conservar el pane montado y con su sesión autenticada viva.
-      if (!active || cloudHidden) {
+      if (!active || cloudHidden || avatarMode) {
         const clave = `hidden,${active ? 'panel' : 'view'},${cloudUrl}`;
         if (clave === ultimo) return;
         ultimo = clave;
@@ -1363,7 +1386,7 @@ export function Local({ active = true } = {}) {
     // aunque el effect corra antes de que React lo pinte.
     const iv = setInterval(report, 300);
     return () => { ro.disconnect(); window.removeEventListener('resize', report); window.removeEventListener('scroll', report, true); cancelAnimationFrame(raf); clearInterval(iv); };
-  }, [usaExtPane, cloudVisible, cloudExpanded, cloudHidden, cloudUrl, active]);
+  }, [usaExtPane, cloudVisible, cloudExpanded, cloudHidden, cloudUrl, active, avatarMode]);
 
   // Al desmontar la vista, sacar el iframe de la extensión (no dejar huérfano).
   useEffect(() => () => {
@@ -1525,7 +1548,7 @@ export function Local({ active = true } = {}) {
           ? 'tool-use'
           : ultimoBloqueVivo?.tipo === 'thinking' || (!ultimoBloqueVivo && thinkingVal)
             ? 'thinking'
-            : (cargandoVal || streamingVal || cloudGenerandoVal)
+            : (cargandoVal || streamingVal)
               ? 'working'
               : activityOutcome || 'ready';
 
@@ -1545,19 +1568,66 @@ export function Local({ active = true } = {}) {
   const avatarResponseRaw = (cargandoVal || streamingVal || thinkingVal)
     ? avatarLiveText
     : (avatarLastMessage?.content || '');
-  const avatarResponseHtml = avatarResponseRaw ? renderizarContenido(avatarResponseRaw) : '';
+  const avatarCloudMessage = [...visibleMessages].reverse().find(msg =>
+    msg.role === 'assistant' && msg._via === 'direct-ai'
+  );
+  const cloudPresenceState = !cloudVisible
+    ? 'offline'
+    : cloudStatus.fase === 'submitted'
+      ? 'thinking'
+      : cloudGenerandoVal
+        ? 'working'
+        : cloudStatus.ok === false
+          ? 'error'
+          : 'ready';
+  const cloudAvatarManifest = createCloudAvatarManifest({
+    id: `cloud-${cloudAiId || 'provider'}`,
+    name: cloudAiLabel,
+  });
+  const duoActiveState = duoVisual.phase === 'start'
+    ? 'thinking'
+    : duoVisual.phase === 'stream'
+      ? 'speaking'
+      : duoVisual.phase === 'error'
+        ? 'error'
+        : duoVisual.phase === 'done'
+          ? 'complete'
+          : duoVisual.phase === 'conectando'
+            ? 'working'
+            : 'ready';
+  const avatarActors = duoActivo
+    ? [
+        {
+          id: 'local', name: 'Lyria', manifest: LYRIA_AVATAR,
+          state: duoVisual.activeSpeaker === 'local' ? duoActiveState : 'listening',
+        },
+        {
+          id: 'cloud', name: cloudAiLabel, manifest: cloudAvatarManifest,
+          state: duoVisual.activeSpeaker === 'cloud' ? duoActiveState : 'listening',
+        },
+      ]
+    : cloudVisible
+      ? [{ id: 'cloud', name: cloudAiLabel, manifest: cloudAvatarManifest, state: cloudPresenceState }]
+      : [{ id: 'local', name: 'Lyria', manifest: LYRIA_AVATAR, state: lyriaPresenceState }];
+  const avatarActiveSpeaker = duoActivo ? duoVisual.activeSpeaker : (cloudVisible ? 'cloud' : 'local');
+  const avatarSceneResponseRaw = duoActivo
+    ? duoVisual.text
+    : cloudVisible
+      ? (avatarCloudMessage?.content || '')
+      : avatarResponseRaw;
+  const avatarResponseHtml = avatarSceneResponseRaw ? renderizarContenido(avatarSceneResponseRaw) : '';
 
   return html`
-    <div class="llama-view ${canvasVisibleVal ? 'canvas-open' : ''} ${cloudVisible && cloudExpanded ? 'cloud-expanded' : ''} ${avatarMode ? 'avatar-mode' : ''}" data-lyria-state=${lyriaPresenceState}>
+    <div class="llama-view ${canvasVisibleVal ? 'canvas-open' : ''} ${cloudVisible && cloudExpanded ? 'cloud-expanded' : ''} ${avatarMode ? 'avatar-mode' : ''} ${duoActivo ? 'duo-active' : ''}" data-lyria-state=${lyriaPresenceState} data-presentation-mode=${avatarMode ? 'avatar' : 'chat'} data-conversation-mode=${duoActivo ? 'duo' : 'single'}>
 
       <div class=${'lyra-session-bar flex items-center gap-1 px-2 py-1.5 flex-wrap ' + panelTopClass}>
         <button class=${mostrarHistorial ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarHistorial(v => !v)} title="Historial de chats"><${Icon} name="history" size=${14}/></button>
         <button class=${mostrarParametros ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarParametros(v => !v)} title="Parámetros del modelo"><${Icon} name="settings" size=${14}/></button>
         <button class=${mostrarToolbar ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarToolbar(v => !v)} title="Herramientas"><${Icon} name="toolkit" size=${14}/></button>
         <button class=${controlBtnIdle} onClick=${nuevoChat} title="Nuevo chat"><${Icon} name="plus" size=${14}/></button>
-        <button class=${avatarMode ? controlBtnActive : controlBtnIdle} disabled=${cloudVisible}
+        <button class=${avatarMode ? controlBtnActive : controlBtnIdle}
           onClick=${() => setAvatarMode(value => !value)}
-          title=${cloudVisible ? 'Modo Avatar local: cierra Cloud primero' : avatarMode ? 'Volver al chat' : 'Modo Avatar'}><${Icon} name="film" size=${14}/></button>
+          title=${avatarMode ? 'Volver al chat' : 'Modo Avatar'}><${Icon} name="film" size=${14}/></button>
         <span class="flex-1"></span>
         ${modelosDisp.length > 0
           ? html`
@@ -1675,8 +1745,9 @@ export function Local({ active = true } = {}) {
       `}
 
       ${avatarMode && html`
-        <${AvatarStage}
-          state=${lyriaPresenceState}
+        <${AvatarScene}
+          actors=${avatarActors}
+          activeSpeaker=${avatarActiveSpeaker}
           responseHtml=${avatarResponseHtml}
           onHistory=${() => setMostrarHistorial(value => !value)}
           onExit=${() => setAvatarMode(false)}
