@@ -79,7 +79,11 @@ export async function cargarMensajes(chatId) {
 export async function guardarMensaje(chatId, rol, texto, estructura = null) {
   if (!chatId || !texto) return null;
 
-  const localMsg = normalizeMensaje({ role: rol, content: texto, ts: Date.now() });
+  // Conservar la estructura también en el candidato local. Si el backend no
+  // devuelve un body completo, appendIfNotLast fusiona este objeto con la
+  // copia optimista: antes `_piTurn: null` pisaba la cronología rica que ya
+  // contenía thinking + tools + texto.
+  const localMsg = normalizeMensaje({ role: rol, content: texto, ts: Date.now(), estructura });
 
   try {
     const res = await fetch(`${BASE}/db/chats/mensajes`, {

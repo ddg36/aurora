@@ -27,9 +27,9 @@ export function filtrarComandos(lista, texto) {
 }
 
 export function iconoComando(source) {
-  if (source === 'builtin') return '⚙️';
-  if (source === 'extension') return '🧩';
-  if (source === 'skill') return '📚';
-  if (source === 'template') return '📝';
-  return '/';
+  if (source === 'builtin') return 'settings';
+  if (source === 'extension') return 'puzzle';
+  if (source === 'skill') return 'book';
+  if (source === 'template') return 'note';
+  return 'command';
 }

@@ -3,7 +3,8 @@ const { useState, useEffect } = globalThis.preactHooks;
 import { ejecutarCadena, PLANTILLAS } from '../scripts/ejecutar.js';
 import { fetchModels, cancelarMensaje } from '../../../components/shared/lyra-ws.js';
 import { renderMarkdown } from '../../../components/shared/markdown.js';
-import { Button, Chip, ChipGroup, Select } from '../../../components/index.js';
+import { Button, Chip, ChipGroup, Input, Select, Textarea, ToolPage, ToolHeader, ToolSection } from '../../../components/index.js?v=v1-surface-convergence-1';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 
 let nextId = 1;
 const nuevoPaso = () => ({ id: nextId++, nombre: `Paso`, instruccion: '' });
@@ -45,8 +46,9 @@ export default function Chain() {
     setEstado({});
   };
 
-  const ejecutar = async () => {
-    if (!entrada.trim() || corriendo) return;
+  const ejecutar = async (input = entrada) => {
+    const source = String(input || '').trim();
+    if (!source || corriendo) return;
     setCorriendo(true);
     setErr('');
     setSalidas({});
@@ -54,7 +56,7 @@ export default function Chain() {
     try {
       await ejecutarCadena({
         pasos,
-        entrada,
+        entrada: source,
         model: modelo,
         onPasoInicio: (i) => setEstado(s => ({ ...s, [i]: 'corriendo' })),
         onToken: (i, texto) => setSalidas(s => ({ ...s, [i]: texto })),
@@ -64,42 +66,52 @@ export default function Chain() {
       setErr(e.message);
     }
     setCorriendo(false);
+    return { steps: pasos.length, outputs: salidas };
   };
 
-  return html`
-    <div class="w-full max-w-4xl mx-auto p-4">
-      <h1 class="text-lg font-semibold mb-1">⛓ Chain</h1>
-      <p class="text-xs text-white/40 mb-3">Cadena de prompts: la salida de cada paso alimenta al siguiente</p>
+  useEffect(() => registerAIView({
+    id: 'chain',
+    description: 'Transformación secuencial: cada salida alimenta el siguiente paso.',
+    actions: {
+      status: { description: 'Resume modelo, pasos y ejecución actuales.', readOnly: true, run: () => ({ model: modelo, running: corriendo, inputChars: entrada.length, steps: pasos.map((p, i) => ({ index: i, name: p.nombre, instruction: p.instruccion, status: estado[i] || 'pending' })) }) },
+      list_templates: { description: 'Lista cadenas iniciales disponibles.', readOnly: true, run: () => PLANTILLAS.map(p => ({ name: p.nombre, steps: p.pasos })) },
+      load_template: { description: 'Carga una plantilla conocida en el editor.', input: { name: { type: 'string', required: true } }, run: ({ name }) => { const item = PLANTILLAS.find(p => p.nombre === name); if (!item) throw new Error(`Plantilla desconocida: ${name}`); cargarPlantilla(item); return { name, steps: item.pasos.length }; } },
+      execute: { description: 'Ejecuta la cadena visible con una entrada inicial.', input: { input: { type: 'string', required: true, maxLength: 120000 } }, run: ({ input }) => ejecutar(input) },
+    },
+  }), [modelo, corriendo, entrada.length, pasos, estado, salidas]);
 
-      <${ChipGroup} class="mb-4">
+  return html`
+    <${ToolPage} wide>
+      <${ToolHeader} icon="repeat" eyebrow="Flujo" title="Chain" description="La salida de cada paso se convierte en la entrada del siguiente." />
+      <${ChipGroup}>
         ${PLANTILLAS.map(p => html`
           <${Chip} key=${p.nombre} onClick=${() => cargarPlantilla(p)}>${p.nombre}<//>
         `)}
       <//>
 
       ${pasos.map((p, i) => html`
-        <div key=${p.id} class="bg-white/5 rounded-lg p-2 mb-2">
+        <${ToolSection} key=${p.id} class="chain-step" title=${`${i + 1}. ${p.nombre}`} meta=${estado[i] === 'corriendo' ? 'ejecutando' : estado[i] === 'ok' ? 'completado' : 'pendiente'}>
           <div class="flex items-center gap-2 mb-1">
             <span class=${`w-5 h-5 rounded-full text-[10px] flex items-center justify-center font-semibold
               ${estado[i] === 'ok' ? 'bg-emerald-500/30 text-emerald-300' :
                 estado[i] === 'corriendo' ? 'bg-amber-500/30 text-amber-300 animate-pulse' :
                 'bg-white/10 text-white/50'}`}>${i + 1}</span>
-            <input
-              class="bg-transparent text-xs font-semibold outline-none flex-1 min-w-0"
+            <${Input}
+              class="flex-1 min-w-0"
               value=${p.nombre}
               onInput=${e => setPaso(p.id, 'nombre', e.target.value)}
-            />
-            <${Button} iconOnly onClick=${() => moverPaso(i, -1)} title="Subir">↑<//>
-            <${Button} iconOnly onClick=${() => moverPaso(i, 1)} title="Bajar">↓<//>
-            <${Button} iconOnly variant="danger" onClick=${() => quitarPaso(p.id)} title="Quitar paso">✕<//>
+            ><//>
+            <${Button} icon="chevronLeft" iconOnly onClick=${() => moverPaso(i, -1)} title="Subir" />
+            <${Button} icon="chevronRight" iconOnly onClick=${() => moverPaso(i, 1)} title="Bajar" />
+            <${Button} icon="close" iconOnly variant="danger" onClick=${() => quitarPaso(p.id)} title="Quitar paso" />
           </div>
-          <textarea
-            class="w-full bg-black/20 rounded p-2 text-xs outline-none resize-y text-white/70 h-14"
+          <${Textarea}
+            class="w-full h-16 resize-y"
             placeholder="Instrucción de este paso (system prompt)…"
             value=${p.instruccion}
             onInput=${e => setPaso(p.id, 'instruccion', e.target.value)}
             spellcheck="false"
-          />
+          ><//>
           ${salidas[i] != null && html`
             <div class="mt-1">
               <${Chip} active=${abierto[i] !== false} onClick=${() => setAbierto(a => ({ ...a, [i]: !a[i] }))}>
@@ -111,19 +123,13 @@ export default function Chain() {
               `}
             </div>
           `}
-        </div>
+        <//>
       `)}
 
-      <${Chip} onClick=${agregarPaso} class="mb-4">＋ Agregar paso<//>
+      <${Button} icon="plus" size="sm" onClick=${agregarPaso}>Agregar paso<//>
 
-      <textarea
-        class="w-full h-24 bg-white/5 rounded-lg p-3 text-xs font-mono outline-none resize-y text-white/80"
-        placeholder="Entrada inicial de la cadena…"
-        value=${entrada}
-        onInput=${e => setEntrada(e.target.value)}
-        spellcheck="false"
-      />
-
+      <${ToolSection} title="Entrada y ejecución" description="El material inicial que atravesará toda la cadena.">
+      <${Textarea} class="w-full h-24 font-mono resize-y" placeholder="Entrada inicial de la cadena…" value=${entrada} onInput=${e => setEntrada(e.target.value)} spellcheck="false"><//>
       <div class="flex items-center gap-2 mt-2 flex-wrap">
         <${Select} size="sm" class="min-w-0 flex-shrink" value=${modelo} onChange=${e => setModelo(e.target.value)}>
           ${modelos.map(m => {
@@ -133,16 +139,16 @@ export default function Chain() {
         <//>
         <span class="flex-1" />
         ${corriendo && html`
-          <${Chip} variant="yt" onClick=${cancelarMensaje}>■ Cancelar<//>
+          <${Button} icon="stop" size="sm" variant="danger" onClick=${cancelarMensaje}>Cancelar<//>
         `}
-        <${Chip}
-          variant="accent"
+        <${Button} icon="play" size="sm" variant="primary"
           onClick=${ejecutar}
           disabled=${corriendo || !entrada.trim() || pasos.length === 0}
-        >${corriendo ? 'Ejecutando…' : '▶ Ejecutar cadena'}<//>
+        >${corriendo ? 'Ejecutando…' : 'Ejecutar cadena'}<//>
       </div>
+      <//>
 
       ${err && html`<div class="text-xs text-red-400/70 mt-2">${err}</div>`}
-    </div>
+    <//>
   `;
 }

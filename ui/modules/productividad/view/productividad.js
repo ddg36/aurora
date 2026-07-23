@@ -3,9 +3,10 @@ const { useEffect, useMemo, useState } = globalThis.preactHooks;
 
 import {
   Button, Chip, AutoFitChips, Empty, Input, Panel, PanelBody, PanelHeader,
-  Select, Status, Textarea,
-} from '../../../components/index.js';
+  Select, Status, Textarea, ToolPage, ToolHeader, MetricStrip, Metric,
+} from '../../../components/index.js?v=v1-surface-convergence-1';
 import { JsonBlock } from '../../../components/shared/JsonBlock.js';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 import {
   actualizarTask,
   capturarPagina,
@@ -47,18 +48,14 @@ function SectionNav({ active, setActive }) {
 function StatStrip({ data, ext }) {
   const counts = data?.counts || {};
   return html`
-    <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-      ${['capturas', 'research', 'tasks', 'clipboard', 'prices'].map(k => html`
-        <div class="rounded-md border border-aurora-border bg-aurora-surface-2 px-3 py-2">
-          <div class="text-xs text-aurora-text-dim">${k}</div>
-          <div class="text-xl font-semibold text-aurora-text">${counts[k] || 0}</div>
-        </div>
-      `)}
-      <div class="rounded-md border border-aurora-border bg-aurora-surface-2 px-3 py-2">
-        <div class="text-xs text-aurora-text-dim">extension</div>
-        <${Status} tone=${ext?.connected ? 'ok' : 'err'}>${ext?.connected ? 'online' : 'offline'}</${Status}>
-      </div>
-    </div>
+    <${MetricStrip}>
+      <${Metric} icon="camera" label="Capturas" value=${counts.capturas || 0} accent />
+      <${Metric} icon="search" label="Research" value=${counts.research || 0} />
+      <${Metric} icon="productivity" label="Tareas" value=${counts.tasks || 0} />
+      <${Metric} icon="clipboard" label="Clipboard" value=${counts.clipboard || 0} />
+      <${Metric} icon="tag" label="Precios" value=${counts.prices || 0} />
+      <${Metric} icon="puzzle" label="Extensión" value=${ext?.connected ? 'lista' : 'fuera'} />
+    <//>
   `;
 }
 
@@ -76,7 +73,7 @@ function CaptureView({ captures, reload, setSelectedCapture }) {
     }
   }
   return html`
-    <div class="grid gap-3 xl:grid-cols-[.8fr_1.2fr]">
+    <div class="tool-module-grid">
       <${Panel}>
         <${PanelHeader}>
           <div class="font-semibold text-aurora-text">Capturar contexto</div>
@@ -391,6 +388,18 @@ export default function Productividad() {
 
   useEffect(() => { reload(); }, []);
 
+  useEffect(() => registerAIView({
+    id: 'productividad',
+    description: 'Contexto web convertido en capturas, research, tareas, clipboard, formularios, reuniones, sesiones y vigilancia de precios.',
+    actions: {
+      status: { description: 'Resume sección, extensión y conteos operativos.', readOnly: true, run: () => ({ section: active, extensionConnected: !!ext?.connected, counts: stats?.counts || {}, selectedCapture }) },
+      list_tasks: { description: 'Lista compromisos persistidos.', readOnly: true, run: () => tasks },
+      add_task: { description: 'Crea una tarea recuperable.', input: { title: { type: 'string', required: true, maxLength: 1000 }, captureId: { type: 'number', required: false } }, run: async ({ title, captureId = null }) => { const result = await crearTask({ titulo: title, captura_id: captureId }); await reload(); return result; } },
+      complete_task: { description: 'Marca una tarea existente como completada.', input: { id: { type: 'number', required: true } }, run: async ({ id }) => { const result = await actualizarTask(id, { estado: 'completada' }); await reload(); return result; } },
+      select_section: { description: 'Cambia la herramienta operativa visible.', input: { section: { type: 'string', enum: SECTIONS, required: true } }, run: ({ section }) => { setActive(section); return { section }; } },
+    },
+  }), [active, ext, stats, selectedCapture, tasks]);
+
   const body = useMemo(() => {
     if (active === 'Research') return html`<${ResearchView} captures=${captures} research=${research} reload=${reload} />`;
     if (active === 'Tasks') return html`<${TasksView} captures=${captures} tasks=${tasks} reload=${reload} />`;
@@ -403,18 +412,12 @@ export default function Productividad() {
   }, [active, captures, research, tasks, clipboard, profiles, templates, meetings, tabSessions, prices]);
 
   return html`
-    <div class="h-full min-h-0 flex flex-col gap-3 overflow-auto p-3">
-      <div class="flex flex-wrap items-center gap-3">
-        <div class="min-w-[220px] flex-1">
-          <h1 class="text-lg font-semibold text-aurora-text">Productividad</h1>
-          <div class="text-xs text-aurora-text-dim">Capturas, research, tareas, clipboard, formularios, reuniones, tabs y precios</div>
-        </div>
-        <${Button} size="sm" onClick=${reload}>Recargar</${Button}>
-      </div>
+    <${ToolPage} wide>
+      <${ToolHeader} icon="productivity" eyebrow="Flujo operativo" title="Productividad" description="Convierte la página actual en contexto, evidencia y compromisos recuperables." actions=${html`<${Button} icon="refresh" size="sm" onClick=${reload}>Recargar<//>`} />
       <${StatStrip} data=${stats} ext=${ext} />
       <${SectionNav} active=${active} setActive=${setActive} />
       ${selectedCapture && html`<${Status} tone="ok">Captura seleccionada #${selectedCapture}</${Status}>`}
       ${body}
-    </div>
+    <//>
   `;
 }

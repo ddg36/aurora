@@ -19,6 +19,7 @@ RUTAS_PUBLICAS = {
     "/ping",
     "/health",
     "/favicon.ico",
+    "/setup/status",
     "/db/usuarios/init",
     "/db/usuarios/login",
 }

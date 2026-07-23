@@ -1,4 +1,7 @@
 import { copiarTexto } from '../../../../components/shared/clipboard.js';
+import { iconSvg } from '../../../../components/Icon.js';
+
+const uiIcon = name => iconSvg(name, { size: 13, strokeWidth: 1.8 });
 
 const KW_POR_LENGUAJE = {
   py:     'def|class|return|if|elif|else|for|while|import|from|as|with|try|except|finally|raise|pass|break|continue|lambda|yield|None|True|False|self|async|await|and|or|not|in|is|print|len|range',
@@ -109,14 +112,14 @@ export function renderMarkdownLight(text) {
       const hl = highlightCode(p.c, p.lang);
       const raw = escape(p.c).replace(/"/g, '&quot;');
       const runBtn = LENGUAJES_EJECUTABLES.has(lang.toLowerCase())
-        ? `<button class="code-btn js-run-code" title="Ejecutar en cuarto de Lyra">▶ Run</button>`
+        ? `<button class="code-btn js-run-code" title="Ejecutar en cuarto de Lyria">${uiIcon('play')} Ejecutar</button>`
         : '';
       return `<div class="code-block" data-code="${raw}" data-lang="${escape(lang)}">` +
                `<div class="code-hdr">` +
                  `<span class="code-lang">${escape(lang)}</span>` +
-                 `<button class="code-btn js-copy-code"     title="Copiar código">⎘ Copiar</button>` +
-                 `<button class="code-btn js-code-to-notes" title="Enviar a notas">✎ Notas</button>` +
-                 `<button class="code-btn js-open-canvas"   title="Abrir en Canvas">◱ Canvas</button>` +
+                 `<button class="code-btn js-copy-code"     title="Copiar código">${uiIcon('copy')} Copiar</button>` +
+                 `<button class="code-btn js-code-to-notes" title="Enviar a notas">${uiIcon('note')} Notas</button>` +
+                 `<button class="code-btn js-open-canvas"   title="Abrir en Canvas">${uiIcon('code')} Canvas</button>` +
                  runBtn +
                `</div>` +
                `<pre>${hl}</pre>` +
@@ -292,8 +295,8 @@ export function inicializarEventosCodigo(containerEl, { onNotas, onRun } = {}) {
     btn.addEventListener('click', async () => {
       const raw = btn.closest('.code-block')?.dataset.code || '';
       const ok = await copiarTexto(raw);
-      btn.textContent = ok ? '✓ Copiado' : '✗ No se pudo copiar';
-      setTimeout(() => { btn.textContent = '⎘ Copiar'; }, 1500);
+      btn.innerHTML = ok ? `${uiIcon('check')} Copiado` : `${uiIcon('warning')} No se pudo copiar`;
+      setTimeout(() => { btn.innerHTML = `${uiIcon('copy')} Copiar`; }, 1500);
     });
   });
 
@@ -305,11 +308,11 @@ export function inicializarEventosCodigo(containerEl, { onNotas, onRun } = {}) {
       if (!raw) return;
       try {
         await onNotas?.('```\n' + raw + '\n```');
-        btn.textContent = '✓ En notas';
+        btn.innerHTML = `${uiIcon('check')} En notas`;
       } catch {
-        btn.textContent = '✗ Error';
+        btn.innerHTML = `${uiIcon('warning')} Error`;
       }
-      setTimeout(() => { btn.textContent = '✎ Notas'; }, 1500);
+      setTimeout(() => { btn.innerHTML = `${uiIcon('note')} Notas`; }, 1500);
     });
   });
 
@@ -320,14 +323,14 @@ export function inicializarEventosCodigo(containerEl, { onNotas, onRun } = {}) {
       const raw = btn.closest('.code-block')?.dataset.code || '';
       if (!raw) return;
       btn.disabled = true;
-      btn.textContent = '⟳ Ejecutando…';
+      btn.innerHTML = `${uiIcon('refresh')} Ejecutando…`;
       try {
         await onRun?.(raw);
-        btn.textContent = '✓ Ejecutado';
+        btn.innerHTML = `${uiIcon('check')} Ejecutado`;
       } catch {
-        btn.textContent = '✗ Error';
+        btn.innerHTML = `${uiIcon('warning')} Error`;
       }
-      setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Run'; }, 2000);
+      setTimeout(() => { btn.disabled = false; btn.innerHTML = `${uiIcon('play')} Ejecutar`; }, 2000);
     });
   });
 

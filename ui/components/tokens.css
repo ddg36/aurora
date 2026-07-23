@@ -1,82 +1,107 @@
-/* AURORA/SKIN/THEMES/VARIABLES — Variables CSS del sistema. Tema por defecto: Dark Elegant */
-
+/* Aurora Visual System vNext — semantic tokens only. */
 :root {
-  /* ── Layout — fijo, mismo núcleo en mobile y escritorio ── */
-  /* Ancho real reservado por el riel de navegación (NavBar). Cualquier
-     elemento position:fixed anclado a un borde de pantalla en cualquier
-     vista debe restar var(--aurora-rail-w) en vez de asumir 0 — así nunca
-     queda tapado por el riel, sin tener que arreglar caso por caso. */
-  --aurora-rail-w: 52px;
+  color-scheme: dark;
 
-  /* ── Superficies — fijas ──────────────────────────────── */
-  --aurora-bg:       #000000;
-  --aurora-surface:  #0a0a0a;
-  --aurora-surface-1: #0a0a0a;
-  --aurora-surface-2: #111116;
-  --aurora-surface3: #1c1c1c;
-  --aurora-surface-hover: rgba(255,255,255,0.045);
-  --aurora-field: rgba(255,255,255,0.035);
+  /* Physical side-panel geometry */
+  --aurora-rail-w: 44px;
+  --aurora-footer-h: 44px;
+  --aurora-control-h: 34px;
+  --aurora-control-h-sm: 28px;
+  --aurora-content-max: 1120px;
 
-  /* ── Tipografía — fija ────────────────────────────────── */
-  --aurora-text:       #ffffff;
-  --aurora-text-muted: #9a99a8;
-  --aurora-text-dim:   #6b6a7a;
+  /* Neutral material scale */
+  --aurora-bg: #090a0c;
+  --aurora-surface: #0d0f12;
+  --aurora-surface-1: #111318;
+  --aurora-surface-2: #16191f;
+  --aurora-surface3: #1d2129;
+  --aurora-surface-hover: rgba(255, 255, 255, .055);
+  --aurora-field: rgba(255, 255, 255, .035);
+  --aurora-overlay: rgba(9, 10, 12, .82);
 
-  /* ── Glass — fijo ─────────────────────────────────────── */
-  --aurora-glass:           rgba(255,255,255,0.03);
-  --aurora-glass-highlight: rgba(255,255,255,0.06);
-  --aurora-glass-shadow:    rgba(13,12,34,0.5);
+  /* Text */
+  --aurora-text: #f2f4f7;
+  --aurora-text-muted: #a1a8b3;
+  --aurora-text-dim: #69717d;
+  --aurora-text-inverse: #090a0c;
 
-  /* ── Estados — fijos ──────────────────────────────────── */
-  --aurora-warning: #fbbf24;
-  --aurora-error:   #c73e3e;
-  --aurora-success: #4caf50;
+  /* One accent, used only for selection and focus */
+  --aurora-accent: #a78bfa;
+  --aurora-accent-rgb: 167, 139, 250;
+  --aurora-link: #bba7ff;
+  --aurora-surface2: color-mix(in srgb, var(--aurora-accent) 10%, var(--aurora-surface));
+  --aurora-edge: var(--aurora-accent);
+  --aurora-edge-dim: color-mix(in srgb, var(--aurora-accent) 48%, transparent);
+  --aurora-edge-glow: color-mix(in srgb, var(--aurora-accent) 16%, transparent);
+  --aurora-text-bright: var(--aurora-accent);
+  --aurora-accent-dim: color-mix(in srgb, var(--aurora-accent) 55%, var(--aurora-bg));
+  --aurora-accent-glow: var(--aurora-edge-glow);
+  --aurora-glow: var(--aurora-edge-glow);
 
-  /* ── Forma / tipo — fijos ─────────────────────────────── */
-  --aurora-radius-xs: 3px;
+  /* Semantic state colors */
+  --aurora-info: #8ea8c9;
+  --aurora-success: #78b897;
+  --aurora-warning: #c8a96c;
+  --aurora-error: #d17878;
+
+  /* Borders and elevation */
+  --aurora-border: rgba(255, 255, 255, .085);
+  --aurora-border-quiet: rgba(255, 255, 255, .055);
+  --aurora-border-strong: rgba(255, 255, 255, .15);
+  --aurora-divider: rgba(255, 255, 255, .065);
+  --aurora-glass: rgba(13, 15, 18, .76);
+  --aurora-glass-highlight: rgba(255, 255, 255, .045);
+  --aurora-glass-shadow: rgba(0, 0, 0, .38);
+  --aurora-shadow-sm: 0 1px 2px rgba(0, 0, 0, .24);
+  --aurora-shadow-md: 0 16px 40px rgba(0, 0, 0, .34);
+  --aurora-shadow-lg: 0 28px 72px rgba(0, 0, 0, .48);
+  --aurora-focus-ring: 0 0 0 2px color-mix(in srgb, var(--aurora-accent) 24%, transparent);
+
+  /* Shape */
+  --aurora-radius-xs: 4px;
   --aurora-radius-sm: 6px;
-  --aurora-radius:    8px;
-  --aurora-radius-md: 8px;
-  --aurora-radius-lg: 12px;
-  --aurora-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
-  --aurora-font-mono: 'Consolas', 'Fira Mono', 'Courier New', monospace;
+  --aurora-radius: 8px;
+  --aurora-radius-md: 10px;
+  --aurora-radius-lg: 14px;
+  --aurora-radius-pill: 999px;
 
-  /* ── Bordes ──────────────────────────────────────────────── */
-  --aurora-border:       rgba(255,255,255,0.08);
-  --aurora-border-quiet: rgba(255,255,255,0.055);
-  --aurora-border-strong: rgba(255,255,255,0.14);
-  --aurora-shadow-sm:    0 1px 2px rgba(0,0,0,0.28);
-  --aurora-shadow-md:    0 10px 30px rgba(0,0,0,0.32);
-  --aurora-focus-ring:   0 0 0 2px color-mix(in srgb, var(--aurora-accent) 16%, transparent);
+  /* Rhythm */
+  --aurora-space-1: 4px;
+  --aurora-space-2: 8px;
+  --aurora-space-3: 12px;
+  --aurora-space-4: 16px;
+  --aurora-space-5: 20px;
+  --aurora-space-6: 24px;
 
-  /* ── Acento — defaults, ui/themes/manager.js los sobreescribe ─ */
-  --aurora-accent:      #ef4444;
-  --aurora-accent-rgb:  239, 68, 68;
-  --aurora-link:        #fb7185;
-  --aurora-surface2:    #2b0000;
-  --aurora-edge:        #ef4444;
-  --aurora-edge-dim:    #7f0000;
-  --aurora-edge-glow:   rgba(239,68,68,0.2);
-  --aurora-text-bright: #ef4444;
-  --aurora-accent-dim:  #7f0000;
-  --aurora-accent-glow: rgba(239,68,68,0.2);
-  --aurora-glow:        rgba(239,68,68,0.2);
+  /* Type */
+  --aurora-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --aurora-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --aurora-font-xs: 11px;
+  --aurora-font-sm: 12px;
+  --aurora-font-md: 13px;
+  --aurora-font-lg: 15px;
+  --aurora-leading: 1.5;
 
-  /* ── Legacy aliases — compatibilidad con módulos migrados ── */
-  --accent:      var(--aurora-accent);
-  --accent-rgb:  var(--aurora-accent-rgb);
-  --au-accent:   var(--aurora-accent);
-  --bg:          var(--aurora-bg);
-  --surface:     var(--aurora-surface);
-  --surface2:    var(--aurora-surface2);
-  --surface3:    var(--aurora-surface3);
-  --text:        var(--aurora-text);
-  --text-dim:    var(--aurora-text-dim);
-  --text-muted:  var(--aurora-text-muted);
+  /* Motion */
+  --aurora-ease: cubic-bezier(.2, .8, .2, 1);
+  --aurora-duration-fast: 120ms;
+  --aurora-duration: 180ms;
+
+  /* Compatibility aliases while legacy modules are consumed */
+  --accent: var(--aurora-accent);
+  --accent-rgb: var(--aurora-accent-rgb);
+  --au-accent: var(--aurora-accent);
+  --bg: var(--aurora-bg);
+  --surface: var(--aurora-surface);
+  --surface2: var(--aurora-surface2);
+  --surface3: var(--aurora-surface3);
+  --text: var(--aurora-text);
+  --text-dim: var(--aurora-text-dim);
+  --text-muted: var(--aurora-text-muted);
   --text-bright: var(--aurora-text-bright);
-  --error:       var(--aurora-error);
-  --font-sans:   var(--aurora-font-sans);
-  --font-mono:   var(--aurora-font-mono);
-  --border:      var(--aurora-border);
-  --radius:      var(--aurora-radius);
+  --error: var(--aurora-error);
+  --font-sans: var(--aurora-font-sans);
+  --font-mono: var(--aurora-font-mono);
+  --border: var(--aurora-border);
+  --radius: var(--aurora-radius);
 }

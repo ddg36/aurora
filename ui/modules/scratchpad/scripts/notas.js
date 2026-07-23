@@ -6,7 +6,7 @@ const ARCHIVO = 'scratchpad.md';
 const STORAGE_PATH = '/db/ajustes/scratchpad_doc';
 const DOC_VERSION = 1;
 const AUTOSAVE_MS = 1500;
-const FALLBACK_WORKSPACE = '/media/almacen/deml/Downloads/core_instruction';
+const FALLBACK_WORKSPACE = '';
 const SAVE_MARKER = 'aurora-scratchpad-json:v1';
 
 export const NOTAS_ROOT = 'scratchpad';

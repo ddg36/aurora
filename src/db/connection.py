@@ -283,6 +283,16 @@ async def _mig_retired_protocol_slot_14(db):
     # Deliberately does not create or delete anything.
     return None
 
+
+async def _mig_json_family_default_enabled(db):
+    # Usuarios existentes sin ajuste explícito → activar JSON Family por defecto.
+    # INSERT OR IGNORE respeta a quienes ya tienen el valor (incluidos los que
+    # lo desactivaron con valor="false"). Solo toca los que nunca lo configuraron.
+    await db.execute("""
+        INSERT OR IGNORE INTO ajustes (usuario_id, clave, valor)
+        SELECT id, 'json_family_enabled_v1', 'true' FROM usuarios
+    """)
+
 async def _mig_drop_legacy_cloud_tool_journal(db):
     # JSON Family reemplazó por completo este journal duplicado. Los snapshots
     # reanudables permanecen en cloud_agent_turns/json_family_runs.
@@ -303,6 +313,7 @@ MIGRACIONES: list[tuple[int, str, object]] = [
     (12, "retirar journal legacy de cloud-tool", _mig_drop_legacy_cloud_tool_journal),
     (13, "turnos Pi estructurados en mensajes", _mig_mensajes_estructura),
     (14, "reserved retired protocol slot", _mig_retired_protocol_slot_14),
+    (15, "json_family_enabled_v1 default true para usuarios existentes", _mig_json_family_default_enabled),
 ]
 
 

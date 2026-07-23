@@ -4,8 +4,22 @@ import { cargarSesiones, fechaCorta } from '../scripts/sesion.js';
 import { cargarLog, TIPO_COLOR } from '../scripts/log.js';
 import { cargarCapturas } from '../scripts/capturas.js';
 import { postJSON } from '../../../components/shared/api.js';
-import { SplitPane } from '../../../components/shared/SplitPane.js';
-import { Chip } from '../../../components/index.js';
+import { Button, Chip, Empty, Icon, Status, Textarea, ToolPage, ToolHeader, ToolSection } from '../../../components/index.js?v=v1-surface-convergence-1';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
+
+function EventRow({ item, sequence }) {
+  const message = item.mensaje || item.resultado || '';
+  return html`
+    <div class="navigator-event">
+      <span class="navigator-event-sequence">#${item.id ?? sequence}</span>
+      <span class=${`navigator-event-type ${TIPO_COLOR[item.tipo] || ''}`}>${item.tipo || 'evento'}</span>
+      <div class="navigator-event-content">
+        <span>${message}</span>
+        ${item.url && html`<a href=${item.url} target="_blank"><${Icon} name="globe" size=${12}/>${item.url}</a>`}
+      </div>
+    </div>
+  `;
+}
 
 export default function WebNavigator() {
   const [sesiones, setSesiones] = useState([]);
@@ -27,6 +41,42 @@ export default function WebNavigator() {
   }, []);
 
   useEffect(() => { recargarSesiones(); }, []);
+
+  useEffect(() => registerAIView({
+    id: 'webnavigator',
+    description: 'Navegación autónoma orientada a un resultado verificable, con ejecución, eventos y evidencia persistente.',
+    actions: {
+      status: {
+        description: 'Resume la ejecución activa y la sesión seleccionada.',
+        readOnly: true,
+        run: () => ({ ejecutando, liveSesionId, objetivo: objetivo.trim(), selectedSessionId: sesion?.id || null, tab, liveEvents: liveLog.length }),
+      },
+      list_runs: {
+        description: 'Lista las ejecuciones recuperables conocidas por la vista.',
+        readOnly: true,
+        run: () => sesiones.map(s => ({ id: s.id, objetivo: s.objetivo, inicio: s.inicio || s.creado_en, resultado: s.resultado || null })),
+      },
+      execute: {
+        description: 'Inicia una navegación autónoma desde un objetivo humano terminado; no acepta una lista de clicks.',
+        input: { objective: { type: 'string', required: true, maxLength: 4000 } },
+        risk: 'external-navigation',
+        run: async ({ objective }) => {
+          const value = String(objective || '').trim();
+          if (!value) throw new Error('objective no puede estar vacío');
+          if (ejecutando) throw new Error('Web Navigator ya tiene una ejecución activa');
+          setObjetivo(value); setEjecutando(true); setLiveLog([]); setLiveSesionId(null); setTab('live');
+          try {
+            const res = await postJSON('/nav/run', { objetivo: value, max_steps: 30 });
+            if (res.ok === false) throw new Error(res.error || 'WebNavigator no disponible');
+            setLiveSesionId(res.id); conectarSSE(res.id);
+            return { sessionId: res.id, objective: value, status: 'running' };
+          } catch (error) {
+            setEjecutando(false); setErr(error?.message || String(error)); throw error;
+          }
+        },
+      },
+    },
+  }), [ejecutando, liveSesionId, objetivo, sesion, tab, liveLog.length, sesiones]);
 
   useEffect(() => {
     if (liveEndRef.current) liveEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -88,122 +138,43 @@ export default function WebNavigator() {
     setLiveSesionId(null);
   }
 
+  const stageTitle = tab === 'live'
+    ? `Ejecución #${liveSesionId || 'nueva'}`
+    : sesion?.objetivo || (sesion ? `Ejecución #${sesion.id}` : 'Actividad reciente');
+
   return html`
-    <${SplitPane} sidebarWidth="md:w-64" sidebarMaxH="max-h-52" sidebarClassName="flex flex-col" sidebar=${html`
-        <div class="p-2 border-b border-white/5">
-          <div class="text-xs font-semibold mb-2">🧭 Web Navigator</div>
-          <textarea
-            value=${objetivo}
-            onInput=${e => setObjetivo(e.target.value)}
-            onKeyDown=${e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ejecutar(); } }}
-            placeholder="Objetivo (Enter para ejecutar)"
-            rows="3"
-            class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white resize-none outline-none focus:border-white/25"
-          />
-          <${Chip}
-            variant="accent"
-            class="w-full justify-center mt-1"
-            onClick=${ejecutar}
-            disabled=${ejecutando || !objetivo.trim()}
-          >${ejecutando ? '⏳ Ejecutando…' : '▶ Ejecutar'}<//>
-          ${err && html`<div class="text-[10px] text-red-400/70 mt-1">${err}</div>`}
-        </div>
+    <${ToolPage} wide class="navigator-page">
+      <${ToolHeader} icon="globe" eyebrow="Navegación asistida" title="Web Navigator" description="Declara un resultado; Aurora navega, registra evidencia y devuelve una conclusión verificable." />
 
-        <div class="flex-1 overflow-y-auto p-2">
-          <div
-            onClick=${() => verSesion(null)}
-            class=${`px-2 py-1 rounded cursor-pointer text-xs mb-1
-              ${!sesion && tab !== 'live' ? 'bg-white/15' : 'hover:bg-white/5 text-white/60'}`}
-          >Todo el log</div>
-          ${liveSesionId && html`
-            <div
-              onClick=${() => setTab('live')}
-              class=${`px-2 py-1.5 rounded cursor-pointer mb-1
-                ${tab === 'live' ? 'bg-sky-800/40' : 'hover:bg-white/5'}`}
-            >
-              <div class="text-xs truncate flex items-center gap-1">
-                ${ejecutando ? html`<span class="animate-pulse">●</span>` : '✓'}
-                ${objetivo.trim().slice(0, 30) || `Sesión ${liveSesionId}`}
-              </div>
-              <div class="text-[10px] text-white/40">#${liveSesionId} — en vivo</div>
-            </div>
-          `}
-          ${sesiones.map(s => html`
-            <div
-              key=${s.id}
-              onClick=${() => verSesion(s)}
-              class=${`px-2 py-1.5 rounded cursor-pointer mb-1
-                ${sesion?.id === s.id && tab !== 'live' ? 'bg-white/15' : 'hover:bg-white/5'}`}
-            >
-              <div class="text-xs truncate">${s.objetivo || `Sesión ${s.id}`}</div>
-              <div class="text-[10px] text-white/40 flex gap-2">
-                <span>#${s.id}</span>
-                <span>${fechaCorta(s.inicio || s.creado_en)}</span>
-                ${s.resultado && html`<span class="text-emerald-400/60">✓</span>`}
-              </div>
-            </div>
-          `)}
-          ${sesiones.length === 0 && !liveSesionId && html`<div class="text-xs text-white/30 p-2">Sin sesiones</div>`}
+      <${ToolSection} title="Objetivo" description="Describe el resultado terminado, no una lista de clics." meta=${ejecutando ? html`<${Status} tone="loading">navegando<//>` : html`<span>Enter para ejecutar</span>`}>
+        <div class="navigator-command">
+          <${Textarea} value=${objetivo} onInput=${e => setObjetivo(e.target.value)} onKeyDown=${e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ejecutar(); } }} placeholder="Ejemplo: compara los precios visibles y devuelve la mejor opción con evidencia." rows="3" class="navigator-objective" />
+          <${Button} icon="play" variant="primary" onClick=${ejecutar} disabled=${ejecutando || !objetivo.trim()}>${ejecutando ? 'Navegando…' : 'Iniciar navegación'}<//>
         </div>
-      `}>
-        <div class="flex items-center gap-1 px-3 py-1.5 border-b border-white/5 text-xs">
-          ${tab !== 'live' && html`
-            <${Chip} active=${tab === 'log'} onClick=${() => setTab('log')}>Log (${log.length})<//>
-            <${Chip} active=${tab === 'capturas'} onClick=${() => setTab('capturas')}>Capturas (${capturas.length})<//>
-          `}
-          ${tab === 'live' && html`
-            <span class="text-white/60">Log en vivo</span>
-            ${liveSesionId && html`<span class="text-white/30 ml-2">#${liveSesionId}</span>`}
-          `}
-          ${sesion?.resultado && html`
-            <span class="ml-auto text-white/40 truncate max-w-xs">✓ ${sesion.resultado}</span>
-          `}
-        </div>
+        ${err && html`<div class="navigator-error">${err}</div>`}
+      <//>
 
-        <div class="flex-1 overflow-y-auto p-3">
-          ${tab === 'live' && html`
-            ${liveLog.length === 0 && html`<div class="text-xs text-white/30">Esperando…</div>`}
-            ${liveLog.map((l, i) => html`
-              <div key=${i} class="flex gap-2 text-xs py-1 border-b border-white/5 items-baseline">
-                <span class=${`w-16 shrink-0 ${TIPO_COLOR[l.tipo] || 'text-white/50'}`}>${l.tipo}</span>
-                <span class="text-white/70 flex-1 min-w-0 break-words">${l.mensaje || l.resultado || ''}</span>
-                ${l.url && html`<a href=${l.url} target="_blank" class="text-sky-300/60 underline truncate max-w-[160px] shrink-0">${l.url}</a>`}
-              </div>
-            `)}
-            <div ref=${liveEndRef} />
-          `}
+      <div class="navigator-workspace">
+        <${ToolSection} title="Ejecuciones" description="Retoma una investigación anterior." meta=${`${sesiones.length} guardadas`} flush>
+          <div class="navigator-runs">
+            <button class=${`navigator-run ${!sesion && tab !== 'live' ? 'is-active' : ''}`} onClick=${() => verSesion(null)}><${Icon} name="history" size=${14}/><span><strong>Actividad global</strong><small>Todos los eventos</small></span></button>
+            ${liveSesionId && html`<button class=${`navigator-run ${tab === 'live' ? 'is-active is-live' : ''}`} onClick=${() => setTab('live')}><${Icon} name="refresh" size=${14}/><span><strong>${objetivo.trim() || `Ejecución #${liveSesionId}`}</strong><small>#${liveSesionId} · en curso</small></span></button>`}
+            ${sesiones.map(s => html`<button key=${s.id} class=${`navigator-run ${sesion?.id === s.id && tab !== 'live' ? 'is-active' : ''}`} onClick=${() => verSesion(s)}><${Icon} name=${s.resultado ? 'check' : 'clock'} size=${14}/><span><strong>${s.objetivo || `Ejecución #${s.id}`}</strong><small>#${s.id} · ${fechaCorta(s.inicio || s.creado_en)}</small></span></button>`)}
+            ${sesiones.length === 0 && !liveSesionId && html`<${Empty} icon="history" title="Sin ejecuciones">El primer objetivo creará una línea de tiempo recuperable.<//>`}
+          </div>
+        <//>
 
-          ${tab === 'log' && html`
-            ${log.length === 0 && html`<div class="text-xs text-white/30">Sin entradas</div>`}
-            ${log.map(l => html`
-              <div key=${l.id} class="flex gap-2 text-xs py-1 border-b border-white/5 items-baseline">
-                <span class="text-white/30 w-10 shrink-0">#${l.id}</span>
-                <span class=${`w-16 shrink-0 ${TIPO_COLOR[l.tipo] || 'text-white/50'}`}>${l.tipo}</span>
-                <span class="text-white/70 flex-1 min-w-0 break-words">${l.mensaje}</span>
-                ${l.url && html`<a href=${l.url} target="_blank" class="text-sky-300/60 underline truncate max-w-[180px] shrink-0">${l.url}</a>`}
-              </div>
-            `)}
-          `}
-
-          ${tab === 'capturas' && html`
-            ${capturas.length === 0 && html`<div class="text-xs text-white/30">Sin capturas</div>`}
-            ${capturas.map(c => html`
-              <div key=${c.id} class="bg-white/5 rounded-lg p-2 mb-2 text-xs">
-                <div class="flex items-center gap-2 mb-1">
-                  <span class="font-semibold">${c.titulo}</span>
-                  <a href=${c.url} target="_blank" class="text-sky-300/60 underline truncate flex-1">${c.url}</a>
-                </div>
-                <div class="text-[10px] text-white/40 flex flex-wrap gap-x-3">
-                  ${c.selector && html`<span>selector: <code>${c.selector}</code></span>`}
-                  ${c.aria && html`<span>aria: ${c.aria}</span>`}
-                  ${c.testid && html`<span>testid: ${c.testid}</span>`}
-                  ${c.rol && html`<span>rol: ${c.rol}</span>`}
-                  ${c.placeholder && html`<span>placeholder: ${c.placeholder}</span>`}
-                </div>
-              </div>
-            `)}
-          `}
-        </div>
-      </${SplitPane}>
+        <${ToolSection} title=${stageTitle} description=${sesion?.resultado || (tab === 'live' ? 'Progreso en tiempo real.' : 'Eventos, evidencia y capturas de navegación.')} flush>
+          <div class="navigator-stage-tabs">
+            ${tab !== 'live' ? html`<${Chip} active=${tab === 'log'} onClick=${() => setTab('log')}>Eventos ${log.length}<//><${Chip} active=${tab === 'capturas'} onClick=${() => setTab('capturas')}>Evidencia ${capturas.length}<//>` : html`<${Status} tone=${ejecutando ? 'loading' : 'ok'}>${ejecutando ? 'en curso' : 'finalizado'}<//>`}
+          </div>
+          <div class="navigator-stage-body">
+            ${tab === 'live' && html`${liveLog.length === 0 && html`<${Empty} icon="clock" title="Preparando navegación">Los pasos aparecerán aquí sin convertir la pantalla en una consola.<//>`}${liveLog.map((item, i) => html`<${EventRow} key=${i} item=${item} sequence=${i + 1}/>`)}<div ref=${liveEndRef}/>`}
+            ${tab === 'log' && html`${log.length === 0 && html`<${Empty} icon="history" title="Sin eventos">Selecciona una ejecución o inicia una nueva.<//>`}${log.map(item => html`<${EventRow} key=${item.id} item=${item} sequence=${item.id}/>`)} `}
+            ${tab === 'capturas' && html`${capturas.length === 0 && html`<${Empty} icon="camera" title="Sin evidencia visual">Las capturas producidas durante la navegación aparecerán aquí.<//>`}${capturas.map(c => html`<article key=${c.id} class="navigator-evidence"><div><${Icon} name="camera" size=${14}/><strong>${c.titulo || 'Captura'}</strong></div>${c.url && html`<a href=${c.url} target="_blank">${c.url}</a>`}<dl>${c.selector && html`<div><dt>selector</dt><dd>${c.selector}</dd></div>`}${c.aria && html`<div><dt>aria</dt><dd>${c.aria}</dd></div>`}${c.testid && html`<div><dt>testid</dt><dd>${c.testid}</dd></div>`}${c.rol && html`<div><dt>rol</dt><dd>${c.rol}</dd></div>`}${c.placeholder && html`<div><dt>placeholder</dt><dd>${c.placeholder}</dd></div>`}</dl></article>`)}`}
+          </div>
+        <//>
+      </div>
+    <//>
   `;
 }

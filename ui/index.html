@@ -4,8 +4,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Aurora v2</title>
-  <link rel="stylesheet" href="/ui/components/ui.css?v=v4-interface-hud-1" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <link rel="manifest" href="/ui/manifest.json" />
+  <title>Aurora</title>
+  <link rel="stylesheet" href="/ui/components/ui.css?v=v54-reproductor-2" />
   <script src="/ui/vendor/preact.min.js"></script>
   <script src="/ui/vendor/preact-hooks.min.js"></script>
   <script src="/ui/vendor/htm.umd.js"></script>
@@ -15,6 +20,6 @@
 </head>
 <body>
   <div id="root"></div>
-  <script type="module" src="/ui/boot.js?v=v4-interface-hud-1"></script>
+  <script type="module" src="/ui/boot.js?v=v51-setup-explicit-link"></script>
 </body>
 </html>

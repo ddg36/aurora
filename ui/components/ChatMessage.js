@@ -2,7 +2,7 @@ const { html } = globalThis;
 
 export function ChatMessage({ role, time, streaming, loading, children }) {
   const cls = [
-    'px-3 py-2.5 rounded-md text-sm leading-relaxed border flex-shrink-0 transition-colors',
+    'au-chat-message px-3 py-2.5 text-sm leading-relaxed flex-shrink-0 transition-colors',
     role === 'user'      && 'fx-msg-user',
     role === 'assistant' && 'fx-msg-assistant',
     streaming            && 'fx-msg-streaming',
@@ -13,7 +13,7 @@ export function ChatMessage({ role, time, streaming, loading, children }) {
     <div class=${cls}>
       ${(role || time) && html`
         <div class="flex items-center gap-1.5 mb-1.5 text-xs text-aurora-text-dim">
-          ${role && html`<span class="font-bold text-aurora-text-muted uppercase" style="font-size:10px;letter-spacing:0">${role === 'user' ? 'Vos' : 'AI'}</span>`}
+          ${role && html`<span class="au-label font-bold text-aurora-text-muted uppercase">${role === 'user' ? 'Vos' : 'AI'}</span>`}
           ${time && html`<span class="ml-auto opacity-50">${time}</span>`}
         </div>
       `}

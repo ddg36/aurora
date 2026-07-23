@@ -1,4 +1,5 @@
 const html = (...args) => globalThis.html(...args);
+import { Icon } from '../../../components/index.js';
 
 // usaExtPane: en modo extensión el iframe del LLM NO va inline (anidado dentro
 // de Aurora → rompía login por cookie partitioning). Va montado a nivel de
@@ -10,11 +11,11 @@ export function CloudPanel({ visible, expanded, hidden, aiLabel, iframeRef, usaE
     <div class=${'cloud-panel ' + (expanded ? 'expanded' : hidden ? 'hidden-mode' : 'mini') + (visible ? '' : ' cloud-panel-hidden')}>
       ${!expanded && visible && html`
         <div class="cloud-mini-header">
-          <span class="cloud-mini-label">☁ ${aiLabel}</span>
+          <span class="cloud-mini-label"><${Icon} name="cloud" size=${14}/> ${aiLabel}</span>
           <div class="cloud-mini-actions">
-            <button class="cloud-mini-btn" title="Expandir" onClick=${onExpand}>⛶</button>
-            <button class="cloud-mini-btn" title="Recargar" onClick=${onReload}>↺</button>
-            <button class="cloud-mini-btn cloud-mini-btn--close" title="Cerrar" onClick=${onClose}>✕</button>
+            <button class="cloud-mini-btn" title="Expandir" onClick=${onExpand}><${Icon} name="expand" size=${14}/></button>
+            <button class="cloud-mini-btn" title="Recargar" onClick=${onReload}><${Icon} name="refresh" size=${14}/></button>
+            <button class="cloud-mini-btn cloud-mini-btn--close" title="Cerrar" onClick=${onClose}><${Icon} name="close" size=${14}/></button>
           </div>
         </div>
       `}

@@ -10,12 +10,86 @@
 .aurora-scene-host { overflow: hidden; isolation: isolate; }
 .aurora-scene-canvas { display: block; z-index: 0; }
 .aurora-scene-host > :not(.aurora-scene-scrim) { z-index: 0 !important; }
+.aurora-lyria-presence {
+  position:absolute;z-index:1!important;left:50%;top:4%;width:min(112vw,760px);height:94%;transform:translateX(-50%);opacity:.96;mix-blend-mode:normal;pointer-events:none;
+  mask-image:linear-gradient(180deg,transparent 0,#000 4%,#000 78%,rgba(0,0,0,.76) 88%,transparent 100%);
+  transition:opacity .7s ease,filter .7s ease,transform .9s cubic-bezier(.2,.7,.2,1);
+  filter:saturate(.92) contrast(1.08) brightness(1.08) drop-shadow(0 0 28px rgba(227,27,54,.24));
+}
+.aurora-lyria-presence img { display:block;width:100%;height:100%;object-fit:contain;object-position:50% 0; }
+.aurora-lyria-presence::after {
+  content:'';position:absolute;inset:0;opacity:.18;mix-blend-mode:screen;transition:opacity .45s ease,filter .45s ease;
+  background:
+    radial-gradient(ellipse 30% 20% at 49% 22%,rgba(255,78,54,.18),transparent 72%),
+    radial-gradient(ellipse 28% 22% at 25% 36%,rgba(240,42,53,.16),transparent 75%),
+    radial-gradient(ellipse 28% 22% at 73% 37%,rgba(240,42,53,.14),transparent 75%);
+  mask-image:linear-gradient(180deg,#000 8%,#000 56%,transparent 78%);
+}
+html:has(.llama-view[data-lyria-state="offline"]) .aurora-lyria-presence { opacity:.28;filter:saturate(.28) contrast(1.08) brightness(.5); }
+html:has(.llama-view[data-lyria-state="offline"]) .aurora-lyria-presence::after { opacity:0; }
+html:has(.llama-view[data-lyria-state="ready"]) .aurora-lyria-presence { opacity:.96; }
+html:has(.llama-view[data-lyria-state="listening"]) .aurora-lyria-presence { opacity:.98;filter:saturate(1.06) contrast(1.1) brightness(1.16) drop-shadow(0 0 36px rgba(255,34,63,.34));animation:lyria-presence-breathe 7.2s ease-in-out infinite; }
+html:has(.llama-view[data-lyria-state="speaking"]) .aurora-lyria-presence { opacity:.99;filter:saturate(1.08) contrast(1.1) brightness(1.18) drop-shadow(0 0 38px rgba(255,34,63,.36));animation:lyria-presence-breathe 7.2s ease-in-out infinite; }
+html:has(.llama-view[data-lyria-state="thinking"]) .aurora-lyria-presence { opacity:.97;filter:saturate(.98) contrast(1.12) brightness(1.04) drop-shadow(0 0 34px rgba(227,27,54,.3));animation:lyria-presence-think 3.4s ease-in-out infinite; }
+html:has(.llama-view[data-lyria-state="working"]) .aurora-lyria-presence { opacity:1;filter:saturate(1.14) contrast(1.14) brightness(1.24) drop-shadow(0 0 48px rgba(255,24,56,.46));animation:lyria-presence-work 4.8s ease-in-out infinite; }
+html:has(.llama-view[data-lyria-state="tool-use"]) .aurora-lyria-presence { opacity:1;filter:saturate(1.14) contrast(1.14) brightness(1.24) drop-shadow(0 0 48px rgba(255,24,56,.46));animation:lyria-presence-work 4.8s ease-in-out infinite; }
+html:has(.lyria-starter-grid button:hover,.chat-input-area textarea:focus,.chat-input-area input:focus) .aurora-lyria-presence { filter:saturate(1.1) contrast(1.12) brightness(1.2) drop-shadow(0 0 42px rgba(255,34,63,.4)); }
+html:has(.llama-view[data-lyria-state="listening"]) .aurora-lyria-presence::after { opacity:.34;filter:brightness(1.24); }
+html:has(.llama-view[data-lyria-state="thinking"]) .aurora-lyria-presence::after { opacity:.26;filter:brightness(1.14); }
+html:has(.llama-view[data-lyria-state="working"]) .aurora-lyria-presence::after { opacity:.48;filter:brightness(1.38); }
+@keyframes lyria-presence-breathe { 0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.004)} }
+@keyframes lyria-presence-think { 0%,100%{filter:saturate(.94) contrast(1.1) brightness(1) drop-shadow(0 0 22px rgba(227,27,54,.18))}50%{filter:saturate(1.06) contrast(1.14) brightness(1.12) drop-shadow(0 0 38px rgba(227,27,54,.36))} }
+@keyframes lyria-presence-work { 0%,100%{transform:translateX(-50%) scale(1);opacity:.97}50%{transform:translateX(-50%) scale(1.006);opacity:1} }
 .aurora-scene-scrim {
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
   transition: background .28s ease, opacity .28s ease;
+}
+
+/* Los Remake nocturnos se pintan deliberadamente profundos en canvas. La
+   exposición ocurre aquí para que sigan siendo legibles en monitores oscuros
+   sin aclarar paneles, campos ni tipografía. */
+html[data-theme-mode="dark"] .aurora-scene-host[data-family="remake"] .aurora-scene-canvas {
+  filter: brightness(1.46) saturate(1.12) contrast(1.025);
+}
+
+/* La placa de workspace legacy ocultaba el 84% de cualquier escena. Remake ya
+   compone su propio contraste y sus superficies funcionales son autónomas. */
+html[data-theme-mode="dark"] .aurora-bg-layer:has(.aurora-scene-host[data-family="remake"]) ~ .aurora-ui-shell .aurora-workspace {
+  background:color-mix(in srgb,var(--aurora-bg) 46%,transparent);
+  backdrop-filter:saturate(.96);
+}
+html[data-theme-mode="dark"] .aurora-bg-layer:has(.aurora-scene-host[data-scene="lyria"]) ~ .aurora-ui-shell .aurora-workspace {
+  background:color-mix(in srgb,var(--aurora-bg) 34%,transparent);
+}
+
+/* V5: profundidad compartida para las tres familias. El canvas conserva la
+   identidad de cada escena; estas películas corrigen contraste y hacen que el
+   fondo se lea como atmósfera continua detrás del side panel. */
+.aurora-scene-scrim::before,
+.aurora-scene-scrim::after { content:'';position:absolute;inset:0;pointer-events:none; }
+.aurora-scene-scrim::before {
+  opacity:.24;
+  background:
+    radial-gradient(ellipse at 72% 28%,color-mix(in srgb,var(--aurora-accent) 9%,transparent),transparent 42%),
+    linear-gradient(90deg,rgba(0,0,0,.08),transparent 24%,transparent 78%,rgba(0,0,0,.12));
+}
+.aurora-scene-scrim::after {
+  opacity:.16;
+  background-image:repeating-linear-gradient(112deg,rgba(255,255,255,.018) 0 1px,transparent 1px 5px);
+  mask-image:radial-gradient(ellipse at center,#000,transparent 78%);
+}
+.aurora-scene-host[data-scene="matrix"] .aurora-scene-scrim::after,
+.aurora-scene-host[data-scene="grid"] .aurora-scene-scrim::after,
+.aurora-scene-host[data-scene="glitch"] .aurora-scene-scrim::after {
+  opacity:.24;background-image:repeating-linear-gradient(0deg,color-mix(in srgb,var(--aurora-accent) 5%,transparent) 0 1px,transparent 1px 4px);
+}
+.aurora-scene-host[data-scene="fog"] .aurora-scene-scrim::before,
+.aurora-scene-host[data-scene="clouds"] .aurora-scene-scrim::before,
+.aurora-scene-host[data-scene="blizzard"] .aurora-scene-scrim::before {
+  opacity:.32;filter:blur(12px);background:radial-gradient(ellipse at 38% 42%,color-mix(in srgb,var(--aurora-accent) 10%,transparent),transparent 52%);
 }
 
 /* Los clásicos nocturnos siguen siendo seleccionables en modo claro sin

@@ -16,6 +16,7 @@
     "clipboardRead",
     "tabCapture",
     "windows",
+    "system.display",
     "webNavigation",
     "debugger",
     "downloads",
@@ -48,6 +49,8 @@
     "*://*.perplexity.ai/*",
     "*://grok.com/*",
     "*://kimi.moonshot.cn/*",
+    "*://kimi.com/*",
+    "*://www.kimi.com/*",
     "*://poe.com/*",
     "*://you.com/*",
     "*://chat.qwen.ai/*",
@@ -118,14 +121,63 @@
       "world": "MAIN"
     },
     {
+      "matches": ["*://claude.ai/*"],
+      "js": [
+        "content-scripts/relay/relay-contract.js",
+        "content-scripts/relay/relay-utils.js",
+        "content-scripts/relay/providers/relay-claude.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_end",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://grok.com/*"],
+      "js": [
+        "content-scripts/relay/relay-contract.js",
+        "content-scripts/relay/relay-utils.js",
+        "content-scripts/relay/providers/relay-grok.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_end",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://perplexity.ai/*", "*://www.perplexity.ai/*"],
+      "js": [
+        "content-scripts/relay/relay-contract.js",
+        "content-scripts/relay/relay-utils.js",
+        "content-scripts/relay/providers/relay-perplexity.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_end",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://kimi.moonshot.cn/*", "*://kimi.com/*", "*://www.kimi.com/*"],
+      "js": [
+        "content-scripts/relay/relay-contract.js",
+        "content-scripts/relay/relay-utils.js",
+        "content-scripts/relay/providers/relay-kimi.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_end",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://poe.com/*"],
+      "js": [
+        "content-scripts/relay/relay-contract.js",
+        "content-scripts/relay/relay-utils.js",
+        "content-scripts/relay/providers/relay-poe.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_end",
+      "world": "MAIN"
+    },
+    {
       "matches": [
-        "*://claude.ai/*",
-        "*://grok.com/*",
-        "*://perplexity.ai/*",
-        "*://www.perplexity.ai/*",
         "*://copilot.microsoft.com/*",
-        "*://kimi.moonshot.cn/*",
-        "*://poe.com/*",
         "*://you.com/*"
       ],
       "js": [
@@ -160,6 +212,8 @@
         "*://www.perplexity.ai/*",
         "*://copilot.microsoft.com/*",
         "*://kimi.moonshot.cn/*",
+        "*://kimi.com/*",
+        "*://www.kimi.com/*",
         "*://poe.com/*",
         "*://you.com/*",
         "*://chat.qwen.ai/*"
@@ -180,6 +234,8 @@
         "*://www.perplexity.ai/*",
         "*://copilot.microsoft.com/*",
         "*://kimi.moonshot.cn/*",
+        "*://kimi.com/*",
+        "*://www.kimi.com/*",
         "*://poe.com/*",
         "*://you.com/*",
         "*://chat.qwen.ai/*"
@@ -196,6 +252,8 @@
         "*://www.perplexity.ai/*",
         "*://copilot.microsoft.com/*",
         "*://kimi.moonshot.cn/*",
+        "*://kimi.com/*",
+        "*://www.kimi.com/*",
         "*://poe.com/*",
         "*://you.com/*",
         "*://chat.qwen.ai/*"
@@ -244,6 +302,8 @@
         "*://www.perplexity.ai/*",
         "*://copilot.microsoft.com/*",
         "*://kimi.moonshot.cn/*",
+        "*://kimi.com/*",
+        "*://www.kimi.com/*",
         "*://poe.com/*",
         "*://you.com/*",
         "*://chat.qwen.ai/*"

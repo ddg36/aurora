@@ -1,4 +1,5 @@
 import { BTN_HEIGHT, BTN_SAFE } from './shared/iconButton.js';
+import { Icon, splitIconLabel } from './Icon.js';
 
 const { html } = globalThis;
 
@@ -10,9 +11,10 @@ const TONES = {
 };
 
 export function Status({ tone = 'loading', title, children }) {
+  const normalized = splitIconLabel(children);
   return html`
-    <div class=${['inline-flex items-center rounded-md border px-3 text-xs font-semibold transition-colors', BTN_HEIGHT, BTN_SAFE, TONES[tone] || TONES.loading].join(' ')} title=${title}>
-      ${children}
+    <div class=${['au-status inline-flex items-center px-3 text-xs font-semibold transition-colors', `au-status-${tone}`, BTN_HEIGHT, BTN_SAFE, TONES[tone] || TONES.loading].join(' ')} title=${title}>
+      ${normalized.icon && html`<${Icon} name=${normalized.icon} size=${14} />`}${normalized.label}
     </div>
   `;
 }

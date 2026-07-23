@@ -2,7 +2,7 @@ import { cycleModel } from '../../../components/shared/lyra-ws.js';
 import { cargarComandos, iconoComando } from '../scripts/chat/comandos.js';
 import { renderizarContenido } from '../scripts/chat/renderizar.js';
 import { guardarModelo } from '../scripts/chat/parametros.js';
-import { Button, Chip, useFloatingMenu } from '../../../components/index.js';
+import { Button, Chip, Icon, useFloatingMenu } from '../../../components/index.js';
 
 const html = (...args) => globalThis.html(...args);
 
@@ -17,7 +17,6 @@ const AI_URLS = {
   custom:     '',
 };
 const AI_LABELS = { gemini: 'Gemini', chatgpt: 'ChatGPT', claude: 'Claude', perplexity: 'Perplexity', qwen: 'Qwen', custom: 'Custom' };
-const AI_ICONOS = { gemini: '◇', chatgpt: '◉', claude: '✶', perplexity: '⊕', qwen: '❖', custom: '🌐' };
 
 export function Composer({
   cloudVisible, cloudAiLabel, cloudExpanded, cloudHidden, cloudMenu, setCloudMenu,
@@ -46,20 +45,20 @@ export function Composer({
             onClick=${() => cloudVisible ? closeCloud() : toggleCloud()}
             onContextMenu=${e => { e.preventDefault(); setCloudMenu({ x: e.clientX, y: e.clientY }); }}
             title=${cloudVisible ? 'Clic derecho: opciones · Clic: cerrar' : 'Activar Cloud Backend'}
-          >☁ ${cloudVisible ? cloudAiLabel : 'Cloud'}</button>
+          ><${Icon} name="cloud" size=${14}/> ${cloudVisible ? cloudAiLabel : 'Cloud'}</button>
           ${cloudVisible && html`
             <button
               style="background:transparent;border:none;border-left:1px solid var(--aurora-border);cursor:pointer;padding:0 6px;height:100%;color:inherit;font-size:10px;display:flex;align-items:center"
               onClick=${cycleCloudPanel}
               title=${cloudExpanded ? 'Full → Mini' : cloudHidden ? 'Oculto → Full' : 'Mini → Oculto'}
-            >${cloudExpanded ? '∧' : cloudHidden ? '◻' : '∨'}</button>
+            ><${Icon} name=${cloudExpanded ? 'chevronDown' : cloudHidden ? 'eye' : 'eyeOff'} size=${14}/></button>
           `}
         <//>
         <${Chip}
           active=${duoActivo}
           onClick=${toggleDuo}
           title="Modo Duo — Lyra (local) ↔ AI de la nube conversan por turnos"
-        >${duoActivo ? '⇆ Duo…' : '⇆ Duo'}<//>
+        ><${Icon} name="users" size=${14}/> ${duoActivo ? 'Duo…' : 'Duo'}<//>
         <span class=${'text-[10px] px-1 ' + (lyraOnline ? 'text-aurora-success' : 'text-aurora-error')} title=${lyraOnline ? 'Lyra online' : 'Lyra offline'}>●</span>
 
         <span class="flex-1"></span>
@@ -69,13 +68,13 @@ export function Composer({
           active=${canvasVisibleVal}
           onClick=${toggleCanvas}
           title=${canvasVisibleVal ? 'Cerrar Canvas' : 'Canvas — panel de código'}
-        >◱<//>
+        ><${Icon} name="code" size=${16}/><//>
         <${Button}
           iconOnly
           active=${ttsEnabled}
           onClick=${toggleAutoVoz}
           title=${ttsEnabled ? 'Desactivar voz' : 'Activar voz'}
-        >${ttsEnabled ? '🔊' : '🔇'}<//>
+        ><${Icon} name=${ttsEnabled ? 'volume' : 'volumeOff'} size=${16}/><//>
       </div>
 
       ${cloudMenu && html`
@@ -85,17 +84,17 @@ export function Composer({
         >
           ${Object.keys(AI_URLS).filter(id => id !== 'custom').map(id => html`
             <button key=${id} class="composer-plus-item" onClick=${() => elegirCloudAi(id)}>
-              <span>${AI_ICONOS[id]}</span><span>${AI_LABELS[id]}</span>
+              <${Icon} name="cloud" size=${15}/><span>${AI_LABELS[id]}</span>
             </button>
           `)}
           <button class="composer-plus-item" onClick=${() => {
             const url = window.prompt('URL custom:', cloudUrl);
             if (url) elegirCloudAi('custom', url);
           }}>
-            <span>🌐</span><span>URL custom…</span>
+            <${Icon} name="globe" size=${15}/><span>URL custom…</span>
           </button>
           <button class="composer-plus-item" onClick=${() => { recargarCloudIframe(cloudUrl); setCloudMenu(null); }}>
-            <span>↺</span><span>Recargar</span>
+            <${Icon} name="refresh" size=${15}/><span>Recargar</span>
           </button>
         </div>
         <div class="fixed inset-0" style="z-index:9998" onClick=${() => setCloudMenu(null)}></div>
@@ -111,12 +110,12 @@ export function Composer({
           <div class="queue-chips">
             ${colaMensajes.steering.map((m, i) => html`
               <span key=${'s' + i} class="queue-chip queue-chip--steer" title="Se entrega apenas termine el turno actual">
-                🔗 ${String(m).slice(0, 60)}
+                <${Icon} name="link" size=${13}/> ${String(m).slice(0, 60)}
               </span>
             `)}
             ${colaMensajes.followUp.map((m, i) => html`
               <span key=${'f' + i} class="queue-chip queue-chip--followup" title="Se entrega cuando Lyra termine del todo">
-                ⏳ ${String(m).slice(0, 60)}
+                <${Icon} name="clock" size=${13}/> ${String(m).slice(0, 60)}
               </span>
             `)}
           </div>
@@ -134,7 +133,7 @@ export function Composer({
               onMouseDown=${e => { e.preventDefault(); elegirComando(c); }}
               onMouseEnter=${() => setSlashSel(i)}
             >
-              <span class="slash-item-icon">${iconoComando(c.source)}</span>
+              <span class="slash-item-icon"><${Icon} name=${iconoComando(c.source)} size=${14}/></span>
               <span class="slash-item-name">/${c.name}</span>
               <span class="slash-item-desc">${(c.description || '').split('\n')[0].slice(0, 90)}</span>
             </div>
@@ -200,7 +199,7 @@ export function Composer({
                 cycleModel().then(m => {
                   if (m) {
                     guardarModelo(m.id);
-                    Toast().show(`🔁 Modelo: ${m.provider}/${m.id}`, 'info');
+                    Toast().show(`Modelo: ${m.provider}/${m.id}`, 'info');
                   } else {
                     Toast().show('No hay más modelos para ciclar', 'info');
                   }
@@ -227,14 +226,14 @@ export function Composer({
                     setPlusOpen(null);
                   }
                 }}
-              >+<//>
+              ><${Icon} name="plus" size=${16}/><//>
             </div>
             <${Button}
               iconOnly
               active=${previewMd}
               title="Vista previa Markdown"
               onClick=${() => setPreviewMd(p => !p)}
-            >👁<//>
+            ><${Icon} name="eye" size=${16}/><//>
             <${Button}
               iconOnly
               active=${slashSel >= 0}
@@ -253,7 +252,7 @@ export function Composer({
                 style=${{ position: 'fixed', bottom: (window.innerHeight - plusOpen.y + 8) + 'px', left: plusOpen.x + 'px', zIndex: 9999 }}
               >
                 <label class="composer-plus-item" onClick=${() => setPlusOpen(null)}>
-                  <span>📎</span><span>Adjuntar archivo</span>
+                  <${Icon} name="paperclip" size=${15}/><span>Adjuntar archivo</span>
                   <input type="file" accept=".pdf,image/*,.txt,.md,.csv,.json" style="display:none"
                     onChange=${e => {
                       const file = e.target.files?.[0];
@@ -261,13 +260,13 @@ export function Composer({
                       if (file.type.startsWith('image/')) {
                         cargarImagen(file);
                       } else if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-                        Toast().show('📄 PDF recibido — próximamente extracción de texto', 'info', 3000);
+                        Toast().show('PDF recibido — próximamente extracción de texto', 'info', 3000);
                       } else {
                         const reader = new FileReader();
                         reader.onload = ev => {
                           const texto = ev.target.result;
                           setMensaje(`\`\`\`\n${texto.slice(0, 3000)}${texto.length > 3000 ? '\n…(truncado)' : ''}\n\`\`\`\n`);
-                          Toast().show(`📄 ${file.name} cargado`, 'success');
+                          Toast().show(`${file.name} cargado`, 'success');
                         };
                         reader.readAsText(file);
                       }
@@ -275,8 +274,8 @@ export function Composer({
                     }}
                   />
                 </label>
-                <button class="composer-plus-item" onClick=${() => { Toast().show('📍 Mapear DOM requiere la extensión de browser (FASE extensions)', 'warning', 2500); setPlusOpen(null); }}>
-                  <span>📍</span><span>Mapear DOM</span>
+                <button class="composer-plus-item" onClick=${() => { Toast().show('Mapear DOM requiere la extensión de browser (FASE extensions)', 'warning', 2500); setPlusOpen(null); }}>
+                  <${Icon} name="globe" size=${15}/><span>Mapear DOM</span>
                 </button>
               </div>
               <div class="fixed inset-0" style="z-index:9998" onClick=${() => setPlusOpen(null)}></div>
@@ -289,7 +288,7 @@ export function Composer({
               active=${grabandoVal}
               onClick=${toggleMic}
               title=${transcVal ? 'Transcribiendo…' : (grabandoVal ? 'Soltar para transcribir' : 'Dictar')}
-            >${transcVal ? '…' : (grabandoVal ? '⏹' : '🎤')}<//>
+            ><${Icon} name=${transcVal ? 'refresh' : (grabandoVal ? 'stop' : 'mic')} size=${16}/><//>
 
             ${cargandoVal
               ? html`<${Button} iconOnly shape="circle" variant="danger" onClick=${detenerGeneracion} title="Detener">■<//>`
@@ -299,7 +298,8 @@ export function Composer({
                   variant="primary"
                   onClick=${() => enviarMensaje()}
                   disabled=${(!mensaje.trim() && !pendingImageDataUrlVal) || offline}
-                >↑<//>`
+                  icon="send"
+                ><//>`
             }
           </div>
         </div>

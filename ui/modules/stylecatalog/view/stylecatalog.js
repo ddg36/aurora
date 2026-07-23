@@ -1,15 +1,16 @@
 const html = (...args) => globalThis.html(...args);
-const { useState } = globalThis.preactHooks;
+const { useState, useEffect } = globalThis.preactHooks;
 
 import { PRIMITIVES, TOKENS, PATTERNS, resolveToken } from '../scripts/catalogo.js';
 import {
   Button, Toolbar, ToolbarSpacer,
   Panel, PanelHeader, PanelBody, PanelFooter, PanelLabel, PanelValue,
   List, ListItem, Empty, Chip, ChipGroup, Input, Textarea, Select,
-  ChatMessage, ChatList,
-} from '../../../components/index.js';
+  ChatMessage, ChatList, Icon, ToolPage, ToolHeader, ToolSection,
+} from '../../../components/index.js?v=v1-surface-convergence-1';
 import { copiarTexto } from '../../../components/shared/clipboard.js';
 import { mostrarTemporal } from '../../../components/shared/flash.js';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 
 function Preview({ id }) {
   switch (id) {
@@ -98,6 +99,18 @@ export default function StyleCatalog() {
     mostrarTemporal(setCopiado, snippet, { delay: 1500, clearValue: null });
   };
 
+  useEffect(() => registerAIView({
+    id: 'stylecatalog',
+    description: 'Catálogo de componentes, tokens y patrones permitidos por el sistema visual.',
+    actions: {
+      status: { description: 'Resume sección y selección visual.', readOnly: true, run: () => ({ tab, primitive: prim?.id || null, pattern: pattern?.id || null }) },
+      list_components: { description: 'Lista primitivas reutilizables y su archivo.', readOnly: true, run: () => PRIMITIVES.map(({ id, label, file, snippet }) => ({ id, label, file, snippet })) },
+      list_tokens: { description: 'Lista tokens del sistema visual.', readOnly: true, run: () => TOKENS },
+      list_patterns: { description: 'Lista patrones de composición.', readOnly: true, run: () => PATTERNS },
+      select_section: { description: 'Abre una sección del catálogo.', input: { section: { type: 'string', enum: ['components', 'tokens', 'patterns'], required: true } }, run: ({ section }) => { setTab(section); return { section }; } },
+    },
+  }), [tab, prim, pattern]);
+
   const tabBtn = (id, label) => html`
     <${Chip} active=${tab === id} onClick=${() => setTab(id)}>${label}<//>
   `;
@@ -105,23 +118,22 @@ export default function StyleCatalog() {
   const snippetBox = (snippet) => html`
     <div class="relative mt-1">
       <pre class="bg-black/30 border border-aurora-border rounded p-2 text-[11px] font-mono whitespace-pre-wrap text-aurora-text-muted overflow-x-auto">${snippet}</pre>
-      <${Chip} class="absolute top-1.5 right-1.5" onClick=${() => copiar(snippet)}>${copiado === snippet ? '✓ copiado' : '⧉ copiar'}<//>
+      <${Button} icon=${copiado === snippet ? 'check' : 'copy'} size="sm" class="absolute top-1.5 right-1.5" onClick=${() => copiar(snippet)}>${copiado === snippet ? 'Copiado' : 'Copiar'}<//>
     </div>
   `;
 
   return html`
-    <div class="w-full max-w-4xl mx-auto p-4">
-      <h1 class="text-lg font-semibold mb-3">🎨 Style Catalog</h1>
-
-      <div class="flex gap-1.5 mb-4">
+    <${ToolPage} wide>
+      <${ToolHeader} icon="grid" eyebrow="Sistema visual" title="Style Catalog" description="Primitivas, tokens y patrones que Aurora sí permite reutilizar." />
+      <div class="flex gap-1.5">
         ${tabBtn('components', 'Componentes')}
         ${tabBtn('tokens', 'Tokens')}
         ${tabBtn('patterns', 'Patterns')}
       </div>
 
       ${tab === 'components' && html`
-        <div class="flex gap-4">
-          <div class="w-52 shrink-0">
+        <div class="tool-module-grid stylecatalog-grid">
+          <div>
             <${List}>
               ${PRIMITIVES.map(p => html`
                 <${ListItem}
@@ -134,7 +146,7 @@ export default function StyleCatalog() {
               `)}
             <//>
           </div>
-          <div class="flex-1 min-w-0">
+          <${ToolSection} class="min-w-0">
             ${prim ? html`
               <h2 class="text-xs uppercase tracking-widest text-aurora-text-dim mb-2">Preview — ${prim.base}</h2>
               <div class="bg-white/5 rounded-lg p-4 mb-4">
@@ -149,12 +161,12 @@ export default function StyleCatalog() {
             ` : html`
               <${Empty} icon="📦" title="Elegí un componente">Variantes, estados y snippet de uso.<//>
             `}
-          </div>
+          <//>
         </div>
       `}
 
       ${tab === 'tokens' && html`
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div class="tool-choice-grid">
           ${TOKENS.map(t => html`
             <div key=${t.name} class="bg-white/5 rounded-lg p-2 border border-aurora-border">
               <div
@@ -171,8 +183,8 @@ export default function StyleCatalog() {
       `}
 
       ${tab === 'patterns' && html`
-        <div class="flex gap-4">
-          <div class="w-52 shrink-0">
+        <div class="tool-module-grid stylecatalog-grid">
+          <div>
             <${List}>
               ${PATTERNS.map(p => html`
                 <${ListItem}
@@ -185,16 +197,16 @@ export default function StyleCatalog() {
               `)}
             <//>
           </div>
-          <div class="flex-1 min-w-0">
+          <${ToolSection} class="min-w-0">
             ${pattern ? html`
               <h2 class="text-xs uppercase tracking-widest text-aurora-text-dim mb-1">${pattern.label}</h2>
               ${snippetBox(pattern.snippet)}
             ` : html`
               <${Empty} icon="🧩" title="Elegí un pattern">Composiciones recomendadas con primitivas.<//>
             `}
-          </div>
+          <//>
         </div>
       `}
-    </div>
+    <//>
   `;
 }

@@ -10,6 +10,9 @@ import {
 import { historialCaptura, cargarHistorialCaptura, agregarAlHistorial } from '../scripts/historial.js';
 import { copiarTexto } from '../../../components/shared/clipboard.js';
 import { Toast } from '../../../components/shared/toast.js';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
+import { createContextSnapshot } from '../../../components/shared/context-artifact.js';
+import { sendContextArtifact } from '../../../components/shared/context-destinations.js';
 import {
   Button,
   Chip,
@@ -17,6 +20,8 @@ import {
   Disclosure,
   Dropdown,
   DropdownItem,
+  Empty,
+  Icon,
   List,
   ListItem,
   ListActions,
@@ -160,7 +165,7 @@ function ChapterPanel({ chapters, isOpen, onToggle, onJump }) {
 }
 
 // ── Toolbar de herramientas LLM ──────────────────────────────
-function ToolbarHerramientas({ isYT, onResumir, onPuntos, onNotas, onTraducir, onSendChat, busy }) {
+function ToolbarHerramientas({ isYT, onResumir, onPuntos, onNotas, onTraducir, onSaveNotes, onSendChat, busy }) {
   return html`
     <div class="flex items-center gap-1.5 px-3 py-1.5 border-b border-aurora-border bg-aurora-surface flex-wrap">
       ${isYT && html`<span class="text-[9px] text-aurora-text-muted uppercase tracking-wide mr-1">Herramientas:</span>`}
@@ -171,13 +176,14 @@ function ToolbarHerramientas({ isYT, onResumir, onPuntos, onNotas, onTraducir, o
         <${Button} size="sm" disabled=${busy} onClick=${onTraducir}>🌐 Traducir</${Button}>
       `}
       <span class="text-aurora-border"></span>
+      <${Button} size="sm" disabled=${busy} onClick=${onSaveNotes}>📝 Guardar en Notas</${Button}>
       <${Button} size="sm" onClick=${onSendChat}>💬 Enviar al chat</${Button}>
     </div>
   `;
 }
 
 // ── Resultado texto con toolbar ──────────────────────────────
-function ResultadoTexto({ content, onChange, onCopy, onClear, tipoCaptura, toolResult, setToolResult, onSendChat, toolFollowUps, onAskFollowUp, chatBusy, chatStreaming, chatCurrentQuestion, onClearToolFollowUps, screenshotDataUrl, tabUrl }) {
+function ResultadoTexto({ content, onChange, onCopy, onClear, tipoCaptura, toolResult, setToolResult, onSaveNotes, onSendChat, toolFollowUps, onAskFollowUp, chatBusy, chatStreaming, chatCurrentQuestion, onClearToolFollowUps, screenshotDataUrl, tabUrl }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [matches, setMatches] = useState([]);
   const [matchIndex, setMatchIndex] = useState(-1);
@@ -310,6 +316,7 @@ function ResultadoTexto({ content, onChange, onCopy, onClear, tipoCaptura, toolR
           onPuntos=${handlePuntos}
           onNotas=${handleNotas}
           onTraducir=${() => setTraducirOpen(!traducirOpen)}
+          onSaveNotes=${onSaveNotes}
           onSendChat=${onSendChat}
           busy=${llmBusy}
         />
@@ -419,11 +426,60 @@ export default function Captura() {
   const [debugData, setDebugData] = useState(null);
   const sseRef                  = useRef(null);
 
+  const currentContext = useCallback(() => createContextSnapshot({
+    kind: tipoCaptura || 'web-page',
+    title: tab?.title || '',
+    url: tab?.url || '',
+    content,
+  }), [content, tab, tipoCaptura]);
+
+  const enviarContextoANotas = useCallback(() => (
+    sendContextArtifact('notes', currentContext())
+  ), [currentContext]);
+
+  const guardarEnNotas = useCallback(async () => {
+    try {
+      const result = await enviarContextoANotas();
+      Toast.show(`Contexto guardado en Notas (${result.chars.toLocaleString()} chars)`, 'success');
+      return result;
+    } catch (error) {
+      Toast.show(error.message, 'error');
+      return null;
+    }
+  }, [enviarContextoANotas]);
+
   useEffect(() => {
     cargarHistorialCaptura();
     const sig = globalThis.__aurora_enExtension;
     return sig ? sig.subscribe(val => setConExt(val)) : undefined;
   }, []);
+
+  useEffect(() => registerAIView({
+    id: 'captura',
+    description: 'Convierte el contexto explícitamente capturado de la página activa en un artefacto reutilizable.',
+    actions: {
+      status: {
+        description: 'Indica qué contexto capturado está disponible sin leer de nuevo la página.',
+        readOnly: true,
+        run: () => ({
+          available: Boolean(content.trim()),
+          kind: tipoCaptura || null,
+          chars: content.length,
+          title: tab?.title || '',
+          url: tab?.url || '',
+        }),
+      },
+      current_context: {
+        description: 'Devuelve el ContextSnapshot que Diego ya capturó en la interfaz.',
+        readOnly: true,
+        run: currentContext,
+      },
+      send_current_to_notes: {
+        description: 'Añade el ContextSnapshot actual a la página activa de Notas.',
+        run: enviarContextoANotas,
+      },
+    },
+  }), [content, currentContext, enviarContextoANotas, tab, tipoCaptura]);
 
   function applyTab(t) {
     if (!t || !t.url) return;
@@ -660,31 +716,21 @@ export default function Captura() {
   const statusCls = { success: 'ok', warning: 'warn', error: 'err', loading: 'loading' }[status.tipo] ?? 'loading';
 
   return html`
-    <div class="flex flex-1 min-h-0 flex-col p-3 gap-2">
-      <${Status} tone=${statusCls}>${status.msg}</${Status}>
+    <div class="capture-view flex flex-1 min-h-0 flex-col">
+      <div class="capture-context-bar">
+        <${Status} tone=${statusCls}>${status.msg}</${Status}>
+        <${TabChips} tab=${tab} tipo=${tipoTab} />
+      </div>
 
-      <${TabChips} tab=${tab} tipo=${tipoTab} />
-
-      <${ActionZone}
-        tipo=${tipoTab}
-        busy=${busy}
-        conExt=${conExt}
-        onCapturarPagina=${capturarPagina}
-        onCapturarPantalla=${capturarPantalla}
-        onCapturarYT=${capturarYT}
-        onExtraerTextoDOM=${extraerTextoDePagina}
-        ytOpen=${ytOpen}
-        setYtOpen=${setYtOpen}
-      />
-
-      ${conExt && html`
-        <${Chip} class="self-start" onClick=${hacerDebugYT}>🔍 Debug ${tipoTab === 'youtube-video' ? 'YouTube' : 'Ext'}<//>
-      `}
+      <div class="capture-action-bar">
+        <${ActionZone} tipo=${tipoTab} busy=${busy} conExt=${conExt} onCapturarPagina=${capturarPagina} onCapturarPantalla=${capturarPantalla} onCapturarYT=${capturarYT} onExtraerTextoDOM=${extraerTextoDePagina} ytOpen=${ytOpen} setYtOpen=${setYtOpen} />
+        ${conExt && html`<${Button} icon="toolkit" iconOnly onClick=${hacerDebugYT} title=${`Diagnóstico ${tipoTab === 'youtube-video' ? 'YouTube' : 'extensión'}`} />`}
+      </div>
 
       ${debugData && html`
         <${Panel}>
           <${PanelHeader}>
-            <span class="text-[9px] font-bold uppercase tracking-wide text-aurora-text-dim">🔍 Debug</span>
+            <span class="text-[9px] font-bold uppercase tracking-wide text-aurora-text-dim inline-flex items-center gap-1.5"><${Icon} name="search" size=${13}/> Debug</span>
             <${Button} size="sm" onClick=${() => setDebugData(null)}>✕</${Button}>
           </${PanelHeader}>
           <${PanelBody} noPadding>
@@ -693,7 +739,14 @@ export default function Captura() {
         </${Panel}>
       `}
 
-      <div class="flex-1 min-h-0 overflow-y-auto">
+      <div class="capture-results flex-1 min-h-0 overflow-y-auto">
+        ${!content && !preview && conExt && html`
+          <div class="capture-idle-stage">
+            <${Empty} icon="camera" title="Convierte esta página en contexto">
+              Captura el DOM cuando necesites texto reutilizable; usa Screenshot cuando la evidencia sea visual.
+            <//>
+          </div>
+        `}
         ${preview && html`
           <${ResultadoScreenshot}
             dataUrl=${preview}
@@ -714,6 +767,7 @@ export default function Captura() {
             tipoCaptura=${tipoCaptura}
             toolResult=${toolResult}
             setToolResult=${setToolResult}
+            onSaveNotes=${guardarEnNotas}
             onSendChat=${() => enviarAlChat('AI Chat')}
             toolFollowUps=${toolFollowUps}
             onAskFollowUp=${handleAskFollowUp}

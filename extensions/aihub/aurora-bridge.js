@@ -503,6 +503,11 @@ function initAuroraBridge(frame, opts) {
     if (e.data?.type === 'AURORA_LLM_MENU_OPEN') { openLlmMenu(e.data.anchor, e.data.options, e.data.activeIds || []); return; }
     if (e.data?.type === 'AURORA_LLM_MENU_CLOSE') { closeLlmMenu(); return; }
 
+    if (e.data?.type === 'AURORA_OPEN_URL') {
+      window.open(e.data.url, '_blank');
+      return;
+    }
+
     if (e.data?.type === 'AURORA_EXT_ACK') {
       _log('ack', {});
       stopHelloLoop();

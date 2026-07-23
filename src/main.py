@@ -28,6 +28,7 @@ from jobs.cleanup_capturas import run_cleanup
 from jobs.db_maintenance import run_mantenimiento
 from json_family import JSON_FAMILY_ROUTES
 from logging_config import setup_logging
+from runtime_discovery import find_node, find_pi
 
 log = setup_logging()
 
@@ -44,6 +45,29 @@ async def root() -> Redirect:
 @get("/ping")
 async def ping() -> dict:
     return {"ok": True, "version": "0.1.0"}
+
+
+@get("/setup/status")
+async def setup_status() -> dict:
+    """Chequeo de requisitos — público, sin auth. Lo usa el overlay de bienvenida."""
+    import subprocess
+    node = find_node()
+    node_version: str | None = None
+    if node:
+        try:
+            node_version = subprocess.check_output(
+                [node, "--version"], timeout=3, text=True, stderr=subprocess.DEVNULL,
+            ).strip()
+        except Exception:
+            pass
+
+    sdk_ok = bool(find_pi())
+
+    return {
+        "ok": bool(node) and sdk_ok,
+        "node": {"ok": bool(node), "version": node_version},
+        "pi_sdk": {"ok": sdk_ok},
+    }
 
 
 @get("/health")
@@ -112,7 +136,7 @@ async def on_startup() -> None:
     log.info("Aurora Server ready — LLM engine: pi")
 
 
-ROUTES = [root, ping, health, favicon] + JSON_FAMILY_ROUTES + EVENTOS_WS_ROUTES + PI_ROUTES + VOZ_ROUTES + NEXUS_ROUTES + TOOLS_ROUTES + MCP_ROUTES + EXT_ROUTES + ALL_CONTROLLERS + NAV_BROWSER_ROUTES
+ROUTES = [root, ping, health, setup_status, favicon] + JSON_FAMILY_ROUTES + EVENTOS_WS_ROUTES + PI_ROUTES + VOZ_ROUTES + NEXUS_ROUTES + TOOLS_ROUTES + MCP_ROUTES + EXT_ROUTES + ALL_CONTROLLERS + NAV_BROWSER_ROUTES
 
 if UI_DIR.exists():
     ROUTES.append(

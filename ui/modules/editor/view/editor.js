@@ -5,7 +5,8 @@ import { setViewActions, clearViewActions } from '../../../components/footer/reg
 import { crearAutosave } from '../../../components/shared/autosave.js';
 import { FileTree } from '../../../components/shared/FileTree.js';
 import { SplitPane } from '../../../components/shared/SplitPane.js';
-import { Button, Chip, Select } from '../../../components/index.js';
+import { Button, Icon, Select } from '../../../components/index.js?v=v1-surface-convergence-1';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 
 export default function Editor() {
   const [raiz, setRaiz] = useState([]);
@@ -30,6 +31,34 @@ export default function Editor() {
 
   const recargar = () => listar().then(setRaiz).catch(() => setRaiz([]));
   useEffect(() => { recargar(); }, []);
+
+  useEffect(() => registerAIView({
+    id: 'editor',
+    description: 'Editor y runner del sandbox de Aurora; inspecciona y abre archivos sin confundir edición visual con escritura autorizada.',
+    actions: {
+      status: {
+        description: 'Devuelve archivo, lenguaje, suciedad, ejecución y salida actuales.',
+        readOnly: true,
+        run: () => ({ root: EDITOR_ROOT, archivo, lang, dirty: sucio, running: corriendo, chars: codigo.length, output: salida }),
+      },
+      list_files: {
+        description: 'Lista el árbol raíz disponible en el sandbox.',
+        readOnly: true,
+        run: async () => listar(),
+      },
+      read: {
+        description: 'Lee un archivo del sandbox sin modificar el editor.',
+        input: { path: { type: 'string', required: true, maxLength: 1000 } },
+        readOnly: true,
+        run: async ({ path }) => ({ path, content: await leer(path) }),
+      },
+      open: {
+        description: 'Abre un archivo del sandbox en el editor visual.',
+        input: { path: { type: 'string', required: true, maxLength: 1000 } },
+        run: async ({ path }) => { await abrir(path); return { path, opened: true }; },
+      },
+    },
+  }), [archivo, lang, sucio, corriendo, codigo.length, salida, raiz]);
 
   const toggle = (path) => setAbierto(prev => ({ ...prev, [path]: !prev[path] }));
 
@@ -80,8 +109,8 @@ export default function Editor() {
   return html`
     <${SplitPane} sidebarClassName="p-2" sidebar=${html`
         <div class="flex items-center gap-1 mb-2">
-          <span class="text-xs font-semibold flex-1">⌨ Editor</span>
-          <${Button} iconOnly onClick=${nuevo} title="Nuevo archivo">＋<//>
+          <span class="text-xs font-semibold flex-1 inline-flex items-center gap-2"><${Icon} name="code" size=${14}/> Editor</span>
+          <${Button} icon="plus" iconOnly onClick=${nuevo} title="Nuevo archivo" />
         </div>
         <${FileTree} entries=${raiz} abierto=${abierto} onToggle=${toggle} onOpen=${abrir} seleccion=${archivo} loadChildren=${listar} />
         ${raiz.length === 0 && html`<div class="text-xs text-white/30 p-2">Sandbox vacío</div>`}
@@ -94,11 +123,10 @@ export default function Editor() {
             <option value="js">node</option>
             <option value="sh">bash</option>
           <//>
-          <${Chip}
-            variant="accent"
+          <${Button} icon="play" size="sm" variant="primary"
             onClick=${correr}
             disabled=${corriendo || !codigo.trim()}
-          >${corriendo ? '…' : '▶ Ejecutar'}<//>
+          >${corriendo ? 'Ejecutando…' : 'Ejecutar'}<//>
         </div>
 
         <textarea

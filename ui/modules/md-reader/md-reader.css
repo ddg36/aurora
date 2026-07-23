@@ -321,6 +321,9 @@
   min-height: 0; flex: 1; display: grid; place-items: center;
   align-content: center; gap: 12px; padding: 24px;
 }
+.mdr-document-empty { min-height:260px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; color:var(--aurora-text-dim); text-align:center; }
+.mdr-document-empty strong { color:var(--aurora-text-muted); font-size:13px; }
+.mdr-document-empty span { max-width:280px; font-size:10px; line-height:1.45; }
 
 /* Tamaño y posición (left/right/top/bottom fijos) los da el style inline
    de useFloatingMenu (anchor:'center') — ocupa el espacio disponible de
@@ -373,6 +376,7 @@
   .mdr-command-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .mdr-command-actions .inline-flex { width: 100%; }
   .mdr-reader-scroll { padding: 0; }
+  .mdr-reader-layout { grid-template-columns: minmax(0, 1fr) minmax(150px, 184px); }
   .mdr-reader-page { min-height: 100%; padding: 22px 20px 52px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
   .mdr-document-head { display: none; }
   .mdr-reader-page .markdown-body { max-width: none; font-size: 14px; line-height: 1.62; }
@@ -386,6 +390,11 @@
   .mdr-result-row { min-height: 50px; padding: 9px 10px; }
   /* .mdr-summary ya no se toca acá — su tamaño/posición ahora los da
      useFloatingMenu (anchor:'center') en cualquier ancho de pantalla. */
+}
+
+@media (max-width: 460px) {
+  .mdr-reader-layout { grid-template-columns:minmax(0,1fr); }
+  .mdr-outline { display:none; }
 }
 
 @media (max-width: 430px) {

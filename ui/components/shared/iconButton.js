@@ -10,7 +10,7 @@ export const BTN_SAFE = 'whitespace-nowrap flex-shrink-0';
 // Alto único de TODO botón/chip en la app, tenga texto o sólo ícono — la
 // base es el ícono-solo (Button.iconOnly), Chip usa la misma variable para
 // no quedar más bajo/alto que él.
-export const BTN_HEIGHT = 'h-9';
+export const BTN_HEIGHT = 'au-control-height';
 
 // Tratamiento visual único para botones de ícono (riel de NavBar, Footer,
 // y cualquier otra barra de acciones) — bordes redondeados, resaltado sutil
@@ -29,7 +29,7 @@ export function iconButtonClass(active, extra = '') {
 // Tamaño fijo único — TODO botón de ícono-solo en la app (NavBar, Footer,
 // Canvas, composer, lo que sea) mide esto. Una sola variable, ningún
 // caller hardcodea su propio número.
-export const ICON_BTN_SIZE = `w-9 ${BTN_HEIGHT}`;
+export const ICON_BTN_SIZE = `au-icon-button-size ${BTN_HEIGHT}`;
 // Combinación más pedida: cuadrado (Footer y demás filas horizontales).
 export const ICON_BTN_SQUARE = `${ICON_BTN_SIZE} rounded-md`;
 

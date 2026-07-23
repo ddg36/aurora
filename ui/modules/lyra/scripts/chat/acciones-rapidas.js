@@ -42,7 +42,7 @@ export async function copiarMensaje(texto) {
   // intactos) pero con las listas numeradas renumeradas: lo pegado en otro
   // lado se ve como el usuario lo ve renderizado, no como ChatGPT lo mandó.
   const ok = await copiarTexto(renumerarListasMarkdown(texto));
-  Toast().setStatus(ok ? '◉ Copiado al portapapeles' : '⚠ Error al copiar');
+  Toast().setStatus(ok ? 'Copiado al portapapeles' : 'Error al copiar');
 }
 
 export async function añadirANotas(texto) {
@@ -56,19 +56,19 @@ export async function añadirANotas(texto) {
     } catch {}
     const nuevo = actual ? actual + '\n\n---\n\n' + texto : texto;
     await postJSON('/nexus/fs/write', { path: NOTAS_CHAT, content: nuevo });
-    Toast().setStatus('◉ Añadido a notas');
+    Toast().setStatus('Añadido a notas');
   } catch (e) {
-    Toast().setStatus(`⚠ Error: ${e.message}`);
+    Toast().setStatus(`Error: ${e.message}`);
   }
 }
 
 export function reformularRespuesta(regenerarRespuesta, msg) {
-  Toast().setStatus('◌ Regenerando…');
+  Toast().setStatus('Regenerando…');
   setTimeout(() => regenerarRespuesta(msg), 100);
 }
 
 export function leerMensaje(texto) {
   if (!texto) return;
   hablar(texto);
-  Toast().setStatus('◔ Leyendo…');
+  Toast().setStatus('Leyendo…');
 }

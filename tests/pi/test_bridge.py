@@ -422,7 +422,7 @@ async def main():
     # Regresión: /import debe leer el SessionHeader (parentSession) y
     # resolverlo contra el mapa chat_id→sessionPath ya existente, para
     # que el chat importado aparezca con linaje sin trabajo manual.
-    padre_path = "/media/almacen/deml/Downloads/core_instruction/aurora/databases/pi-sessions/padre-de-prueba.jsonl"
+    padre_path = str(pathlib.Path(tempfile.mkdtemp()) / "padre-de-prueba.jsonl")
     mapa = B._cargar_mapa()
     mapa["777"] = padre_path
     B._guardar_mapa(mapa)

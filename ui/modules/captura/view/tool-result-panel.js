@@ -4,6 +4,8 @@ const { useState, useRef, useMemo } = globalThis.preactHooks;
 import {
   Button,
   Disclosure,
+  Icon,
+  Input,
   ListActions,
   Panel,
   PanelBody,
@@ -65,11 +67,11 @@ export function ToolResultPanel({ result, onCopy, onClose, followUps, onAskFollo
             ${followUps.map(fu => html`
               <div class="px-3 py-2 border-b border-aurora-border/50 last:border-b-0">
                 <div class="flex items-start gap-2 mb-1.5">
-                  <span class="text-[10px] mt-0.5">❓</span>
+                  <span class="text-[10px] mt-0.5"><${Icon} name="prompt" size=${13}/></span>
                   <span class="text-[10px] font-medium text-aurora-text">${fu.question}</span>
                 </div>
                 <div class="flex items-start gap-2">
-                  <span class="text-[10px] mt-0.5">🤖</span>
+                  <span class="text-[10px] mt-0.5"><${Icon} name="bot" size=${13}/></span>
                   <span class="text-[11px] text-aurora-text whitespace-pre-wrap">${fu.answer}</span>
                 </div>
               </div>
@@ -78,11 +80,11 @@ export function ToolResultPanel({ result, onCopy, onClose, followUps, onAskFollo
             ${chatBusy && html`
               <div class="px-3 py-2 border-b border-aurora-border/50">
                 <div class="flex items-start gap-2">
-                  <span class="text-[10px] mt-0.5">❓</span>
+                  <span class="text-[10px] mt-0.5"><${Icon} name="prompt" size=${13}/></span>
                   <span class="text-[10px] font-medium text-aurora-text">${chatCurrentQuestion}</span>
                 </div>
                 <div class="flex items-start gap-2 mt-1.5">
-                  <span class="text-[10px] mt-0.5">🤖</span>
+                  <span class="text-[10px] mt-0.5"><${Icon} name="bot" size=${13}/></span>
                   <span class="text-[11px] text-aurora-text whitespace-pre-wrap">${chatStreaming}</span>
                   <span class="inline-block w-1.5 h-3 bg-aurora-accent animate-pulse ml-0.5"></span>
                 </div>
@@ -97,7 +99,7 @@ export function ToolResultPanel({ result, onCopy, onClose, followUps, onAskFollo
                   onChange=${() => setIncludeImage(i => !i)}
                   class="accent-aurora-accent"
                 />
-                <span>📷 Incluir screenshot</span>
+                <span class="inline-flex items-center gap-1.5"><${Icon} name="camera" size=${13}/> Incluir screenshot</span>
                 ${includeImage && html`
                   <img src=${screenshotDataUrl} class="ml-auto h-7 w-auto rounded border border-aurora-border" />
                 `}
@@ -105,10 +107,9 @@ export function ToolResultPanel({ result, onCopy, onClose, followUps, onAskFollo
             `}
 
             <div class="flex items-center gap-2 px-3 py-2 bg-aurora-surface">
-              <input
-                ref=${inputRef}
-                type="text"
-                class="flex-1 bg-aurora-surface-2 border border-aurora-border rounded-md px-2 py-1.5 text-[11px] text-aurora-text placeholder-aurora-text-dim outline-none focus:border-aurora-accent transition-colors"
+              <${Input}
+                inputRef=${inputRef}
+                class="flex-1"
                 placeholder=${chatBusy ? 'Esperando respuesta…' : 'Preguntá sobre esto…'}
                 value=${chatBusy ? '' : question}
                 disabled=${chatBusy}

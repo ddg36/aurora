@@ -3,16 +3,56 @@
 
 import readline from 'node:readline';
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 
-const sdkCandidates = [
-  process.env.AURORA_PI_SDK,
-  join(homedir(), '.bun', 'install', 'global', 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'core', 'sdk.js'),
-].filter(Boolean);
-const sdkPath = sdkCandidates.find(existsSync);
+const PKG = '@earendil-works/pi-coding-agent';
+const PKG_ENTRY = `${PKG}/dist/core/sdk.js`;
+
+function findSdk() {
+  // 1. Variable de entorno explícita (escape hatch para cualquier setup)
+  if (process.env.AURORA_PI_SDK && existsSync(process.env.AURORA_PI_SDK))
+    return process.env.AURORA_PI_SDK;
+
+  // 2. require.resolve: Node resuelve el paquete según su propio mecanismo
+  //    (respeta NODE_PATH, pnp, yarn workspaces, etc.)
+  try {
+    const req = createRequire(import.meta.url);
+    return req.resolve(PKG_ENTRY);
+  } catch {}
+
+  // 3. Relativo al node que está corriendo este script.
+  //    Instalación estándar: <prefix>/bin/node → <prefix>/lib/node_modules/<pkg>
+  //    Funciona con fnm, nvm, volta, instaladores oficiales — sin depender de PATH.
+  const nodeDir = dirname(process.execPath);
+  const prefix = dirname(nodeDir);                     // <prefix>
+  const globalLib = join(prefix, 'lib', 'node_modules');
+  const sdkViaPrefix = join(globalLib, PKG, 'dist', 'core', 'sdk.js');
+  if (existsSync(sdkViaPrefix)) return sdkViaPrefix;
+
+  // 4. npm del mismo node, invocado directamente con process.execPath
+  //    (evita el problema de #!/usr/bin/env node cuando node no está en PATH)
+  const isWin = process.platform === 'win32';
+  const npmCli = join(globalLib, 'npm', 'bin', 'npm-cli.js');
+  if (existsSync(npmCli)) {
+    try {
+      const root = execFileSync(process.execPath, [npmCli, 'root', '-g'],
+        { timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+      const sdk = join(root, PKG, 'dist', 'core', 'sdk.js');
+      if (existsSync(sdk)) return sdk;
+    } catch {}
+  }
+
+  return null;
+}
+
+const sdkPath = findSdk();
 if (!sdkPath) {
-  process.stdout.write(JSON.stringify({ fatal: true, error: `Pi SDK no encontrado: ${sdkCandidates.join(', ')}` }) + '\n');
+  process.stdout.write(JSON.stringify({
+    fatal: true,
+    error: `SDK de Pi no encontrado. Instalalo con: npm install -g ${PKG}`,
+  }) + '\n');
   process.exit(2);
 }
 

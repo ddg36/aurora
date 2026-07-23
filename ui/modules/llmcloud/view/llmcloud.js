@@ -10,6 +10,7 @@ import { useFloatingMenu } from '../../../components/shared/iconButton.js';
 import { usePersistedState } from '../../../components/shared/persisted-state.js';
 import { postJSON } from '../../../components/shared/api.js';
 import { ToolVisualCard } from '../../../components/shared/cloud-tool-visual.js';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 
 // Sólo delegamos el iframe a la extensión si ésta anunció la capability
 // `llmPanes` (sidepanel que sabe montar iframes de LLM a nivel de extensión).
@@ -99,6 +100,39 @@ export default function LLMCloud() {
   const setFoco = (lado) => setUi(p => ({ ...(p || {}), foco: lado }));
   const setSplit = (v) => setUi(p => ({ ...(p || {}), split: v }));
 
+  useEffect(() => registerAIView({
+    id: 'llmcloud',
+    description: 'Superficie de proveedores Cloud, sesiones nativas y comparación en panel dividido.',
+    actions: {
+      status: {
+        description: 'Resume proveedores, panel activo, split y disponibilidad del bridge de extensión.',
+        readOnly: true,
+        run: () => ({ providers: urls.length, left: izq?.id || null, right: split ? der?.id || null : null, split, focus: foco, extensionBridge: enExt() }),
+      },
+      list_providers: {
+        description: 'Lista proveedores configurados y si requieren pestaña externa.',
+        readOnly: true,
+        run: () => urls.map(({ id, nombre, url, soloTab }) => ({ id, name: nombre, url, externalTabOnly: !!soloTab })),
+      },
+      select_provider: {
+        description: 'Selecciona un proveedor existente en el panel indicado.',
+        input: { id: { type: 'string', required: true }, pane: { type: 'string', enum: ['izq', 'der'], required: false } },
+        run: ({ id, pane = foco }) => {
+          const provider = urls.find(item => item.id === id);
+          if (!provider) throw new Error(`Proveedor desconocido: ${id}`);
+          if (provider.soloTab) throw new Error(`${provider.nombre} sólo puede abrirse en una pestaña externa`);
+          setUi(prev => ({ ...(prev || {}), [pane]: id, ...(pane === 'der' ? { split: true, foco: 'der' } : { foco: 'izq' }) }));
+          return { selected: id, pane };
+        },
+      },
+      set_split: {
+        description: 'Activa o desactiva la comparación de dos proveedores.',
+        input: { enabled: { type: 'boolean', required: true } },
+        run: ({ enabled }) => { setSplit(enabled); return { split: enabled }; },
+      },
+    },
+  }), [urls, izq, der, split, foco]);
+
   // El caps de la extensión llega ASYNC (handshake AURORA_EXT_HELLO). Sin
   // reaccionar a eso, los effects que dependen de enExt() corrían una vez con
   // enExt()=false y nunca se re-suscribían al llegar el HELLO — el iframe no se
@@ -142,16 +176,15 @@ export default function LLMCloud() {
 
   useEffect(() => {
     const slots = split ? [1, 2] : [1];
-    const sup = ['¹', '²', '³'];
     const acciones = [];
     for (const n of slots) {
-      acciones.push({ id: `txt-${n}`, icon: `📄${sup[n - 1]}`, title: `Extraer texto panel ${n}`, onClick: () => extraerExtension(n) });
-      acciones.push({ id: `shot-${n}`, icon: `📸${sup[n - 1]}`, title: `Captura panel ${n}`, onClick: () => capturaExtension(n) });
+      acciones.push({ id: `txt-${n}`, icon: 'file-text', title: `Extraer texto del panel ${n}`, onClick: () => extraerExtension(n) });
+      acciones.push({ id: `shot-${n}`, icon: 'camera', title: `Capturar panel ${n}`, onClick: () => capturaExtension(n) });
     }
     if (split) {
-      acciones.push({ id: 'swap', icon: '⇄', title: 'Intercambiar paneles', onClick: swap });
+      acciones.push({ id: 'swap', icon: 'repeat', title: 'Intercambiar paneles', onClick: swap });
     }
-    acciones.push({ id: 'duo', icon: '⇆ Duo', title: 'Duo — dos IAs conversando (nativo, sin extensión)', onClick: () => setDuoAbierto(true) });
+    acciones.push({ id: 'duo', icon: 'users', title: 'Duo — dos IAs conversando (nativo, sin extensión)', onClick: () => setDuoAbierto(true) });
     setViewActions(acciones);
     return () => clearViewActions();
   }, [split, izq, der]);

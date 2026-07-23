@@ -3,6 +3,7 @@ const { useState, useEffect, useRef } = globalThis.preactHooks;
 
 import { footActions } from './registry.js';
 import { iconButtonClass, useWheelHorizontalScroll, ICON_BTN_SQUARE } from '../shared/iconButton.js';
+import { Icon, resolveIconName } from '../Icon.js';
 
 function Boton({ a }) {
   const active = typeof a.active === 'function' ? a.active() : a.active;
@@ -10,15 +11,14 @@ function Boton({ a }) {
   return html`
     <button
       key=${a.id}
-      class=${iconButtonClass(active, `${ICON_BTN_SQUARE} text-sm disabled:opacity-40 disabled:cursor-not-allowed`)}
+      class=${iconButtonClass(active, `${ICON_BTN_SQUARE} footer-action disabled:opacity-40 disabled:cursor-not-allowed`)}
       disabled=${disabled}
       title=${a.title || a.id}
       onClick=${a.onClick}
     >
-      ${a.svg
-        ? html`<span class="flex-shrink-0 flex items-center justify-center" style="width:16px;height:16px" dangerouslySetInnerHTML=${{ __html: a.svg }} />`
-        : html`<span class="inline-block leading-none">${a.icon || a.id}</span>`
-      }
+      ${resolveIconName(a.icon)
+        ? html`<${Icon} name=${a.icon} size=${16} />`
+        : html`<span class="footer-action-label">${a.icon || a.id}</span>`}
     </button>
   `;
 }
@@ -41,7 +41,7 @@ export function Footer() {
   if (groups.length === 0) return null;
 
   return html`
-    <footer class="px-2 py-1.5 border-t border-white/5 bg-black/20 backdrop-blur-sm flex-shrink-0">
+    <footer class="aurora-footer flex-shrink-0">
       <div ref=${scrollRef} class="flex gap-1 overflow-x-auto scrollbar-none">
         ${groups.map((group, i) => html`
           ${i > 0 && html`<span class="w-px h-5 my-1 mx-1.5 flex-shrink-0 bg-white/10"></span>`}

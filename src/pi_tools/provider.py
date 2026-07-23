@@ -11,6 +11,7 @@ import shutil
 import uuid
 
 from pi import config
+from runtime_discovery import find_node
 
 log = logging.getLogger("aurora.pi-tools")
 HOST = pathlib.Path(__file__).with_name("pi-tool-host.mjs")
@@ -37,17 +38,44 @@ class PiToolProvider:
         configured = str(config.RUNTIME or "")
         if configured and pathlib.Path(configured).exists():
             return configured
-        runtime = shutil.which("bun") or shutil.which("node")
-        if not runtime:
-            raise RuntimeError("No se encontró Node/Bun para iniciar Pi Tool Host.")
-        return runtime
+        runtime = find_node()
+        if runtime:
+            return runtime
+        raise RuntimeError(
+            "Node.js o Bun no encontrado. Instalalo desde https://nodejs.org "
+            "o configurá [pi] runtime en config/llm.toml."
+        )
 
     def _sdk_path(self) -> str:
+        import subprocess
+        # Variable de entorno: escape hatch explícito.
         configured = os.environ.get("AURORA_PI_SDK")
         if configured:
             return configured
-        return str(pathlib.Path.home() / ".bun" / "install" / "global" / "node_modules" /
-                   "@earendil-works" / "pi-coding-agent" / "dist" / "core" / "sdk.js")
+        # Dejamos que el .mjs resuelva el SDK por su cuenta — le pasamos
+        # una cadena vacía y él busca via npm root -g y require.resolve.
+        # Pero si queremos pre-validar en Python, usamos npm del mismo runtime.
+        try:
+            node = self._runtime()
+            node_dir = pathlib.Path(node).parent
+            # npm está junto al node en todos los instaladores estándar.
+            npm = node_dir / ("npm.cmd" if os.name == "nt" else "npm")
+            if not npm.exists():
+                npm_path = shutil.which("npm")
+                if npm_path:
+                    npm = pathlib.Path(npm_path)
+            if npm.exists():
+                root = subprocess.check_output(
+                    [str(npm), "root", "-g"], timeout=5, text=True,
+                    stderr=subprocess.DEVNULL,
+                ).strip()
+                sdk = pathlib.Path(root) / "@earendil-works" / "pi-coding-agent" / "dist" / "core" / "sdk.js"
+                if sdk.exists():
+                    return str(sdk)
+        except Exception:
+            pass
+        # Vacío → el .mjs hace su propia búsqueda y emite un error claro.
+        return ""
 
     async def ensure_started(self) -> None:
         if self.process and self.process.returncode is None and self.ready.is_set():

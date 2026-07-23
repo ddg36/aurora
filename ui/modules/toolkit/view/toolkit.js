@@ -4,7 +4,7 @@ import { HERRAMIENTAS } from '../scripts/herramientas.js';
 import { sendToLyra, fetchModels, cancelarMensaje } from '../../../components/shared/lyra-ws.js';
 import { renderMarkdown } from '../../../components/shared/markdown.js';
 import { copiarTexto } from '../../../components/shared/clipboard.js';
-import { Button, Chip, Select } from '../../../components/index.js';
+import { Button, Chip, Icon, Panel, PanelBody, Select, Textarea, ToolPage, ToolHeader, ToolSection } from '../../../components/index.js?v=v1-surface-convergence-1';
 import { ToolForge } from './tool-forge.js';
 import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 
@@ -90,64 +90,52 @@ export default function Toolkit() {
   const copiar = () => copiarTexto(salida);
 
   return html`
-    <div class="w-full max-w-4xl mx-auto p-4">
-      <div class="flex items-center gap-2 mb-4">
-        <h1 class="text-lg font-semibold flex-1">🧰 Toolkit</h1>
-        <${Chip} active=${seccion === 'rapidas'} onClick=${() => setSeccion('rapidas')}>Herramientas rápidas<//>
-        <${Chip} active=${seccion === 'forge'} onClick=${() => setSeccion('forge')}>⚒ Tool Forge<//>
-      </div>
+    <${ToolPage} wide>
+      <${ToolHeader} icon="toolkit" eyebrow="Transformación" title="Toolkit" description="Una operación clara sobre el texto activo." actions=${html`
+        <${Chip} active=${seccion === 'rapidas'} onClick=${() => setSeccion('rapidas')}>Rápidas<//>
+        <${Chip} active=${seccion === 'forge'} onClick=${() => setSeccion('forge')}><${Icon} name="package" size=${14}/> Forge<//>
+      `} />
 
       ${seccion === 'forge' ? html`<${ToolForge} />` : html`
 
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+      <div class="tool-choice-grid">
         ${HERRAMIENTAS.map(h => html`
-          <button
+          <${Panel}
             key=${h.id}
             onClick=${() => setHerramienta(h)}
-            class=${`text-left p-2 rounded-lg border transition
-              ${herramienta.id === h.id ? 'border-white/30 bg-white/10' : 'border-white/5 bg-white/5 hover:bg-white/10'}`}
+            interactive
+            active=${herramienta.id === h.id}
+            class="text-left"
           >
-            <div class="text-sm">${h.icono} ${h.nombre}</div>
-            <div class="text-[10px] text-white/40 mt-0.5">${h.descripcion}</div>
-          </button>
+            <${PanelBody}>
+              <div class="text-sm inline-flex items-center gap-2"><${Icon} name=${h.icono} size=${15}/> ${h.nombre}</div>
+              <div class="text-[10px] text-white/40 mt-0.5">${h.descripcion}</div>
+            <//>
+          <//>
         `)}
       </div>
 
-      <textarea
-        class="w-full h-32 bg-white/5 rounded-lg p-3 text-xs font-mono outline-none resize-y text-white/80"
-        placeholder=${`Texto para "${herramienta.nombre}"…`}
-        value=${entrada}
-        onInput=${e => setEntrada(e.target.value)}
-        spellcheck="false"
-      />
-
-      <div class="flex items-center gap-2 mt-2 mb-4 flex-wrap">
-        <${Select} size="sm" class="min-w-0 flex-shrink" value=${modelo} onChange=${e => setModelo(e.target.value)}>
-          ${modelos.map(m => {
-            const id = m.id || m;
-            return html`<option key=${id} value=${id}>${id}</option>`;
-          })}
-        <//>
-        <span class="flex-1" />
-        ${generando && html`
-          <${Chip} variant="yt" onClick=${cancelarMensaje}>■ Cancelar<//>
-        `}
-        <${Chip}
-          variant="accent"
-          onClick=${ejecutar}
-          disabled=${generando || !entrada.trim()}
-        >${generando ? 'Generando…' : `▶ ${herramienta.nombre}`}<//>
-      </div>
+      <${ToolSection} title=${herramienta.nombre} description=${herramienta.descripcion}>
+        <${Textarea} class="w-full h-32 font-mono resize-y" placeholder=${`Texto para "${herramienta.nombre}"…`} value=${entrada} onInput=${e => setEntrada(e.target.value)} spellcheck="false" />
+        <div class="flex items-center gap-2 mt-2 flex-wrap">
+          <${Select} size="sm" class="min-w-0 flex-shrink" value=${modelo} onChange=${e => setModelo(e.target.value)}>
+            ${modelos.map(m => { const id = m.id || m; return html`<option key=${id} value=${id}>${id}</option>`; })}
+          <//>
+          <span class="flex-1" />
+          ${generando && html`<${Button} icon="stop" size="sm" variant="danger" onClick=${cancelarMensaje}>Cancelar<//>`}
+          <${Button} icon="play" size="sm" variant="primary" onClick=${ejecutar} disabled=${generando || !entrada.trim()}>${generando ? 'Generando…' : herramienta.nombre}<//>
+        </div>
+      <//>
 
       ${err && html`<div class="text-xs text-red-400/70 mb-2">${err}</div>`}
 
       ${(salida || generando) && html`
-        <div class="bg-white/5 rounded-lg p-3 relative">
-          <${Button} iconOnly onClick=${copiar} title="Copiar" class="absolute top-2 right-2">⧉<//>
+        <${Panel} class="relative"><${PanelBody}>
+          <${Button} icon="copy" iconOnly onClick=${copiar} title="Copiar" class="absolute top-2 right-2" />
           <div class="text-sm pr-8" dangerouslySetInnerHTML=${{ __html: renderMarkdown(salida || '…') }} />
-        </div>
+        <//><//>
       `}
       `}
-    </div>
+    <//>
   `;
 }

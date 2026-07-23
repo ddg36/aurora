@@ -16,12 +16,14 @@ export { Status }                                       from './Status.js';
 export { Toolbar, ToolbarSpacer }                       from './Toolbar.js';
 export { Panel, PanelHeader, PanelBody, PanelFooter,
          PanelLabel, PanelValue }                      from './Panel.js';
-export { List, ListItem, ListActions }                 from './List.js';
+export { List, ListItem, ListActions }                 from './List.js?v=v2-grid-layout-1';
 export { Disclosure }                                  from './Disclosure.js';
 export { Empty }                                       from './Empty.js';
 export { Chip, ChipGroup }                             from './Chip.js';
 export { Input, Textarea, Select }                     from './Input.js';
 export { ChatMessage, ChatList }                       from './ChatMessage.js';
+export { Icon, iconSvg, resolveIconName, splitIconLabel } from './Icon.js';
+export { ToolPage, ToolHeader, ToolSection, MetricStrip, Metric } from './ToolShell.js?v=v1-surface-convergence-1';
 export { BTN_HEIGHT, BTN_SAFE, ICON_BTN_SIZE, ICON_BTN_SQUARE,
          TOOLBAR_ROW, TOOLBAR_GROUP, iconButtonClass,
          useFloatingMenu, useAutoFitRow, AutoFitChips }    from './shared/iconButton.js';

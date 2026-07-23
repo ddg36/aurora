@@ -8,6 +8,7 @@ from litestar import post
 
 from .config import IS_WIN, SANDBOX, TIMEOUT_RUN, clip
 from .py import _venv_python
+from runtime_discovery import find_node
 
 LANGS = {
     'py': {'suffix': '.py'},
@@ -37,7 +38,7 @@ async def editor_run(data: dict) -> dict:
         py, _ = _venv_python()
         args = [py, tmp]
     elif lang in ('js', 'node'):
-        node = shutil.which('node')
+        node = find_node()
         args = [node, tmp] if node else None
     elif lang in ('sh', 'bash'):
         args = ['powershell', '-File', tmp] if IS_WIN else ['bash', tmp]

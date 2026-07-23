@@ -1,5 +1,5 @@
 import { HERRAMIENTAS_SISTEMA } from '../scripts/chat/herramientas.js';
-import { Chip, ChipGroup } from '../../../components/index.js';
+import { Chip, ChipGroup, Icon } from '../../../components/index.js';
 
 const html = (...args) => globalThis.html(...args);
 
@@ -14,7 +14,7 @@ export function ToolsToolbar({ FloatingMenu, expandedCategories, onToggleCategor
       <div class="toolbar-section mb-1">
         <div class=${toolbarHeaderClass} onClick=${() => onToggleCategory('sistema')}>
           <span class="toolbar-section-title flex-1 font-semibold">Sistema (${HERRAMIENTAS_SISTEMA.length})</span>
-          <span class="expand-icon text-[9px]">${expandedCategories['sistema'] ? '▼' : '▶'}</span>
+          <span class="expand-icon"><${Icon} name=${expandedCategories['sistema'] ? 'chevronDown' : 'chevronRight'} size=${12}/></span>
         </div>
         ${expandedCategories['sistema'] && html`
           <div class="px-1 py-1.5">

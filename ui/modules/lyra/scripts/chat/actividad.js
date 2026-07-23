@@ -12,6 +12,16 @@ function _argsPreview(args) {
     .slice(0, 80);
 }
 
+function _detail(value, max = 3000) {
+  if (value == null) return '';
+  try {
+    const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    return text.length > max ? `${text.slice(0, max)}\n…` : text;
+  } catch {
+    return String(value).slice(0, max);
+  }
+}
+
 export function trackStart(name, args = {}, meta = {}) {
   const id      = Date.now() + Math.random();
   const preview = _argsPreview(args);
@@ -24,6 +34,7 @@ export function trackStart(name, args = {}, meta = {}) {
     scope,
     risk,
     preview,
+    input: _detail(args),
     status: 'running',
     ts: Date.now(),
     ms: null,
@@ -44,8 +55,8 @@ export function trackEnd(id, status, result = '', meta = {}) {
       status,
       ms: duration,
       duration,
-      result: String(result).slice(0, 120),
-      error: isError ? String(meta.error || result).slice(0, 160) : null,
+      result: _detail(result, 4000),
+      error: isError ? _detail(meta.error || result, 4000) : null,
     };
   });
 }
