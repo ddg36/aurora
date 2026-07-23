@@ -1748,4 +1748,3 @@ Evidencia conceptual real:
 - Una sesión de SOL volvió con 100% de uso disponible pero contexto cero.
 - Claude permaneció disponible, pero perdió su memoria operativa de Aurora.
 - Los prompts manuales de reconexión permitieron restaurar identidad funcional, ramas, restricciones y siguiente checkpoint.
-
