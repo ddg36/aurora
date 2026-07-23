@@ -325,7 +325,23 @@ picker real solo ofrece esos 5) DENTRO del iframe de Aurora, y probar desde
 ahí con el composer real de Lyria (`.composer-textarea`), no con mensajes
 sintéticos armados a mano.
 
-## 9. Otros hallazgos menores
+## 9. Bug pre-existente encontrado durante el merge (no introducido por esta sesión)
+
+Al fusionar `task/lyria-avatar-presence-backgrounds`, `ui/modules/lyra/view/lyra.js`
+referenciaba `cloudGenerandoVal` en dos lugares — variable que **no está
+declarada en ningún lado del archivo actual** (solo existe en varios
+`*.backup.TIMESTAMP` viejos, donde sí se declaraba vía
+`const cloudGenerandoVal = useSig(cloudGenerando);`). Confirmado que el bug
+existe en AMBAS ramas por separado (no es artefacto del merge) — un
+`ReferenceError` real en cualquier render donde se llegue a evaluar esa
+rama del ternario. Se resolvió el conflicto tomando en ambos casos la
+versión que NO referencia la variable rota, pero **la declaración faltante
+sigue sin arreglarse** — si `cloudGenerandoVal` se necesita de verdad (lo
+usa `message-list.js` como prop), hay que re-agregar
+`const cloudGenerandoVal = useSig(cloudGenerando);` (importando `cloudGenerando`
+desde `./scripts/chat/mensajes.js`) en `lyra.js`.
+
+## 10. Otros hallazgos menores
 
 - **Steam L4D2**: tras migrar Steam de Flatpak a `.deb` nativo, el juego
   mostraba "no tenés permiso para correr esta aplicación" DENTRO del juego
@@ -337,7 +353,16 @@ sintéticos armados a mano.
   instalados). **Quedó corriendo la verificación al cierre de la sesión, sin
   confirmar si resolvió el problema.**
 
-## 10. Estado de ramas y worktrees al cierre de esta sesión
+## 11. Estado de ramas y worktrees — CONSOLIDADO en este checkpoint
+
+**Actualización tras el merge real**: todas las ramas de abajo ya están
+fusionadas a `master` (verificado: `git rev-list --count master..<rama>` da
+`0` para las ocho). El working tree quedó limpio (`git status` sin
+pendientes). El único conflicto real de mezcla de código fue en
+`ui/modules/lyra/view/lyra.js` (avatar/duo, 8 bloques resueltos a mano,
+documentado en la sección 9 de arriba) y uno trivial en
+`ai-cloud/CHECKLIST-ACTIVO.md` (contenido duplicado, resuelto tomando la
+versión más completa). El resto fusionó sin conflictos.
 
 Antes de este checkpoint, el repo tenía múltiples worktrees activos, cada
 uno en su propia rama, sin fusionar entre sí:
@@ -367,7 +392,7 @@ cada una y cómo se resolvió cualquier conflicto). El objetivo explícito del
 usuario: poder seguir trabajando desde **otra máquina** con un solo
 `git pull` de `master`, sin tener que reconstruir todos los worktrees.
 
-## 11. Cómo retomar
+## 12. Cómo retomar
 
 1. Leer este archivo completo.
 2. Revisar la sección "Estado y pendientes" al inicio de `README.md`.
