@@ -15,25 +15,29 @@ import { modeloSeleccionado, cargarModelo, guardarModelo } from '../scripts/chat
 import { instruccion, cargarInstruccion } from '../scripts/chat/instrucciones.js';
 import { pendingImages, setPendingImage, removePendingImage, clearPendingImage, MAX_PENDING_IMAGES } from '../scripts/chat/vision.js';
 import {
-  grabando, transcribiendo, autoVoz, vozSeleccionada, voces,
+  grabando, transcribiendo, hablando, autoVoz, vozSeleccionada, voces,
   cargarVoces, setVoz, toggleAutoVoz, iniciarGrabacion, detenerGrabacion, hablar, detenerVoz,
 } from '../scripts/voz/voz.js';
 import { canvasDoc, canvasVisible, toggleCanvas, canvasWrite, handleHubAction, cargarCanvas } from '../scripts/canvas/canvas.js';
 import {
   renderizarContenido, scrollAlFondo, estaCercaDelFondo, inicializarEventosCodigo,
-} from '../scripts/chat/renderizar.js';
-import { toolActivity, trackStart, trackEnd, clearActivity } from '../scripts/chat/actividad.js';
+} from '../scripts/chat/renderizar.js?v=v2-svg-actions';
+import { toolActivity, trackStart, trackEnd } from '../scripts/chat/actividad.js';
 import { copiarMensaje, añadirANotas, reformularRespuesta, leerMensaje } from '../scripts/chat/acciones-rapidas.js';
 import { exportarChatPDF } from '../scripts/chat/exportar-pdf.js';
-import { comandosPi, cargarComandos, filtrarComandos, iconoComando } from '../scripts/chat/comandos.js';
+import { clearTurnDraft, draftText, loadTurnDraft, saveTurnDraft } from '../scripts/chat/turn-draft.js?v=v1-reload-checkpoint';
+import { comandosPi, cargarComandos, filtrarComandos, iconoComando } from '../scripts/chat/comandos.js?v=v2-svg-icons';
 import { HERRAMIENTAS_SISTEMA, promptParaHerramienta } from '../scripts/chat/herramientas.js';
 import { sendToLyra, fetchModels, connectLyra, cancelarMensaje, enviarSteer, onWidgetUpdate, onSessionInfo as subscribeSessionInfo, refreshPiStatus, cycleModel, linkSession } from '../../../components/shared/lyra-ws.js';
 import { CanvasPanel } from '../../../components/lyra.views/canvas.js';
 import { nexusOnline } from '../../../store.js';
 import { getJSON, postJSON, patchJSON } from '../../../components/shared/api.js';
 import { ToolVisualCard } from '../../../components/shared/cloud-tool-visual.js';
+import { Empty, Icon } from '../../../components/index.js';
 import { ParamsPanel } from './params-panel.js';
 import { ComandoOverlay } from './comando-overlay.js';
+import { AvatarStage, LyriaLocalDock } from '../../../components/lyra/avatar-presence.js?v=v3-avatar-mood';
+import { avatarStateLabel } from '../../../components/lyra/avatar-manifest.js?v=v2-avatar-mood';
 import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 import { usePersistedState } from '../../../components/shared/persisted-state.js';
 import {
@@ -61,83 +65,16 @@ const AI_URLS = {
   custom:     '',
 };
 const AI_LABELS = { gemini: 'Gemini', chatgpt: 'ChatGPT', claude: 'Claude', perplexity: 'Perplexity', qwen: 'Qwen', custom: 'Custom' };
-const AI_ICONOS = { gemini: '◇', chatgpt: '◉', claude: '✶', perplexity: '⊕', qwen: '❖', custom: '🌐' };
-// Favicon real del proveedor en vez de un glifo fijo. El favicon.ico directo
-// del dominio no es confiable (probado: ChatGPT 403, Gemini 404, Grok 200
-// pero text/html de error) — el servicio de Google resuelve esto igual para
-// cualquier sitio, sin depender de CORS/hosting de cada proveedor.
-function iconoUrlPara(aiId) {
-  const url = AI_URLS[aiId];
-  if (!url) return null;
-  try { return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=64`; }
-  catch { return null; }
-}
 
-// SVG monocromo, mismo lenguaje visual que NavBar/Footer (nav-tabs.js,
-// footer/registry.js): viewBox 14x14, stroke currentColor — nunca glifos
-// Unicode (▾/◻/∧ se veían inconsistentes, y el ◻ se confundía con un botón
-// de Stop). Ciclo mini→oculto→expandido: cada ícono representa la ACCIÓN
-// (qué va a pasar al clickear), no el estado actual.
-const ICON_OCULTAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c1.3-2.3 3.2-3.5 5-3.5s3.7 1.2 5 3.5c-1.3 2.3-3.2 3.5-5 3.5S3.3 9.3 2 7z"/><circle cx="7" cy="7" r="1.6"/><line x1="2" y1="12" x2="12" y2="2"/></svg>';
-const ICON_MOSTRAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7c1.3-2.3 3.2-3.5 5-3.5s3.7 1.2 5 3.5c-1.3 2.3-3.2 3.5-5 3.5S3.3 9.3 2 7z"/><circle cx="7" cy="7" r="1.6"/></svg>';
-const ICON_COLAPSAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,5 7,9 11,5"/></svg>';
-const ICON_EXPANDIR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="1.5,5 1.5,1.5 5,1.5"/><polyline points="9,1.5 12.5,1.5 12.5,5"/><polyline points="12.5,9 12.5,12.5 9,12.5"/><polyline points="5,12.5 1.5,12.5 1.5,9"/></svg>';
-// Mover el panel a cabecera (arriba del chat) o de vuelta al pie (entre el
-// chat y el composer, default). Doble flecha vertical = "cambiar de lado".
-const ICON_A_CABECERA = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 7,2 11,6"/><line x1="7" y1="2" x2="7" y2="9"/><line x1="2.5" y1="12" x2="11.5" y2="12"/></svg>';
-const ICON_AL_PIE = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,8 7,12 11,8"/><line x1="7" y1="12" x2="7" y2="5"/><line x1="2.5" y1="2" x2="11.5" y2="2"/></svg>';
-
-// Fila de acciones del composer: usaba +, /, 🎤, ■, ↑ y el emoji 👁 mezclados
-// con texto plano — inconsistente con el resto de la interfaz (NavBar/Footer,
-// SVG monocromo viewBox 14x14). Mismo lenguaje visual para toda la fila.
-const ICON_MAS = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="2" x2="7" y2="12"/><line x1="2" y1="7" x2="12" y2="7"/></svg>';
-const ICON_COMANDO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="5,2 2,7 5,12"/><polyline points="9,2 12,7 9,12"/></svg>';
-const ICON_MIC = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="1.5" width="4" height="7" rx="2"/><path d="M3 7.5a4 4 0 008 0"/><line x1="7" y1="11.5" x2="7" y2="13"/><line x1="4.5" y1="13" x2="9.5" y2="13"/></svg>';
-const ICON_MIC_STOP = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"/></svg>';
-const ICON_ENVIAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="12" x2="7" y2="2"/><polyline points="3,6 7,2 11,6"/></svg>';
-const ICON_DETENER = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/></svg>';
-// Botón toggle Cloud: ☁ emoji fijo + label 'Cloud' cuando está apagado —
-// una vez conectado a un proveedor debe mostrar SU favicon (ver
-// iconoUrlPara), pero desactivado no hay proveedor que mostrar; una nube
-// SVG monocromo mantiene el mismo lenguaje visual sin el emoji.
-const ICON_NUBE = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 10.5h6a2.3 2.3 0 000-4.6 3.3 3.3 0 00-6.3-1 2.6 2.6 0 00-1.7 4.7"/></svg>';
-
-// Barra superior: ☰/⚙/🔧/＋ — mismo problema, mismo tratamiento.
-const ICON_HISTORIAL = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="4" x2="12" y2="4"/><line x1="2" y1="7" x2="12" y2="7"/><line x1="2" y1="10" x2="12" y2="10"/></svg>';
-const ICON_PARAMETROS = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="2"/><path d="M7 1.5v1.7M7 10.8v1.7M12.5 7h-1.7M3.2 7H1.5M10.6 3.4l-1.2 1.2M4.6 9.4L3.4 10.6M10.6 10.6L9.4 9.4M4.6 4.6L3.4 3.4"/></svg>';
-const ICON_HERRAMIENTAS = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.8 2.2a2.6 2.6 0 00-3.4 3.1L2 8.7l1.3 1.3 3.4-3.4a2.6 2.6 0 003.1-3.4l-1.5 1.5-1.4-.4-.4-1.4z"/></svg>';
-const ICON_NUEVO_CHAT = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="2" x2="7" y2="12"/><line x1="2" y1="7" x2="12" y2="7"/></svg>';
-
-// Header y acciones de cada mensaje: 📋/✎/↻/🔊/📌/📍/🔇 — mismo problema,
-// mismo tratamiento (SVG monocromo 14x14).
-const ICON_COPIAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="7" height="8" rx="1"/><path d="M2.5 9.5v-6a1 1 0 011-1h5"/></svg>';
-const ICON_NOTA = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2h6l3 3v7a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z"/><path d="M9 2v3h3"/></svg>';
-const ICON_REGENERAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7a4.5 4.5 0 018-2.7M11.5 7a4.5 4.5 0 01-8 2.7"/><polyline points="10,1.5 10.5,4.3 7.7,4"/><polyline points="4,12.5 3.5,9.7 6.3,10"/></svg>';
-const ICON_HABLAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.5h2.3L7.5 3v8L4.3 8.5H2z"/><path d="M9.5 5a3 3 0 010 4M11 3.5a5 5 0 010 7"/></svg>';
-const ICON_MUDO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.5h2.3L7.5 3v8L4.3 8.5H2z"/><line x1="9.5" y1="4.5" x2="12.5" y2="9.5"/><line x1="12.5" y1="4.5" x2="9.5" y2="9.5"/></svg>';
-const ICON_FIJAR = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h4l-.5 4.5L11 8H3l2.5-1.5z"/><line x1="7" y1="8" x2="7" y2="12.5"/></svg>';
-const ICON_FIJADO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h4l-.5 4.5L11 8H3l2.5-1.5z"/><line x1="7" y1="8" x2="7" y2="12.5"/></svg>';
-// Roles de mensaje: 👤 Tú / 🦙 Lyra — mismo problema, mismo tratamiento.
-// ICON_USUARIO reusa el mismo path que footer/registry.js (SVG_USUARIO) para
-// no inventar un segundo símbolo de "persona" en la app.
-const ICON_USUARIO = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="4.2" r="2.4"/><path d="M2 12.5c0-2.8 2.2-5 5-5s5 2.2 5 5"/></svg>';
-const ICON_LYRA = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" stroke="none"><path d="M8 1L3 8h3.2L5.5 13l5.5-8H7.8L9 1H8z"/></svg>';
-const rolTu = () => html`<span dangerouslySetInnerHTML=${{ __html: ICON_USUARIO }}></span> Tú`;
-const rolLyra = () => html`<span dangerouslySetInnerHTML=${{ __html: ICON_LYRA }}></span> Lyra`;
+const rolTu = () => html`<span class="inline-flex items-center gap-1.5"><${Icon} name="user" size=${14}/> Tú</span>`;
+const rolLyra = () => html`<span class="inline-flex items-center gap-1.5"><${Icon} name="bot" size=${14}/> Lyria</span>`;
 
 // Label de mensajes de proveedor externo (rolLabel/rolLabelFinal): mostraba
 // un glifo fijo (◇/◉/✶/⊕) igual que el header/selector del panel — mismo
 // favicon real acá, con su propio fallback local (el mensaje puede persistir
 // mucho después de que cambiaste de proveedor activo).
-function RolProveedor({ aiId, label }) {
-  const [fallo, setFallo] = useState(false);
-  const src = iconoUrlPara(aiId);
-  return html`
-    ${src && !fallo
-      ? html`<img class="cloud-provider-favicon-inline" src=${src} alt="" onError=${() => setFallo(true)} />`
-      : html`<span>${AI_ICONOS[aiId] || '☁'}</span>`}
-    ${label}
-  `;
+function RolProveedor({ label }) {
+  return html`<span class="inline-flex items-center gap-1.5"><${Icon} name="cloud" size=${14}/> ${label}</span>`;
 }
 
 function AvatarSlot({ avatar, side }) {
@@ -199,6 +136,7 @@ export function Local({ active = true } = {}) {
   const pendingImagesVal                  = useSig(pendingImages);
   const grabandoVal                        = useSig(grabando);
   const transcVal                          = useSig(transcribiendo);
+  const hablandoVal                        = useSig(hablando);
   const ttsEnabled                         = useSig(autoVoz);
   const vocesVal                           = useSig(voces);
   const vozVal                             = useSig(vozSeleccionada);
@@ -214,7 +152,28 @@ export function Local({ active = true } = {}) {
   const [expandedCategories, setExpandedCategories] = useState({});
   const [expandedThinking, setExpandedThinking]     = useState({});
   const [expandedTools, setExpandedTools]           = useState({});
-  const toggleTool = (key) => setExpandedTools(prev => ({ ...prev, [key]: !prev[key] }));
+  const [traceDefaultExpanded, setTraceDefaultExpanded] = usePersistedState('lyria_trace_default_expanded', false);
+  // Cada bloque recuerda el default que existía cuando apareció. Cambiar uno
+  // actualiza la preferencia para bloques FUTUROS, sin abrir/cerrar sus vecinos.
+  const traceSeedRef = useRef(new Map());
+  const traceExpanded = (kind, key, overrides) => {
+    if (Object.prototype.hasOwnProperty.call(overrides, key)) return overrides[key];
+    const seedKey = `${kind}:${key}`;
+    if (!traceSeedRef.current.has(seedKey)) traceSeedRef.current.set(seedKey, Boolean(traceDefaultExpanded));
+    return traceSeedRef.current.get(seedKey);
+  };
+  const isThinkingExpanded = key => traceExpanded('thinking', key, expandedThinking);
+  const isToolExpanded = key => traceExpanded('tool', key, expandedTools);
+  const toggleThinking = key => {
+    const next = !isThinkingExpanded(key);
+    setExpandedThinking(prev => ({ ...prev, [key]: next }));
+    setTraceDefaultExpanded(next);
+  };
+  const toggleTool = key => {
+    const next = !isToolExpanded(key);
+    setExpandedTools(prev => ({ ...prev, [key]: next }));
+    setTraceDefaultExpanded(next);
+  };
   const [fijados, setFijados]                        = useState({});
   const [canvasLang, setCanvasLang]                 = useState('text');
   const [canvasTab, setCanvasTab]                   = useState('codigo');
@@ -228,9 +187,6 @@ export function Local({ active = true } = {}) {
   // 'bottom' (default, entre el chat y el composer) o 'top' (cabecera, antes
   // de la barra de historial/params/tools).
   const [cloudPosition, setCloudPosition]           = usePersistedState('lyra_cloud_position', 'bottom');
-  // Favicon del proveedor (iconoUrlPara) puede fallar por red/CORS del
-  // servicio externo — no persistido, solo evita reintentar en este montaje.
-  const [faviconFallo, setFaviconFallo]             = useState({});
   // Altura custom del panel cloud (px). Persistida en la DB (/db/ajustes) vía
   // usePersistedState — NO localStorage — y sincronizada entre superficies por
   // el bus /eventos. Durante el drag se aplica imperativo (sin persistir) para
@@ -371,6 +327,9 @@ export function Local({ active = true } = {}) {
   const [cloudStatus, setCloudStatus]               = useState({ fase: 'idle', ts: Date.now() });
   const [nexusPendiente, setNexusPendiente]         = useState(null);
   const [avatar, setAvatar]                         = useState(null);
+  const [avatarMode, setAvatarMode]                 = usePersistedState('lyria_avatar_mode', false);
+  const [localDockVisible, setLocalDockVisible]     = usePersistedState('lyria_local_dock_visible', true);
+  const [localDockMinimized, setLocalDockMinimized] = usePersistedState('lyria_local_dock_minimized', false);
   const [asistenteEnVivo, setAsistenteEnVivo]       = useState({ blocks: [] });
   const [colaMensajes, setColaMensajes]             = useState({ steering: [], followUp: [] });
   const [widgets, setWidgets]                       = useState({});
@@ -380,6 +339,11 @@ export function Local({ active = true } = {}) {
   const [ultimoTps, setUltimoTps]                   = useState(null); // tok/s del último turno — no existe en pi, agregado propio
   const [forgeTools, setForgeTools]                 = useState([]);
   const assistantMessageRef                          = useRef(asistenteEnVivo);
+  const activeTurnRef                                = useRef(null);
+  const draftCheckpointTimerRef                      = useRef(0);
+  const latestDraftRef                               = useRef(null);
+  const activityOutcomeTimerRef                      = useRef(0);
+  const [activityOutcome, setActivityOutcome]        = useState(null);
 
   const chatRef   = useRef(null);
   const [enFondo, setEnFondo]   = useState(true);
@@ -493,9 +457,62 @@ export function Local({ active = true } = {}) {
   }, []);
 
   useEffect(() => {
-    if (chatIdVal) cargarMensajes(chatIdVal);
+    if (chatIdVal) {
+      (async () => {
+        await cargarMensajes(chatIdVal);
+        const draft = loadTurnDraft(chatIdVal);
+        if (!draft || historial.value.some(msg => msg._piTurn?.turnId === draft.turnId)) return;
+        const content = draftText(draft.blocks) || 'Respuesta interrumpida durante la recarga.';
+        const estructura = {
+          protocolVersion: 1,
+          runtime: 'pi-rpc',
+          turnId: draft.turnId,
+          interrupted: true,
+          interruptedAt: draft.checkpointAt,
+          blocks: draft.blocks,
+        };
+        agregarMensajeRico({ role: 'assistant', content, _piTurn: estructura });
+        const persisted = await guardarMensaje(chatIdVal, 'assistant', content, estructura);
+        if (persisted) clearTurnDraft(draft.turnId);
+        Toast().show(
+          persisted ? 'Turno parcial recuperado después de la recarga' : 'Turno parcial recuperado; pendiente de guardar',
+          'warning', 3200,
+        );
+      })();
+    }
     setEnFondo(true);   // chat nuevo: arranca siguiendo el final, como el primer load
   }, [chatIdVal]);
+
+  useEffect(() => {
+    const activeTurn = activeTurnRef.current;
+    if (!activeTurn || !cargandoVal) return;
+    latestDraftRef.current = { ...activeTurn, blocks: asistenteEnVivo.blocks };
+    // localStorage es síncrono. Serializar el turno completo por cada token
+    // convertía una respuesta larga en trabajo O(n²) sobre el hilo principal.
+    if (draftCheckpointTimerRef.current) return;
+    draftCheckpointTimerRef.current = setTimeout(() => {
+      draftCheckpointTimerRef.current = 0;
+      if (latestDraftRef.current) saveTurnDraft(latestDraftRef.current);
+    }, 300);
+  }, [asistenteEnVivo, cargandoVal]);
+
+  useEffect(() => {
+    const flushDraft = () => {
+      if (latestDraftRef.current) saveTurnDraft(latestDraftRef.current);
+    };
+    window.addEventListener('pagehide', flushDraft);
+    return () => {
+      window.removeEventListener('pagehide', flushDraft);
+      clearTimeout(draftCheckpointTimerRef.current);
+      clearTimeout(activityOutcomeTimerRef.current);
+    };
+  }, []);
+
+  const showActivityOutcome = useCallback(outcome => {
+    clearTimeout(activityOutcomeTimerRef.current);
+    setActivityOutcome(outcome);
+    activityOutcomeTimerRef.current = setTimeout(() => setActivityOutcome(null), outcome === 'error' ? 2800 : 1600);
+  }, []);
 
   useEffect(() => {
     // Antes: mientras había streaming (enVuelo) se forzaba scrollAlFondo en
@@ -568,6 +585,19 @@ export function Local({ active = true } = {}) {
       if (chat) chatActualId.value = chat.id;
     }
 
+    // El prompt debe sobrevivir aunque la pestaña desaparezca antes de que Pi
+    // termine. Antes se guardaba recién DESPUÉS de await sendToLyra().
+    if (!opciones.skipUserSave) await guardarMensaje(chatActualId.value, 'user', texto);
+
+    const turnId = `pi-turn:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 9)}`;
+    activeTurnRef.current = {
+      turnId,
+      chatId: chatActualId.value,
+      prompt: texto,
+      startedAt: Date.now(),
+    };
+    saveTurnDraft({ ...activeTurnRef.current, blocks: [] });
+
     cargando.value = true;
     limpiarStream();
     const msg0 = { blocks: [] };
@@ -579,6 +609,25 @@ export function Local({ active = true } = {}) {
     let piTurn = createPiTurnState();
     let piTurnContext = null;
     let piSessionSnapshot = null;
+    let publishTimer = 0;
+
+    // El protocolo y assistantMessageRef reciben todos los deltas. La UI se
+    // publica como máximo cada 40 ms: suficiente para verse instantánea, sin
+    // parsear Markdown ni reconciliar ~1500 nodos por cada token diminuto.
+    const publishAssistant = (immediate = false) => {
+      const publish = () => {
+        publishTimer = 0;
+        setAsistenteEnVivo(assistantMessageRef.current);
+        if (streamingActual.value !== respuesta) streamingActual.value = respuesta;
+        if (thinkingActual.value !== thinking) thinkingActual.value = thinking;
+      };
+      if (immediate) {
+        if (publishTimer) clearTimeout(publishTimer);
+        publish();
+      } else if (!publishTimer) {
+        publishTimer = setTimeout(publish, 40);
+      }
+    };
 
     // Agrega texto/thinking al último bloque si es del mismo tipo (acumula
     // la generación real en curso); si no, abre un bloque nuevo — igual que
@@ -590,7 +639,7 @@ export function Local({ active = true } = {}) {
         ? [...blocks.slice(0, -1), { ...ultimo, contenido: ultimo.contenido + delta }]
         : [...blocks, { tipo, contenido: delta }];
       assistantMessageRef.current = { blocks: nuevos };
-      setAsistenteEnVivo(assistantMessageRef.current);
+      publishAssistant();
     };
 
     try {
@@ -604,11 +653,9 @@ export function Local({ active = true } = {}) {
         onPiEvent: (event, envelope) => {
           piTurn = reducePiTurn(piTurn, envelope);
           assistantMessageRef.current = { blocks: piTurn.blocks };
-          setAsistenteEnVivo(assistantMessageRef.current);
           respuesta = piTurnText(piTurn, 'text');
           thinking = piTurnText(piTurn, 'thinking');
-          streamingActual.value = respuesta;
-          thinkingActual.value = thinking;
+          publishAssistant();
 
           // Actividad secundaria de Aurora, correlacionada por el ID oficial
           // de Pi. Nunca por nombre: dos `read` paralelos son independientes.
@@ -617,16 +664,17 @@ export function Local({ active = true } = {}) {
           } else if (event.type === 'tool_execution_end' && event.toolCallId) {
             const output = piResultText(event.result);
             trackEnd(trackIds[event.toolCallId], event.isError ? 'error' : 'ok', output.slice(0, 200));
+            if (event.isError) showActivityOutcome('error');
+          } else if (event.type === 'agent_end') {
+            showActivityOutcome(event.willRetry ? 'error' : 'complete');
           }
         },
         onToken: token => {
           respuesta += token;
-          streamingActual.value = respuesta;
           agregarTexto('text', token);
         },
         onThinking: t => {
           thinking += t;
-          thinkingActual.value = thinking;
           agregarTexto('thinking', t);
         },
         onToolCall: (name, args, risk) => {
@@ -638,7 +686,7 @@ export function Local({ active = true } = {}) {
             blocks: [...assistantMessageRef.current.blocks,
               { tipo: 'tool', id: toolCallId, name, args: argsPreview, argsFull: argsStr, output: null, isError: false, status: 'running' }],
           };
-          setAsistenteEnVivo(assistantMessageRef.current);
+          publishAssistant();
         },
         onToolResult: (name, output) => {
           const isErr = /^Error/i.test(String(output || ''));
@@ -654,7 +702,8 @@ export function Local({ active = true } = {}) {
           if (idx >= 0) {
             const actualizado = { ...blocks[idx], output: out, isError: isErr, status: isErr ? 'error' : 'success' };
             assistantMessageRef.current = { blocks: [...blocks.slice(0, idx), actualizado, ...blocks.slice(idx + 1)] };
-            setAsistenteEnVivo(assistantMessageRef.current);
+            publishAssistant();
+            showActivityOutcome(isErr ? 'error' : 'complete');
           }
         },
         onToolProgress: (name, partial) => {
@@ -674,7 +723,7 @@ export function Local({ active = true } = {}) {
           // agent start - could be used to show working indicator
         },
         onAgentEnd: () => {
-          // agent end - could be used to hide working indicator
+          showActivityOutcome('complete');
         },
         onQueueUpdate: (steering, followUp) => {
           setColaMensajes({ steering, followUp });
@@ -686,7 +735,7 @@ export function Local({ active = true } = {}) {
           // thinking level - could be used to show thinking level
         },
         onCompactionStart: reason => {
-          Toast().setStatus('🗜️ Compactando contexto…');
+          Toast().setStatus('Compactando contexto…');
         },
         onCompactionEnd: (reason, info) => {
           Toast().setStatus('');
@@ -695,11 +744,11 @@ export function Local({ active = true } = {}) {
           // silencio total, igual bug que /compact pero para el disparo
           // automático.
           if (info?.error) {
-            Toast().show(`✗ Compactación falló: ${info.error}`, 'error', 4000);
+            Toast().show(`Compactación falló: ${info.error}`, 'error', 4000);
           } else if (info?.aborted) {
             Toast().show('Compactación cancelada', 'info');
           } else if (info?.tokensBefore != null) {
-            Toast().show(`🗜️ Compactado: ${info.tokensBefore}→${info.tokensAfter} tokens`, 'success', 3000);
+            Toast().show(`Compactado: ${info.tokensBefore}→${info.tokensAfter} tokens`, 'success', 3000);
           }
         },
         onSessionStats: stats => setSessionStats(stats),
@@ -708,8 +757,8 @@ export function Local({ active = true } = {}) {
         onCommandResult: async (comandoNombre, interactive, data) => {
           const esNuevaSesion = (comandoNombre === 'fork' || comandoNombre === 'clone' || comandoNombre === 'import') && data.sessionPath;
           if (esNuevaSesion) {
-            const nombreNuevo = comandoNombre === 'fork' ? '🌿 Rama'
-              : comandoNombre === 'clone' ? '🌿 Clon' : '📥 Importado';
+            const nombreNuevo = comandoNombre === 'fork' ? 'Rama'
+              : comandoNombre === 'clone' ? 'Clon' : 'Importado';
             const chat = await crearChat(nombreNuevo);
             if (chat) {
               if (data.parentChatId != null) {
@@ -750,8 +799,8 @@ export function Local({ active = true } = {}) {
           });
         },
       });
+      publishAssistant(true);
       streamingActual.value = '';
-      if (!opciones.skipUserSave) await guardarMensaje(chatActualId.value, 'user', texto);
       if (assistantMessageRef.current.blocks.length) {
         const serializarBloques = blocks => {
           const partes = [];
@@ -777,6 +826,7 @@ export function Local({ active = true } = {}) {
           userEntryId: piSessionSnapshot?.lastUserEntryId ?? null,
           sessionId: piSessionSnapshot?.sessionId || piTurnContext?.sessionId || '',
           sessionPath: piSessionSnapshot?.sessionPath || piTurnContext?.sessionPath || '',
+          turnId,
           leafId: piSessionSnapshot?.leafId || null,
           blocks: assistantMessageRef.current.blocks,
         } : null;
@@ -787,7 +837,8 @@ export function Local({ active = true } = {}) {
           ? (piTurnText(piTurn, 'text').trim() || respuesta.trim())
           : serializarBloques(assistantMessageRef.current.blocks);
         agregarMensajeRico({ role: 'assistant', content: contenidoFinal, thinking: thinking || null, _piTurn: estructura });
-        await guardarMensaje(chatActualId.value, 'assistant', contenidoFinal, estructura);
+        const persisted = await guardarMensaje(chatActualId.value, 'assistant', contenidoFinal, estructura);
+        if (persisted) clearTurnDraft(turnId);
       }
       await autoGuardar(historial.value, modeloSeleccionado.value);
       if (autoVoz.value && respuesta) {
@@ -796,15 +847,62 @@ export function Local({ active = true } = {}) {
       }
     } catch (e) {
       streamingActual.value = '';
+      if (!assistantMessageRef.current.blocks.length) clearTurnDraft(turnId);
       agregarMensajeLocal('assistant', `Error: ${e.message}`);
     } finally {
+      if (publishTimer) clearTimeout(publishTimer);
+      if (draftCheckpointTimerRef.current) clearTimeout(draftCheckpointTimerRef.current);
+      draftCheckpointTimerRef.current = 0;
+      latestDraftRef.current = null;
       cargando.value = false;
       setNexusPendiente(null);
       assistantMessageRef.current = { blocks: [] };
       setAsistenteEnVivo({ blocks: [] });
       setColaMensajes({ steering: [], followUp: [] });
+      activeTurnRef.current = null;
     }
   }, [mensaje, cloudVisible, cloudAiId, cloudUrl, pendingFiles]);
+
+  useEffect(() => registerAIView({
+    id: 'lyria',
+    description: 'Agente local, conversación, presencia, voz y escenario Avatar de Aurora.',
+    actions: {
+      status: {
+        description: 'Resume conexión, turno, chat, presencia local y modo Avatar.',
+        readOnly: true,
+        run: () => ({
+          online: lyraOnline,
+          chatId: chatActualId.value || null,
+          model: modeloSeleccionado.value,
+          generating: cargando.value,
+          speaking: hablando.value,
+          listening: grabando.value || transcribiendo.value,
+          avatarMode,
+          localDockVisible,
+          cloudVisible,
+        }),
+      },
+      compose: {
+        description: 'Prepara texto en el composer sin enviarlo.',
+        input: { text: { type: 'string', required: true, maxLength: 120000 } },
+        run: ({ text }) => { setMensaje(text); return { chars: text.length, sent: false }; },
+      },
+      set_avatar_mode: {
+        description: 'Activa o desactiva el escenario Avatar local.',
+        input: { enabled: { type: 'boolean', required: true } },
+        run: ({ enabled }) => {
+          if (enabled && cloudVisible) throw new Error('Cierra Cloud antes de activar el modo Avatar local');
+          setAvatarMode(enabled);
+          return { avatarMode: enabled };
+        },
+      },
+      set_presence: {
+        description: 'Muestra u oculta el dock de presencia local.',
+        input: { visible: { type: 'boolean', required: true } },
+        run: ({ visible }) => { setLocalDockVisible(visible); return { visible }; },
+      },
+    },
+  }), [lyraOnline, avatarMode, localDockVisible, cloudVisible]);
 
   const regenerarRespuesta = useCallback(async (msg) => {
     if (!msg || cargando.value) return;
@@ -818,7 +916,7 @@ export function Local({ active = true } = {}) {
       }
     }
     if (userIdx < 0) {
-      Toast().setStatus('⚠ No encontré el mensaje anterior del usuario');
+      Toast().setStatus('No encontré el mensaje anterior del usuario');
       return;
     }
     if (!msg._piTurn?.userEntryId) {
@@ -862,13 +960,13 @@ export function Local({ active = true } = {}) {
           else setMensaje(prev => (prev ? prev + ' ' : '') + texto);
         }
       } catch (e) {
-        Toast().show(`⚠ Error de voz: ${e.message}`, 'error');
+        Toast().show(`Error de voz: ${e.message}`, 'error');
       }
     } else {
       try {
         await iniciarGrabacion();
       } catch {
-        Toast().show('⚠ Micrófono no disponible o sin permiso', 'error');
+        Toast().show('Micrófono no disponible o sin permiso', 'error');
       }
     }
   }, [enviarMensaje]);
@@ -903,11 +1001,11 @@ export function Local({ active = true } = {}) {
   const cargarImagen = useCallback((blob) => {
     const MAX_BYTES = 5 * 1024 * 1024;
     if (blob.size > MAX_BYTES) {
-      Toast().show('⚠ Imagen demasiado grande (máx 5 MB)', 'error');
+      Toast().show('Imagen demasiado grande (máx 5 MB)', 'error');
       return;
     }
     if ((pendingImages.value || []).length >= MAX_PENDING_IMAGES) {
-      Toast().show(`⚠ Máximo ${MAX_PENDING_IMAGES} imágenes por mensaje`, 'warning');
+      Toast().show(`Máximo ${MAX_PENDING_IMAGES} imágenes por mensaje`, 'warning');
       return;
     }
     const reader = new FileReader();
@@ -915,7 +1013,7 @@ export function Local({ active = true } = {}) {
       const agregada = setPendingImage(blob, ev.target.result);
       const cantidad = (pendingImages.value || []).length;
       if (agregada) Toast().show(`◉ Imagen ${cantidad}/${MAX_PENDING_IMAGES} lista para enviar`, 'success');
-      else Toast().show(`⚠ Máximo ${MAX_PENDING_IMAGES} imágenes por mensaje`, 'warning');
+      else Toast().show(`Máximo ${MAX_PENDING_IMAGES} imágenes por mensaje`, 'warning');
     };
     reader.readAsDataURL(blob);
   }, []);
@@ -923,7 +1021,7 @@ export function Local({ active = true } = {}) {
   const cargarArchivoCloud = useCallback((file) => {
     const MAX_BYTES = 8 * 1024 * 1024;
     if (file.size > MAX_BYTES) {
-      Toast().show('⚠ Archivo demasiado grande (máx 8 MB)', 'error');
+      Toast().show('Archivo demasiado grande (máx 8 MB)', 'error');
       return;
     }
     const reader = new FileReader();
@@ -933,7 +1031,7 @@ export function Local({ active = true } = {}) {
         type: file.type || 'application/octet-stream',
         content: ev.target.result,
       }]);
-      Toast().show(`📎 ${file.name} listo para Cloud`, 'success');
+      Toast().show(`${file.name} listo para Cloud`, 'success');
     };
     // Data URL conserva PDFs y otros binarios sin corrupción UTF-8.
     reader.readAsDataURL(file);
@@ -966,7 +1064,7 @@ export function Local({ active = true } = {}) {
       reader.onload = ev => {
         const t = ev.target.result;
         setMensaje(prev => `${prev}${prev ? '\n' : ''}\`\`\`\n${t.slice(0, 4000)}${t.length > 4000 ? '\n…(truncado)' : ''}\n\`\`\`\n`);
-        Toast().show(`📄 ${archivo.name} cargado`, 'success');
+        Toast().show(`${archivo.name} cargado`, 'success');
       };
       reader.readAsText(archivo);
     }
@@ -1002,14 +1100,14 @@ export function Local({ active = true } = {}) {
     setCloudConvIdActivo(null);
     setCloudHistorialPropio([]);
     crearChat();
-    Toast().show('✚ Chat nuevo en ChatGPT', 'success', 2000);
+    Toast().show('Chat nuevo en ChatGPT', 'success', 2000);
     // La navegación/confirmación real sigue en paralelo, sin bloquear lo de
     // arriba — solo ajusta cloudUrl cuando ChatGPT confirme el hilo, o avisa
     // si falló.
     nuevoChatEnCursoRef.current = true;
     nuevaConversacionCloud(iframeRef.current)
       .then(r => {
-        if (!r.ok) { Toast().show(`⚠ ${r.error || 'No se pudo abrir un chat nuevo.'}`, 'warning', 3000); return; }
+        if (!r.ok) { Toast().show(`${r.error || 'No se pudo abrir un chat nuevo.'}`, 'warning', 3000); return; }
         if (r.url) setCloudUrl(r.url);
       })
       .finally(() => { nuevoChatEnCursoRef.current = false; });
@@ -1050,7 +1148,7 @@ export function Local({ active = true } = {}) {
       const esAhoraHome = !/\/c\//.test(url);
       setCloudUrl(prev => (url === prev ? prev : url));
       if (eraHiloEspecifico && esAhoraHome) {
-        Toast().show('☁️ El hilo guardado ya no existe, se restauró el chat activo.', 'info', 3000);
+        Toast().show('El hilo guardado ya no existe; se restauró el chat activo.', 'info', 3000);
       }
       // Resuelve si ESTE hilo ya tiene memoria propia guardada (conv_id) —
       // sin esto no hay forma de saber a qué mensajes _via:direct-ai/pi-tool
@@ -1147,6 +1245,7 @@ export function Local({ active = true } = {}) {
     setCloudVisible(v => {
       const abriendo = !v;
       if (abriendo) {
+        setAvatarMode(false);
         setCloudExpanded(false);
         setCloudHidden(false);
         // setTimeout, NO requestAnimationFrame: en pestaña oculta RAF no
@@ -1156,7 +1255,7 @@ export function Local({ active = true } = {}) {
           setTimeout(() => recargarCloudIframe(u), 80);
         });
       }
-      Toast().show(abriendo ? '☁️ Cloud Backend activado' : '☁️ Cloud Backend desactivado', 'info', 2000);
+      Toast().show(abriendo ? 'Cloud Backend activado' : 'Cloud Backend desactivado', 'info', 2000);
       return abriendo;
     });
   }, [cloudUrl, recargarCloudIframe]);
@@ -1164,13 +1263,13 @@ export function Local({ active = true } = {}) {
   // Duo Lyra ↔ Nube: pi y el LLM externo conversan por turnos en el hilo.
   const toggleDuo = useCallback(() => {
     if (duoActivo) { duoRef.current?.detener(); setDuoActivo(false); return; }
-    if (!cloudVisible || (!usaExtPane && !iframeRef.current)) { Toast().show('Abrí ☁ Cloud primero', 'warning', 2500); return; }
+    if (!cloudVisible || (!usaExtPane && !iframeRef.current)) { Toast().show('Abre Cloud primero', 'warning', 2500); return; }
     if (!lyraOnline) { Toast().show('Lyra local está offline — Duo necesita ambos agentes', 'warning', 3000); return; }
     if (cargando.value) { Toast().show('Esperá a que Lyra termine', 'warning', 2000); return; }
     const duo = crearDuoLyraCloud();
     duoRef.current = duo;
     setDuoActivo(true);
-    Toast().show('⇆ Duo iniciado — Lyra ↔ ' + (AI_LABELS[cloudAiId] || 'Nube'), 'info', 2000);
+    Toast().show('Duo iniciado — Lyria y ' + (AI_LABELS[cloudAiId] || 'Nube'), 'info', 2000);
     duo.iniciar(
       { iframe: iframeRef.current, model: modeloSeleccionado.value, convId: cloudConvIdActivo },
       { onEstado: e => { if (['fin', 'cancelado', 'error'].includes(e)) setDuoActivo(false); },
@@ -1293,7 +1392,7 @@ export function Local({ active = true } = {}) {
     setCloudUrl(url);
     setCloudMenu(null);
     recargarCloudIframe(url);
-    Toast().show(`☁️ ${aiId === 'custom' ? url : aiId.toUpperCase()}`, 'info', 1500);
+    Toast().show(`${aiId === 'custom' ? url : aiId.toUpperCase()}`, 'info', 1500);
   }, [recargarCloudIframe]);
 
   const toggleCategory = useCallback(id => {
@@ -1409,18 +1508,56 @@ export function Local({ active = true } = {}) {
     if (ctx && ctx.percent != null && ctx.contextWindow) {
       partes.push(`${ctx.percent.toFixed(1)}%/${formatTokens(ctx.contextWindow)}`);
     }
-    if (ultimoTps != null) partes.push(`${ultimoTps} tok/s`);
+  if (ultimoTps != null) partes.push(`${ultimoTps} tok/s`);
     statsTexto = partes.join(' · ');
   }
 
-  return html`
-    <div class="llama-view ${canvasVisibleVal ? 'canvas-open' : ''} ${cloudVisible && cloudExpanded ? 'cloud-expanded' : ''}">
+  const ultimoBloqueVivo = asistenteEnVivo.blocks[asistenteEnVivo.blocks.length - 1];
+  const hayToolEnCurso = toolActivityVal.some(item => item.status === 'running')
+    || asistenteEnVivo.blocks.some(block => block.tipo === 'tool' && block.status === 'running');
+  const lyriaPresenceState = !lyraOnline
+    ? 'offline'
+    : (grabandoVal || transcVal)
+      ? 'listening'
+      : hablandoVal
+        ? 'speaking'
+        : hayToolEnCurso
+          ? 'tool-use'
+          : ultimoBloqueVivo?.tipo === 'thinking' || (!ultimoBloqueVivo && thinkingVal)
+            ? 'thinking'
+            : (cargandoVal || streamingVal || cloudGenerandoVal)
+              ? 'working'
+              : activityOutcome || 'ready';
 
-      <div class=${'flex items-center gap-1 px-2 py-1.5 flex-wrap ' + panelTopClass}>
-        <button class=${mostrarHistorial ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarHistorial(v => !v)} title="Historial de chats" dangerouslySetInnerHTML=${{ __html: ICON_HISTORIAL }}></button>
-        <button class=${mostrarParametros ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarParametros(v => !v)} title="Parámetros del modelo" dangerouslySetInnerHTML=${{ __html: ICON_PARAMETROS }}></button>
-        <button class=${mostrarToolbar ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarToolbar(v => !v)} title="Herramientas" dangerouslySetInnerHTML=${{ __html: ICON_HERRAMIENTAS }}></button>
-        <button class=${controlBtnIdle} onClick=${nuevoChat} title="Nuevo chat" dangerouslySetInnerHTML=${{ __html: ICON_NUEVO_CHAT }}></button>
+  // El escenario no acumula el transcript: durante un turno muestra sólo el
+  // texto vivo; en reposo conserva únicamente la última respuesta local. La
+  // conversación completa permanece intacta en `historial` y en su panel.
+  const avatarLiveText = asistenteEnVivo.blocks
+    .filter(block => block.tipo === 'text' && block.contenido)
+    .map(block => block.contenido)
+    .join('\n\n');
+  const avatarLastMessage = [...visibleMessages].reverse().find(msg =>
+    msg.role === 'assistant'
+      && msg._via !== 'direct-ai'
+      && msg._via !== 'duo-external'
+      && msg._via !== 'pi-tool'
+  );
+  const avatarResponseRaw = (cargandoVal || streamingVal || thinkingVal)
+    ? avatarLiveText
+    : (avatarLastMessage?.content || '');
+  const avatarResponseHtml = avatarResponseRaw ? renderizarContenido(avatarResponseRaw) : '';
+
+  return html`
+    <div class="llama-view ${canvasVisibleVal ? 'canvas-open' : ''} ${cloudVisible && cloudExpanded ? 'cloud-expanded' : ''} ${avatarMode ? 'avatar-mode' : ''}" data-lyria-state=${lyriaPresenceState}>
+
+      <div class=${'lyra-session-bar flex items-center gap-1 px-2 py-1.5 flex-wrap ' + panelTopClass}>
+        <button class=${mostrarHistorial ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarHistorial(v => !v)} title="Historial de chats"><${Icon} name="history" size=${14}/></button>
+        <button class=${mostrarParametros ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarParametros(v => !v)} title="Parámetros del modelo"><${Icon} name="settings" size=${14}/></button>
+        <button class=${mostrarToolbar ? controlBtnActive : controlBtnIdle} onClick=${() => setMostrarToolbar(v => !v)} title="Herramientas"><${Icon} name="toolkit" size=${14}/></button>
+        <button class=${controlBtnIdle} onClick=${nuevoChat} title="Nuevo chat"><${Icon} name="plus" size=${14}/></button>
+        <button class=${avatarMode ? controlBtnActive : controlBtnIdle} disabled=${cloudVisible}
+          onClick=${() => setAvatarMode(value => !value)}
+          title=${cloudVisible ? 'Modo Avatar local: cierra Cloud primero' : avatarMode ? 'Volver al chat' : 'Modo Avatar'}><${Icon} name="film" size=${14}/></button>
         <span class="flex-1"></span>
         ${modelosDisp.length > 0
           ? html`
@@ -1462,7 +1599,8 @@ export function Local({ active = true } = {}) {
               : `Pi ${piInfo.piVersion || '?'} · ${piInfo.runtime} v${piInfo.protocolVersion} · sesión ${piInfo.session_id || 'nueva'} · ${piInfo.capabilities?.length || 0} capacidades`}
           >${piInfo.degraded ? 'Pi no disponible' : `Pi ${piInfo.piVersion || ''} · RPC v${piInfo.protocolVersion || 1}`}</span>
         `}
-        <span class=${'text-[10px] px-1.5 ' + (lyraOnline ? 'text-aurora-success' : 'text-aurora-error')} title=${lyraOnline ? 'Lyra online' : 'Lyra offline'}>●</span>
+        <span class=${`lyria-avatar-status lyria-status-dot is-${lyriaPresenceState}`} title=${`Lyria · ${avatarStateLabel(lyriaPresenceState)}`}><i></i>${avatarStateLabel(lyriaPresenceState)}</span>
+        <span class="lyria-presence" role="img" aria-label=${`Lyria: ${lyriaPresenceState}`} title=${`Lyria · ${lyriaPresenceState}`}><i></i><i></i></span>
       </div>
 
       ${mostrarParametros && html`
@@ -1487,11 +1625,11 @@ export function Local({ active = true } = {}) {
                 style=${c.parent_chat_id ? 'margin-left:14px' : ''}
                 onClick=${() => cambiarChat(c.id)}>
                 <div class="hi-info flex-1 overflow-hidden">
-                  <span class="hi-nombre block overflow-hidden text-ellipsis whitespace-nowrap">${c.parent_chat_id ? '🌿 ' : ''}${c.nombre}</span>
+                  <span class="hi-nombre block overflow-hidden text-ellipsis whitespace-nowrap inline-flex items-center gap-1">${c.parent_chat_id && html`<${Icon} name="split" size=${12}/>`}${c.nombre}</span>
                   <span class="hi-meta text-[10px] text-aurora-text-dim">${c.modelo || '—'} · ${fmtFecha(c.updatedAt ?? c.actualizado_en)}</span>
                 </div>
                 <button class="hi-del px-1 bg-transparent border-0 text-aurora-text-dim cursor-pointer"
-                  onClick=${e => { e.stopPropagation(); eliminarChat(c.id); }}>×</button>
+                  onClick=${e => { e.stopPropagation(); eliminarChat(c.id); }}><${Icon} name="close" size=${13}/></button>
               </div>
             `)}
           </div>
@@ -1503,7 +1641,7 @@ export function Local({ active = true } = {}) {
           <div class="toolbar-section mb-1">
             <div class=${toolbarHeaderClass} onClick=${() => toggleCategory('sistema')}>
               <span class="toolbar-section-title flex-1 font-semibold">Sistema (${HERRAMIENTAS_SISTEMA.length})</span>
-              <span class="expand-icon text-[9px]">${expandedCategories['sistema'] ? '▼' : '▶'}</span>
+              <span class="expand-icon"><${Icon} name=${expandedCategories['sistema'] ? 'chevronDown' : 'chevronRight'} size=${12}/></span>
             </div>
             ${expandedCategories['sistema'] && html`
               <div class="toolbar-chips flex flex-wrap gap-1 px-1 py-1.5">
@@ -1521,7 +1659,7 @@ export function Local({ active = true } = {}) {
           <div class="toolbar-section mb-1">
             <div class=${toolbarHeaderClass} onClick=${() => toggleCategory('forge')}>
               <span class="toolbar-section-title flex-1 font-semibold">Forjadas (${forgeTools.length})</span>
-              <span class="expand-icon text-[9px]">${expandedCategories['forge'] ? '▼' : '▶'}</span>
+              <span class="expand-icon"><${Icon} name=${expandedCategories['forge'] ? 'chevronDown' : 'chevronRight'} size=${12}/></span>
             </div>
             ${expandedCategories['forge'] && html`
               <div class="toolbar-chips flex flex-wrap gap-1 px-1 py-1.5">
@@ -1536,20 +1674,49 @@ export function Local({ active = true } = {}) {
         </div>
       `}
 
-      ${avatar?.position === 'center' && html`<${AvatarCenter} avatar=${avatar} />`}
+      ${avatarMode && html`
+        <${AvatarStage}
+          state=${lyriaPresenceState}
+          responseHtml=${avatarResponseHtml}
+          onHistory=${() => setMostrarHistorial(value => !value)}
+          onExit=${() => setAvatarMode(false)}
+        />
+      `}
 
-      <div class="chat-with-avatars" style="display:flex;flex:1;min-height:0;overflow:hidden;">
+      ${!avatarMode && avatar?.position === 'center' && html`<${AvatarCenter} avatar=${avatar} />`}
+
+      <div class="chat-with-avatars" style=${avatarMode ? 'display:none' : 'display:flex;flex:1;min-height:0;overflow:hidden;'}>
         ${avatar?.position === 'left' && html`<${AvatarSlot} avatar=${avatar} side="left" />`}
         <div class="chat-container" style="flex:1;min-width:0"
           ref=${chatRef}
           onScroll=${onChatScroll}
         >
         ${visibleMessages.length === 0 && !streamingVal && html`
-          <div class="empty-chat">
-            <p>⚡ Lyra — Local AI</p>
-            <p class="hint">${offline
-              ? 'Lyra offline. Inicia el servidor Aurora primero.'
-              : 'Envía un mensaje para comenzar'}</p>
+          <div class="lyra-empty-stage">
+            <div class="lyria-gaze" aria-hidden="true"><i></i><i></i></div>
+            <${Empty} icon="bot" title="Lyria · IA local">
+              ${offline ? 'Lyria está desconectada. Inicia el servidor Aurora.' : 'Elige una intención o escribe directamente. Lyria conserva el hilo de trabajo.'}
+            <//>
+            ${!offline && html`
+              <div class="lyra-starter-grid">
+                ${[
+                  ['search', 'Investigar', 'Investiga esta página y separa hechos de inferencias.'],
+                  ['note', 'Convertir', 'Convierte el contexto actual en una nota accionable.'],
+                  ['warning', 'Cuestionar', 'Busca contradicciones, riesgos y supuestos débiles.'],
+                ].map(([icon, label, prompt]) => html`
+                  <button onClick=${() => {
+                    const editor = document.querySelector('.composer-textarea');
+                    if (!editor) return;
+                    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+                    setter?.call(editor, prompt);
+                    editor.dispatchEvent(new Event('input', { bubbles: true }));
+                    editor.focus();
+                  }}>
+                    <${Icon} name=${icon} size=${15}/><span>${label}</span>
+                  </button>
+                `)}
+              </div>
+            `}
           </div>
         `}
 
@@ -1562,7 +1729,7 @@ export function Local({ active = true } = {}) {
           const rolLabel = msg.role === 'user'
             ? rolTu()
             : esPiTool
-              ? html`<span dangerouslySetInnerHTML=${{ __html: ICON_HERRAMIENTAS }}></span> pi tool${msg._toolIter ? ` · ${msg._toolIter}/${msg._toolMax || 6}` : ''}`
+              ? html`<span class="inline-flex items-center gap-1.5"><${Icon} name="toolkit" size=${14}/> pi tool${msg._toolIter ? ` · ${msg._toolIter}/${msg._toolMax || 6}` : ''}</span>`
               : esExterno
                 ? html`<${RolProveedor} aiId=${cloudAiId} label=${AI_LABELS[cloudAiId] || 'AI ext'} />`
                 : rolLyra();
@@ -1571,20 +1738,26 @@ export function Local({ active = true } = {}) {
           const marcaEspontaneo = msg._espontaneo && html`<span class="cloud-live-status" title="Escrito directo en el proveedor, no por Lyra">directo</span>`;
 
           if (msg.role === 'assistant') {
-            const parsed = combinarPartesRicas(parsearMensajeRico(msg.content));
+            // Pi persiste una sola secuencia cronológica. El texto limpio es
+            // para voz/FTS/exportación; la estructura es la fuente visual.
+            const parsed = Array.isArray(msg._piTurn?.blocks)
+              ? msg._piTurn.blocks.map(block => block.tipo === 'tool'
+                ? { ...block, nombre: block.nombre || block.name }
+                : block)
+              : combinarPartesRicas(parsearMensajeRico(msg.content));
             return html`
               <div key=${msgKey} class=${'message assistant' + (esExterno ? ' direct-ai' : '') + (esPiTool ? ' pi-tool' : '') + (esPiTool && msg._toolError ? ' is-error' : '') + (msg._via === 'duo-external' ? ' duo-turn' : '')}>
                 <div class="message-header">
                   <span class="role">${rolLabel}</span>
                   ${marcaEspontaneo}
+                  ${msg._piTurn?.interrupted && html`<span class="turn-interrupted"><${Icon} name="stop" size=${11}/> Interrumpida por recarga</span>`}
                   <span class="time">${new Date(msg.ts || msg.timestamp || Date.now()).toLocaleTimeString()}</span>
                   ${msg.id && html`
                     <button
                       class=${'msg-pin-btn' + (estaFijado(msg) ? ' fijado' : '')}
                       onClick=${() => togglePin(msg)}
                       title=${estaFijado(msg) ? 'Desfijar mensaje' : 'Fijar mensaje'}
-                      dangerouslySetInnerHTML=${{ __html: estaFijado(msg) ? ICON_FIJADO : ICON_FIJAR }}
-                    ></button>
+                    ><${Icon} name="pin" size=${14}/></button>
                   `}
                 </div>
                 ${msg._toolVisual
@@ -1601,13 +1774,15 @@ export function Local({ active = true } = {}) {
                     : parsed.length ? parsed.map((p, i) => {
                   if (p.tipo === 'thinking') {
                     const key = `${msgKey}:thinking:${i}`;
+                    const abierto = isThinkingExpanded(key);
                     return html`
                       <div key=${key} class="message-thinking">
                         <button
                           class="thinking-toggle-inline"
-                          onClick=${() => setExpandedThinking(prev => ({ ...prev, [key]: !prev[key] }))}
-                        >${expandedThinking[key] ? '▼' : '▶'} Thinking</button>
-                        ${expandedThinking[key] && html`
+                          aria-expanded=${abierto}
+                          onClick=${() => toggleThinking(key)}
+                        ><${Icon} name=${abierto ? 'chevronDown' : 'chevronRight'} size=${13}/> Thinking</button>
+                        ${abierto && html`
                           <div class="thinking-content-inline"><pre>${p.contenido}</pre></div>
                         `}
                       </div>
@@ -1622,15 +1797,15 @@ export function Local({ active = true } = {}) {
                   }
                   if (p.tipo === 'tool') {
                     const key = `${msgKey}:tool:${i}`;
-                    const abierto = expandedTools[key] ?? true;
+                    const abierto = isToolExpanded(key);
                     return html`
                       <div key=${key} class=${'message tool-execution ' + (p.isError ? 'tool-error' : 'tool-success')}>
-                        <div class="tool-execution-header" onClick=${() => toggleTool(key)}>
-                          <span class="tool-toggle-chevron">${abierto ? '▼' : '▶'}</span>
-                          <span class="tool-execution-icon">${p.isError ? '✗' : '✓'}</span>
+                        <button class="tool-execution-header" aria-expanded=${abierto} onClick=${() => toggleTool(key)}>
+                          <span class="tool-toggle-chevron"><${Icon} name=${abierto ? 'chevronDown' : 'chevronRight'} size=${12}/></span>
+                          <span class="tool-execution-icon"><${Icon} name=${p.isError ? 'warning' : 'check'} size=${13}/></span>
                           <span class="tool-execution-name">${p.nombre}</span>
                           <span class="tool-execution-preview">${String(p.args || '').replace(/\s+/g, ' ').slice(0, 100)}</span>
-                        </div>
+                        </button>
                         ${abierto && html`
                           <div class="tool-execution-body">
                             <pre class="tool-execution-args">${p.args}</pre>
@@ -1662,14 +1837,14 @@ export function Local({ active = true } = {}) {
                 `}
                 ${msg._timing && html`
                   <div class="text-[10px] text-aurora-text-muted font-mono mt-1 opacity-70">
-                    ⏱ responde ${(msg._timing.responde / 1000).toFixed(1)}s · genera ${(msg._timing.genera / 1000).toFixed(1)}s
+                    <${Icon} name="clock" size=${12}/> responde ${(msg._timing.responde / 1000).toFixed(1)}s · genera ${(msg._timing.genera / 1000).toFixed(1)}s
                   </div>
                 `}
                 ${!esPiTool && html`<div class=${quickActionsClass}>
-                    <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles"><span dangerouslySetInnerHTML=${{ __html: ICON_COPIAR }}></span> Copiar</button>
-                    <button class=${actionChipClass} onClick=${() => añadirANotas(msg.content)} title="Añadir a notas"><span dangerouslySetInnerHTML=${{ __html: ICON_NOTA }}></span> A notas</button>
-                    <button class=${actionChipClass} onClick=${() => reformularRespuesta(regenerarRespuesta, msg)} title="Regenerar respuesta"><span dangerouslySetInnerHTML=${{ __html: ICON_REGENERAR }}></span> Regenerar</button>
-                    <button class=${actionChipClass} onClick=${() => leerMensaje(msg.content)} title="Leer mensaje"><span dangerouslySetInnerHTML=${{ __html: ICON_HABLAR }}></span> Leer</button>
+                    <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles"><${Icon} name="copy" size=${14}/> Copiar</button>
+                    <button class=${actionChipClass} onClick=${() => añadirANotas(msg.content)} title="Añadir a notas"><${Icon} name="note" size=${14}/> A notas</button>
+                    <button class=${actionChipClass} onClick=${() => reformularRespuesta(regenerarRespuesta, msg)} title="Regenerar respuesta"><${Icon} name="refresh" size=${14}/> Regenerar</button>
+                    <button class=${actionChipClass} onClick=${() => leerMensaje(msg.content)} title="Leer mensaje"><${Icon} name="volume" size=${14}/> Leer</button>
                   </div>`}
               </div>
             `;
@@ -1692,8 +1867,7 @@ export function Local({ active = true } = {}) {
                     class=${'msg-pin-btn' + (estaFijado(msg) ? ' fijado' : '')}
                     onClick=${() => togglePin(msg)}
                     title=${estaFijado(msg) ? 'Desfijar mensaje' : 'Fijar mensaje'}
-                    dangerouslySetInnerHTML=${{ __html: estaFijado(msg) ? ICON_FIJADO : ICON_FIJAR }}
-                  ></button>
+                  ><${Icon} name="pin" size=${14}/></button>
                 `}
               </div>
               <div class="message-content"
@@ -1708,12 +1882,12 @@ export function Local({ active = true } = {}) {
               `}
               ${msg._timing && html`
                 <div class="text-[10px] text-aurora-text-muted font-mono mt-1 opacity-70">
-                  ⏱ responde ${(msg._timing.responde / 1000).toFixed(1)}s · genera ${(msg._timing.genera / 1000).toFixed(1)}s
+                  <${Icon} name="clock" size=${12}/> responde ${(msg._timing.responde / 1000).toFixed(1)}s · genera ${(msg._timing.genera / 1000).toFixed(1)}s
                 </div>
               `}
               ${(msg.content || '').trim() && html`
                 <div class="flex flex-wrap gap-2 mt-2">
-                  <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles"><span dangerouslySetInnerHTML=${{ __html: ICON_COPIAR }}></span> Copiar</button>
+                  <button class=${actionChipClass} onClick=${() => copiarMensaje(msg.content)} title="Copiar al portapapeles"><${Icon} name="copy" size=${14}/> Copiar</button>
                 </div>
               `}
             </div>
@@ -1729,13 +1903,15 @@ export function Local({ active = true } = {}) {
             ${asistenteEnVivo.blocks.map((b, i) => {
               const blockKey = b.id || `live:${b.tipo}:${i}`;
               if (b.tipo === 'thinking') {
+                const abierto = isThinkingExpanded(blockKey);
                 return html`
                   <div key=${blockKey} class="message-thinking">
                     <button
                       class="thinking-toggle-inline"
-                      onClick=${() => setExpandedThinking(prev => ({ ...prev, _live: !prev._live }))}
-                    >${expandedThinking._live ? '▼' : '▶'} Thinking</button>
-                    ${expandedThinking._live && html`
+                      aria-expanded=${abierto}
+                      onClick=${() => toggleThinking(blockKey)}
+                    ><${Icon} name=${abierto ? 'chevronDown' : 'chevronRight'} size=${13}/> Thinking</button>
+                    ${abierto && html`
                       <div class="thinking-content-inline"><pre>${b.contenido}</pre></div>
                     `}
                   </div>
@@ -1749,15 +1925,15 @@ export function Local({ active = true } = {}) {
                 `;
               }
               if (b.tipo === 'tool') {
-                const abierto = expandedTools[b.id] ?? true;
+                const abierto = isToolExpanded(blockKey);
                 return html`
                   <div key=${blockKey} class=${'message tool-execution ' + (b.status === 'error' ? 'tool-error' : b.status === 'running' ? 'tool-running' : 'tool-success')}>
-                    <div class="tool-execution-header" onClick=${() => toggleTool(b.id)}>
-                      <span class="tool-toggle-chevron">${abierto ? '▼' : '▶'}</span>
-                      <span class="tool-execution-icon">${b.status === 'running' ? '⟳' : b.status === 'error' ? '✗' : '✓'}</span>
+                    <button class="tool-execution-header" aria-expanded=${abierto} onClick=${() => toggleTool(blockKey)}>
+                      <span class="tool-toggle-chevron"><${Icon} name=${abierto ? 'chevronDown' : 'chevronRight'} size=${12}/></span>
+                      <span class="tool-execution-icon"><${Icon} name=${b.status === 'running' ? 'refresh' : b.status === 'error' ? 'warning' : 'check'} size=${13}/></span>
                       <span class="tool-execution-name">${b.name}</span>
                       <span class="tool-execution-preview">${b.args}</span>
-                    </div>
+                    </button>
                     ${abierto && html`
                       <div class="tool-execution-body">
                         <pre class="tool-execution-args">${b.argsFull || b.args}</pre>
@@ -1781,7 +1957,7 @@ export function Local({ active = true } = {}) {
           <div class="message assistant loading">
             <div class="message-header"><span class="role">${rolLyra()}</span></div>
             <div class="message-content">
-              <span class="typing-indicator">◌ Pensando…</span>
+              <span class="typing-indicator inline-flex items-center gap-1.5"><${Icon} name="brain" size=${14}/> Pensando…</span>
             </div>
           </div>
         `}
@@ -1805,38 +1981,17 @@ export function Local({ active = true } = {}) {
         ${avatar?.position === 'right' && html`<${AvatarSlot} avatar=${avatar} side="right" />`}
       </div>
 
-      ${toolActivityVal.length > 0 && html`
-        <div class="tool-activity-bar fx-tool-activity" role="log" aria-label="Actividad de herramientas">
-          <div class="tool-activity-head">
-            <span class="tool-activity-count">Tools ${toolActivityVal.filter(e => e.status === 'running' || e.status === 'ok' || e.status === 'error').length}</span>
-            <button class="act-clear" onClick=${clearActivity} title="Limpiar actividad">✕</button>
-          </div>
-          <div class="tool-activity-list">
-            ${toolActivityVal.filter(e => e.status === 'running' || e.status === 'ok' || e.status === 'error').map(e => html`
-              <div key=${e.id}
-                class=${'act-entry fx-tool-chip act-' + e.status}
-                title=${e.result || ''}
-              >
-                <span class="act-icon">${e.status === 'running' ? '⟳' : e.status === 'error' ? '✗' : '✓'}</span>
-                <span class="act-name">${e.name}</span>
-                ${e.preview && html`<span class="act-args">${e.preview}</span>`}
-              </div>
-            `)}
-          </div>
-        </div>
-      `}
-
       ${nexusPendiente && html`
         <div class=${'nexus-confirm-banner risk-' + nexusPendiente.bloque.risk_level.toLowerCase()}>
           <div class="nexus-confirm-header">
-            <span class="nexus-confirm-risk">${nexusPendiente.bloque.risk_level === 'HIGH' ? '⚠ HIGH' : '⚡ MEDIUM'}</span>
+            <span class="nexus-confirm-risk"><${Icon} name="warning" size=${14}/> ${nexusPendiente.bloque.risk_level === 'HIGH' ? 'HIGH' : 'MEDIUM'}</span>
             <span class="nexus-confirm-title">${nexusPendiente.bloque.task_id}</span>
           </div>
           <code class="nexus-confirm-cmd">${nexusPendiente.bloque.payload}</code>
           <p class="nexus-confirm-desc">${nexusPendiente.bloque.description}</p>
           <div class="nexus-confirm-actions">
-            <button class="nexus-confirm-cancel" onClick=${() => { nexusPendiente.confirm(false); setNexusPendiente(null); }}>✕ Cancelar</button>
-            <button class="nexus-confirm-ok" onClick=${() => { nexusPendiente.confirm(true); setNexusPendiente(null); }}>✓ Ejecutar</button>
+            <button class="nexus-confirm-cancel" onClick=${() => { nexusPendiente.confirm(false); setNexusPendiente(null); }}><${Icon} name="close" size=${14}/> Cancelar</button>
+            <button class="nexus-confirm-ok" onClick=${() => { nexusPendiente.confirm(true); setNexusPendiente(null); }}><${Icon} name="check" size=${14}/> Ejecutar</button>
           </div>
         </div>
       `}
@@ -1850,7 +2005,7 @@ export function Local({ active = true } = {}) {
                 onClick=${() => removePendingImage(item.id)}
                 class="img-preview-close absolute -top-1 -right-1 w-5 h-5 p-0 rounded-full bg-black/80 border border-white/20 text-white text-xs cursor-pointer"
                 title="Quitar imagen"
-              >✕</button>
+              ><${Icon} name="close" size=${13}/></button>
             </div>
           `)}
           <span class="text-[10px] text-aurora-text-dim whitespace-nowrap">${pendingImagesVal.length}/${MAX_PENDING_IMAGES}</span>
@@ -1871,9 +2026,22 @@ export function Local({ active = true } = {}) {
             </span>
             <button onClick=${() => setPendingFiles(prev => prev.filter((_, n) => n !== i))}
               class="img-preview-close px-1.5 py-0.5 bg-transparent border-0 text-aurora-text-dim text-sm cursor-pointer"
-              title="Quitar archivo">✕</button>
+              title="Quitar archivo"><${Icon} name="close" size=${13}/></button>
           `)}
         </div>
+      `}
+
+      ${!cloudVisible && !avatarMode && localDockVisible && html`
+        <${LyriaLocalDock}
+          state=${lyriaPresenceState}
+          minimized=${localDockMinimized}
+          recording=${grabandoVal || transcVal}
+          voiceEnabled=${ttsEnabled}
+          onToggleMinimize=${() => setLocalDockMinimized(value => !value)}
+          onClose=${() => setLocalDockVisible(false)}
+          onMic=${toggleMic}
+          onVoice=${toggleAutoVoz}
+        />
       `}
 
       <div class=${'cloud-panel ' + (cloudExpanded ? 'expanded' : cloudHidden ? 'hidden-mode' : 'mini') + (cloudVisible ? '' : ' cloud-panel-hidden') + (cloudPosition === 'top' && !cloudExpanded ? ' cloud-panel-top' : '')}
@@ -1884,9 +2052,7 @@ export function Local({ active = true } = {}) {
         ${cloudVisible && html`
           <div class="cloud-mini-header">
             <div class="cloud-identity">
-              ${iconoUrlPara(cloudAiId) && !faviconFallo[cloudAiId]
-                ? html`<img class="cloud-provider-mark cloud-provider-favicon" src=${iconoUrlPara(cloudAiId)} alt="" onError=${() => setFaviconFallo(f => ({ ...f, [cloudAiId]: true }))} />`
-                : html`<span class="cloud-provider-mark">${AI_ICONOS[cloudAiId] || '☁'}</span>`}
+              <span class="cloud-provider-mark"><${Icon} name="cloud" size=${15}/></span>
               <span class="cloud-mini-label">${cloudAiLabel}</span>
               ${cloudTitulo && html`<span class="cloud-thread-title" title=${cloudTitulo}>${cloudTitulo}</span>`}
               <span class=${'cloud-live-status cloud-live-status--' + cloudStatusTone}>
@@ -1900,8 +2066,7 @@ export function Local({ active = true } = {}) {
                   class="cloud-mini-btn"
                   title="Nuevo chat en ChatGPT (hilo limpio)"
                   onClick=${nuevoChatCloud}
-                  dangerouslySetInnerHTML=${{ __html: ICON_NUEVO_CHAT }}
-                ></button>
+                ><${Icon} name="plus" size=${14}/></button>
               `}
               ${cloudStalled && cloudAiId === 'chatgpt' && html`
                 <button
@@ -1915,17 +2080,15 @@ export function Local({ active = true } = {}) {
                   class="cloud-mini-btn"
                   title=${cloudPosition === 'top' ? 'Mover al pie (junto al composer)' : 'Mover a cabecera (arriba del chat)'}
                   onClick=${() => setCloudPosition(p => p === 'top' ? 'bottom' : 'top')}
-                  dangerouslySetInnerHTML=${{ __html: cloudPosition === 'top' ? ICON_AL_PIE : ICON_A_CABECERA }}
-                ></button>
+                ><${Icon} name=${cloudPosition === 'top' ? 'arrowDown' : 'arrowUp'} size=${14}/></button>
               `}
               <button
                 class="cloud-mini-btn"
                 title=${cloudExpanded ? 'Contraer a mini' : 'Expandir'}
                 onClick=${() => { setCloudExpanded(v => !v); setCloudHidden(false); }}
-                dangerouslySetInnerHTML=${{ __html: cloudExpanded ? ICON_COLAPSAR : ICON_EXPANDIR }}
-              ></button>
-              <button class="cloud-mini-btn" title="Recargar" onClick=${() => recargarCloudIframe(cloudUrl)}>↺</button>
-              <button class="cloud-mini-btn cloud-mini-btn--close" title="Cerrar" onClick=${closeCloud}>✕</button>
+              ><${Icon} name=${cloudExpanded ? 'chevronDown' : 'expand'} size=${14}/></button>
+              <button class="cloud-mini-btn" title="Recargar" onClick=${() => recargarCloudIframe(cloudUrl)}><${Icon} name="refresh" size=${14}/></button>
+              <button class="cloud-mini-btn cloud-mini-btn--close" title="Cerrar" onClick=${closeCloud}><${Icon} name="close" size=${14}/></button>
             </div>
           </div>
         `}
@@ -1953,6 +2116,13 @@ export function Local({ active = true } = {}) {
       <div class="chat-input-area flex flex-col shrink-0 gap-0 w-full min-w-0 bg-black bg-opacity-20 border-t border-aurora-border backdrop-blur">
 
         <div class="flex items-center gap-1 px-2 pt-1.5 flex-wrap">
+          ${!cloudVisible && html`
+            <button
+              class=${'btn-local-presence ' + (localDockVisible ? controlBtnActive : controlBtnIdle)}
+              onClick=${() => setLocalDockVisible(value => !value)}
+              title=${localDockVisible ? 'Ocultar presencia local de Lyria' : 'Mostrar presencia local de Lyria'}
+            ><${Icon} name="user" size=${14}/> Lyria</button>
+          `}
           <div
             class=${'btn-cloud-backend ' + (cloudVisible ? cloudBtnActiveClass : cloudBtnClass)}
             style="display:flex;align-items:center;gap:0;padding:0;overflow:hidden"
@@ -1963,9 +2133,7 @@ export function Local({ active = true } = {}) {
               onContextMenu=${e => { e.preventDefault(); setCloudMenu({ x: e.clientX, y: e.clientY }); }}
               title=${cloudVisible ? 'Clic derecho: opciones · Clic: cerrar' : 'Activar Cloud Backend'}
             >
-              ${cloudVisible && iconoUrlPara(cloudAiId) && !faviconFallo[cloudAiId]
-                ? html`<img class="cloud-provider-favicon-inline" src=${iconoUrlPara(cloudAiId)} alt="" onError=${() => setFaviconFallo(f => ({ ...f, [cloudAiId]: true }))} />`
-                : html`<span dangerouslySetInnerHTML=${{ __html: ICON_NUBE }}></span>`}
+              <${Icon} name="cloud" size=${14}/>
               ${cloudVisible ? cloudAiLabel : 'Cloud'}
             </button>
             ${cloudVisible && html`
@@ -1973,15 +2141,14 @@ export function Local({ active = true } = {}) {
                 style="background:transparent;border:none;border-left:1px solid rgba(255,255,255,0.2);cursor:pointer;padding:0 6px;height:100%;color:inherit;display:flex;align-items:center"
                 onClick=${cycleCloudPanel}
                 title=${cloudExpanded ? 'Full → Mini' : cloudHidden ? 'Oculto → Full' : 'Mini → Oculto'}
-                dangerouslySetInnerHTML=${{ __html: cloudExpanded ? ICON_COLAPSAR : cloudHidden ? ICON_MOSTRAR : ICON_OCULTAR }}
-              ></button>
+              ><${Icon} name=${cloudExpanded ? 'chevronDown' : cloudHidden ? 'eye' : 'eyeOff'} size=${14}/></button>
             `}
           </div>
           <button
             class=${'btn-duo ' + (duoActivo ? controlBtnActive : controlBtnIdle)}
             onClick=${toggleDuo}
-            title="Modo Duo — Lyra ↔ LLM de la nube conversan por turnos"
-          >${duoActivo ? '⇆ Duo…' : '⇄ Duo'}</button>
+            title="Modo Duo — Lyria y el LLM de la nube conversan por turnos"
+          ><${Icon} name="users" size=${14}/> ${duoActivo ? 'Duo…' : 'Duo'}</button>
 
           <span class="flex-1"></span>
 
@@ -1989,13 +2156,12 @@ export function Local({ active = true } = {}) {
             class=${'btn-canvas ' + (canvasVisibleVal ? controlBtnActive : controlBtnIdle)}
             onClick=${toggleCanvas}
             title=${canvasVisibleVal ? 'Cerrar Canvas' : 'Canvas — panel de código'}
-          >◱</button>
+          ><${Icon} name="code" size=${14}/></button>
           <button
             class=${'btn-tts ' + (ttsEnabled ? controlBtnActive : controlBtnIdle)}
             onClick=${toggleAutoVoz}
             title=${ttsEnabled ? 'Desactivar voz' : 'Activar voz'}
-            dangerouslySetInnerHTML=${{ __html: ttsEnabled ? ICON_HABLAR : ICON_MUDO }}
-          ></button>
+          ><${Icon} name=${ttsEnabled ? 'volume' : 'volumeOff'} size=${14}/></button>
         </div>
 
         ${cloudMenu && html`
@@ -2005,9 +2171,7 @@ export function Local({ active = true } = {}) {
           >
             ${Object.keys(AI_URLS).filter(id => id !== 'custom').map(id => html`
               <button key=${id} class="composer-plus-item" onClick=${() => elegirCloudAi(id)}>
-                ${iconoUrlPara(id) && !faviconFallo[id]
-                  ? html`<img class="cloud-provider-mark cloud-provider-favicon" src=${iconoUrlPara(id)} alt="" onError=${() => setFaviconFallo(f => ({ ...f, [id]: true }))} />`
-                  : html`<span>${AI_ICONOS[id]}</span>`}
+                <${Icon} name="cloud" size=${15}/>
                 <span>${AI_LABELS[id]}</span>
               </button>
             `)}
@@ -2015,10 +2179,10 @@ export function Local({ active = true } = {}) {
               const url = window.prompt('URL custom:', cloudUrl);
               if (url) elegirCloudAi('custom', url);
             }}>
-              <span>🌐</span><span>URL custom…</span>
+              <${Icon} name="globe" size=${15}/><span>URL custom…</span>
             </button>
             <button class="composer-plus-item" onClick=${() => { recargarCloudIframe(cloudUrl); setCloudMenu(null); }}>
-              <span>↺</span><span>Recargar</span>
+              <${Icon} name="refresh" size=${15}/><span>Recargar</span>
             </button>
           </div>
           <div class="fixed inset-0" style="z-index:9998" onClick=${() => setCloudMenu(null)}></div>
@@ -2034,12 +2198,12 @@ export function Local({ active = true } = {}) {
             <div class="queue-chips">
               ${colaMensajes.steering.map((m, i) => html`
                 <span key=${'s' + i} class="queue-chip queue-chip--steer" title="Se entrega apenas termine el turno actual">
-                  🔗 ${String(m).slice(0, 60)}
+                  <${Icon} name="link" size=${13}/> ${String(m).slice(0, 60)}
                 </span>
               `)}
               ${colaMensajes.followUp.map((m, i) => html`
-                <span key=${'f' + i} class="queue-chip queue-chip--followup" title="Se entrega cuando Lyra termine del todo">
-                  ⏳ ${String(m).slice(0, 60)}
+                <span key=${'f' + i} class="queue-chip queue-chip--followup" title="Se entrega cuando Lyria termine del todo">
+                  <${Icon} name="clock" size=${13}/> ${String(m).slice(0, 60)}
                 </span>
               `)}
             </div>
@@ -2058,7 +2222,7 @@ export function Local({ active = true } = {}) {
                   onMouseDown=${e => { e.preventDefault(); elegirComando(c); }}
                   onMouseEnter=${() => setSlashSel(i)}
                 >
-                  <span class="slash-item-icon">${iconoComando(c.source)}</span>
+                  <span class="slash-item-icon"><${Icon} name=${iconoComando(c.source)} size=${14}/></span>
                   <span class="slash-item-name">/${c.name}</span>
                   <span class="slash-item-desc">${(c.description || '').split('\n')[0].slice(0, 90)}</span>
                 </div>
@@ -2103,7 +2267,7 @@ export function Local({ active = true } = {}) {
                   cycleModel().then(m => {
                     if (m) {
                       guardarModelo(m.id);
-                      Toast().show(`🔁 Modelo: ${m.provider}/${m.id}`, 'info');
+                      Toast().show(`Modelo: ${m.provider}/${m.id}`, 'info');
                     } else {
                       Toast().show('No hay más modelos para ciclar', 'info');
                     }
@@ -2132,7 +2296,7 @@ export function Local({ active = true } = {}) {
               onPaste=${handlePaste}
               onDrop=${handleDrop}
               onDragOver=${e => e.preventDefault()}
-              placeholder=${offline ? 'Lyra offline…' : 'Pregunta lo que quieras'}
+              placeholder=${offline ? 'Lyria desconectada…' : 'Pregunta lo que quieras'}
               rows="1"
             />
 
@@ -2149,15 +2313,13 @@ export function Local({ active = true } = {}) {
                       setPlusOpen(null);
                     }
                   }}
-                  dangerouslySetInnerHTML=${{ __html: ICON_MAS }}
-                ></button>
+                ><${Icon} name="plus" size=${14}/></button>
               </div>
               <button
                 class=${'composer-icon-btn' + (previewMd ? ' text-aurora-accent' : '')}
                 title="Vista previa Markdown"
                 onClick=${() => setPreviewMd(p => !p)}
-                dangerouslySetInnerHTML=${{ __html: ICON_MOSTRAR }}
-              ></button>
+              ><${Icon} name="eye" size=${14}/></button>
               <button
                 class=${'composer-icon-btn' + (slashSel >= 0 ? ' text-aurora-accent' : '')}
                 title="Comandos pi (/)"
@@ -2168,15 +2330,14 @@ export function Local({ active = true } = {}) {
                   setSlashSel(0);
                   document.querySelector('.composer-textarea')?.focus();
                 }}
-                dangerouslySetInnerHTML=${{ __html: ICON_COMANDO }}
-              ></button>
+              ><${Icon} name="command" size=${14}/></button>
               ${plusOpen && html`
                 <div
                   class="composer-plus-menu"
                   style=${{ position: 'fixed', bottom: (window.innerHeight - plusOpen.y + 8) + 'px', left: plusOpen.x + 'px', zIndex: 9999 }}
                 >
                   <label class="composer-plus-item" onClick=${() => setPlusOpen(null)}>
-                    <span>📎</span><span>Adjuntar archivo</span>
+                    <${Icon} name="paperclip" size=${15}/><span>Adjuntar archivo</span>
                     <input type="file" multiple accept=".pdf,image/*,.txt,.md,.csv,.json" style="display:none"
                       onChange=${e => {
                         const seleccionados = [...(e.target.files || [])];
@@ -2195,7 +2356,7 @@ export function Local({ active = true } = {}) {
                           reader.onload = ev => {
                             const texto = ev.target.result;
                             setMensaje(`\`\`\`\n${texto.slice(0, 3000)}${texto.length > 3000 ? '\n…(truncado)' : ''}\n\`\`\`\n`);
-                            Toast().show(`📄 ${file.name} cargado`, 'success');
+                            Toast().show(`${file.name} cargado`, 'success');
                           };
                           reader.readAsText(file);
                         }
@@ -2203,8 +2364,8 @@ export function Local({ active = true } = {}) {
                       }}
                     />
                   </label>
-                  <button class="composer-plus-item" onClick=${() => { Toast().show('📍 Mapear DOM requiere la extensión de browser (FASE extensions)', 'warning', 2500); setPlusOpen(null); }}>
-                    <span>📍</span><span>Mapear DOM</span>
+                  <button class="composer-plus-item" onClick=${() => { Toast().show('Mapear DOM requiere la extensión de browser (FASE extensions)', 'warning', 2500); setPlusOpen(null); }}>
+                    <${Icon} name="globe" size=${15}/><span>Mapear DOM</span>
                   </button>
                 </div>
                 <div class="fixed inset-0" style="z-index:9998" onClick=${() => setPlusOpen(null)}></div>
@@ -2216,16 +2377,15 @@ export function Local({ active = true } = {}) {
                 class=${'composer-icon-btn' + (grabandoVal ? ' composer-icon-btn--active' : '')}
                 onClick=${toggleMic}
                 title=${transcVal ? 'Transcribiendo…' : (grabandoVal ? 'Soltar para transcribir' : 'Dictar')}
-              >${transcVal ? '…' : html`<span dangerouslySetInnerHTML=${{ __html: grabandoVal ? ICON_MIC_STOP : ICON_MIC }}></span>`}</button>
+              ><${Icon} name=${transcVal ? 'refresh' : grabandoVal ? 'stop' : 'mic'} size=${14}/></button>
 
               ${cargandoVal
-                ? html`<button class="composer-send-btn composer-send-btn--stop" onClick=${detenerGeneracion} title="Detener" dangerouslySetInnerHTML=${{ __html: ICON_DETENER }}></button>`
+                ? html`<button class="composer-send-btn composer-send-btn--stop" onClick=${detenerGeneracion} title="Detener"><${Icon} name="stop" size=${14}/></button>`
                 : html`<button
                     class="composer-send-btn"
                     onClick=${() => enviarMensaje()}
                     disabled=${(!mensaje.trim() && pendingImagesVal.length === 0 && pendingFiles.length === 0) || (offline && !cloudVisible)}
-                    dangerouslySetInnerHTML=${{ __html: ICON_ENVIAR }}
-                  ></button>`
+                  ><${Icon} name="send" size=${14}/></button>`
               }
             </div>
           </div>
@@ -2260,7 +2420,7 @@ export function Local({ active = true } = {}) {
       ${lightbox && html`
         <div class="img-lightbox" onClick=${() => setLightbox(null)}>
           <img src=${lightbox} onClick=${e => e.stopPropagation()} />
-          <button class="img-lightbox-close" onClick=${() => setLightbox(null)} title="Cerrar">✕</button>
+          <button class="img-lightbox-close" onClick=${() => setLightbox(null)} title="Cerrar"><${Icon} name="close" size=${16}/></button>
         </div>
       `}
 

@@ -1,7 +1,7 @@
 const { html } = globalThis;
 const { useEffect, useMemo, useState } = globalThis.preactHooks;
 
-import { Button, Chip, ChipGroup, AutoFitChips, Empty, List, ListItem, Panel, PanelBody, PanelHeader, Select, Status, Textarea } from '../../../components/index.js';
+import { Button, Chip, ChipGroup, AutoFitChips, Empty, Icon, List, ListItem, Panel, PanelBody, PanelHeader, Select, Status, Textarea, ToolPage, ToolHeader } from '../../../components/index.js?v=v1-surface-convergence-1';
 import { JsonBlock } from '../../../components/shared/JsonBlock.js';
 import { cargarHealth } from '../scripts/services.js';
 import { cargarTools, ejecutarTool } from '../scripts/tools.js';
@@ -28,7 +28,7 @@ function Shell({ active, setActive }) {
 function ServicesView({ health, reload }) {
   const providers = health?.llm?.providers || [];
   return html`
-    <div class="grid gap-3 lg:grid-cols-[1fr_1.4fr]">
+    <div class="tool-module-grid">
       <${Panel}>
         <${PanelHeader}>
           <div class="font-semibold text-aurora-text">Servicios</div>
@@ -59,9 +59,9 @@ function ServicesView({ health, reload }) {
         </${PanelHeader}>
         <${PanelBody}>
           ${providers.length
-            ? html`<div class="grid gap-2">
+            ? html`<div class="tool-compact-rows">
                 ${providers.map(p => html`
-                  <div class="flex flex-wrap items-center gap-2 rounded-md border border-aurora-border bg-aurora-surface-2 px-3 py-2">
+                  <div class="tool-compact-row">
                     <${Status} tone=${tone(p.online)}>${p.online ? 'online' : 'offline'}</${Status}>
                     <div class="min-w-[140px] flex-1">
                       <div class="text-sm font-semibold text-aurora-text">${p.name}</div>
@@ -386,21 +386,15 @@ export function AuroraControl() {
   }, [active, health, tools, mcpStatus, mcpClientConfig]);
 
   return html`
-    <div class="h-full min-h-0 flex flex-col gap-3 p-3 overflow-auto">
-      <div class="flex flex-wrap items-center gap-3">
-        <div class="min-w-[220px] flex-1">
-          <h1 class="text-lg font-semibold text-aurora-text">Aurora Control Center</h1>
-          <div class="text-xs text-aurora-text-dim">Services, LLM Gateway, Tools Core y MCP Bridge</div>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
+    <${ToolPage} wide>
+      <${ToolHeader} icon="aurora" eyebrow="Infraestructura" title="Aurora Control Center" description="Servicios locales, modelos y capacidades que sostienen el panel." actions=${html`
           <${Shell} active=${active} setActive=${setActive} />
           <a href="/ui/tasks.html" target="_parent" class="inline-flex items-center gap-1 px-3 py-1 text-sm font-semibold rounded-md border border-aurora-border bg-aurora-surface hover:bg-aurora-surface-2 text-aurora-text no-underline">
-            🛠 Tasks
+            <${Icon} name="productivity" size=${14}/> Tasks
           </a>
-        </div>
-      </div>
+      `} />
       ${content}
-    </div>
+    <//>
   `;
 }
 

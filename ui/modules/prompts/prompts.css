@@ -5,10 +5,19 @@
 /* ── Layout raíz ─────────────────────────────────────── */
 .prompts-view {
   height: 100%;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   overflow: clip;
 }
+.prompts-header { min-width:0; padding:12px 12px 8px; display:flex; align-items:center; gap:9px; flex:0 0 auto; }
+.prompts-header-icon { width:30px;height:30px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--aurora-border);border-radius:var(--aurora-radius-sm);background:var(--aurora-surface-1);color:var(--aurora-accent); }
+.prompts-header>div { min-width:0;display:flex;flex:1;flex-direction:column; }
+.prompts-header strong { color:var(--aurora-text);font-size:15px;font-weight:680;line-height:1.2; }
+.prompts-header small { margin-top:3px;color:var(--aurora-text-dim);font-size:9px; }
+.prompts-header-count { min-width:27px;height:27px;padding:0 7px;display:grid;place-items:center;border:1px solid var(--aurora-border);border-radius:var(--aurora-radius-pill);color:var(--aurora-text-dim);font-size:9px; }
 
 /* ── Nav de secciones ────────────────────────────────── */
 .prompts-nav {
@@ -21,6 +30,27 @@
   scrollbar-width: none;
 }
 .prompts-nav::-webkit-scrollbar { display: none; }
+
+.prompts-view > :not(.prompts-nav):not(.prompts-header) { min-width:0; padding:10px 12px; overflow:auto; }
+.prompt-library-grid { min-width:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; align-content:start; }
+.prompt-library-toolbar { min-width:0; display:grid; grid-template-columns:minmax(180px,1fr) 128px auto; gap:6px; align-items:center; }
+.prompt-library-search { min-width:0; width:100%; }
+.prompt-library-filter { width:128px; min-width:0; }
+.prompt-library-card { min-width:0; min-height:124px; max-height:142px; padding:8px; display:flex; flex-direction:column; gap:6px; cursor:pointer; border:1px solid var(--aurora-border); border-radius:var(--aurora-radius-md); background:color-mix(in srgb,var(--aurora-surface-1) 91%,transparent); transition:border-color var(--aurora-duration-fast),background var(--aurora-duration-fast),transform var(--aurora-duration-fast); }
+.prompt-library-card:hover { border-color:var(--aurora-border-strong); background:var(--aurora-surface-2); }
+.prompt-library-card-head { min-width:0;display:flex;align-items:center;gap:7px; }
+.prompt-library-card-icon { width:27px;height:27px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--aurora-border);border-radius:var(--aurora-radius-sm);color:var(--aurora-text-dim);background:var(--aurora-surface); }
+.prompt-library-card-copy { min-width:0;display:flex;flex:1;flex-direction:column;line-height:1.15; }
+.prompt-library-card-copy small { color:var(--aurora-text-dim);font-size:7px;letter-spacing:.07em;text-transform:uppercase; }
+.prompt-library-card-copy strong { margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--aurora-text-muted);font-size:10px;font-weight:650; }
+.prompt-library-card-head>.au-button { width:27px!important;height:27px!important;min-height:27px!important;flex:0 0 auto; }
+.prompt-library-card:hover .prompt-library-card-icon { border-color:color-mix(in srgb,var(--aurora-accent) 34%,var(--aurora-border));color:var(--aurora-accent); }
+.prompt-library-summary { display:-webkit-box; min-height:0; overflow:hidden; color:var(--aurora-text-dim); font-size:9px; line-height:1.4; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.prompt-library-card-foot { min-width:0;margin-top:auto;display:flex;align-items:center;gap:5px; }
+.prompt-library-card-foot>.au-button { width:27px!important;height:27px!important;min-height:27px!important; }
+.prompt-library-card > :last-child { margin-top:auto; }
+@media(max-width:700px){.prompt-library-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.prompts-header small{display:none}.prompt-library-toolbar{grid-template-columns:minmax(0,1fr) auto}.prompt-library-search{grid-column:1/-1}.prompt-library-filter{width:auto}.prompt-library-grid{grid-template-columns:1fr}.prompt-library-card{max-height:none}}
 
 /* ── Loading state ──────────────────────────────────── */
 .comfy-loading {
@@ -394,4 +424,3 @@
   .wan-settings-badge { display: none; }
   .wan-hint-bar { font-size: 10px; padding: 6px 8px; }
 }
-

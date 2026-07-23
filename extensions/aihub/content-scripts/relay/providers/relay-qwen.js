@@ -41,9 +41,42 @@
   // `readCodeBlockText` (hook de `domToMarkdown` en relay-core.js para la
   // respuesta final de `AURORA_CLOUD_ASK` — sin esto, ese camino separado
   // leía el `pre` crudo y arrastraba el mismo desastre).
+  //
+  // Monaco VIRTUALIZA -- vertical (lineas fuera de vista) Y horizontal (una
+  // sola linea muy larga, ej. un comando bash con un blob base64/comprimido
+  // de miles de caracteres). Confirmado en vivo: un tool call real de 15698
+  // caracteres en una sola linea se leia truncado a lo que entraba en los
+  // ~730px de ancho visible del editor -> JSON cortado a mitad de string ->
+  // "Tool request error: JSON de tool invalido" -- el modelo no tiene forma
+  // de saber que el corte fue nuestro, no suyo, y reintentaba a ciegas.
+  // Fix: agrandar temporalmente el `.monaco-editor` (ancho y alto) antes de
+  // leer fuerza a Monaco a renderizar TODO el contenido de una sola vez
+  // (confirmado en vivo, sin necesidad de scroll+stitch con riesgo de
+  // costuras corruptas) -- un `offsetHeight` fuerza el reflow sincrono antes
+  // de leer. Se restaura el estilo original en el mismo tick (try/finally),
+  // sin yield entre medio, asi que no hay parpadeo visible para el usuario.
+  const expandMonacoAndRead = viewLinesEl => {
+    const editor = viewLinesEl.closest?.('.monaco-editor') || null;
+    const scroller = viewLinesEl.closest?.('.monaco-scrollable-element') || null;
+    const restoreEditorStyle = editor ? editor.getAttribute('style') : null;
+    const restoreScrollerHeight = scroller ? scroller.style.height : null;
+    try {
+      if (editor) { editor.style.width = '100000px'; editor.style.height = '100000px'; }
+      if (scroller) scroller.style.height = '100000px';
+      if (editor) void editor.offsetHeight; // fuerza reflow sincrono antes de leer
+      return (viewLinesEl.innerText || '').replace(/\u00A0/g, ' ').trim();
+    } finally {
+      if (editor) {
+        if (restoreEditorStyle !== null) editor.setAttribute('style', restoreEditorStyle);
+        else editor.removeAttribute('style');
+      }
+      if (scroller) scroller.style.height = restoreScrollerHeight || '';
+    }
+  };
+
   const monacoText = root => {
     const lines = [...(root?.querySelectorAll?.('.view-lines') || [])]
-      .map(el => (el.innerText || '').replace(/\u00A0/g, ' ').trim()).filter(Boolean);
+      .map(expandMonacoAndRead).filter(Boolean);
     return lines.length ? lines.join('\n') : null;
   };
 

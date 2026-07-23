@@ -9,6 +9,31 @@ html[data-theme-category="gothic"][data-theme-mode="dark"] body {
     #020102;
 }
 
+/* Lyria es el canon gótico: carmesí mineral, hierro ennegrecido y marfil frío.
+   El acento nunca sustituye al rojo semántico de error; sólo expresa presencia. */
+html[data-tema="lyria"][data-theme-mode="dark"] body {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(198,47,73,.16), transparent 25%),
+    radial-gradient(ellipse at 78% 86%, rgba(74,18,31,.13), transparent 34%),
+    #020102;
+}
+html[data-tema="lyria"][data-theme-mode="dark"] .aurora-ui-shell {
+  --aurora-danger:#e66a76;
+  --aurora-error:#ff8b95;
+  --aurora-success:#7fae91;
+}
+html[data-tema="lyria"][data-theme-mode="dark"] :is(.au-panel,.au-toolbar,.au-dropdown,.au-chat-message) {
+  background-color:color-mix(in srgb,#0a0608 91%,transparent);
+  border-color:color-mix(in srgb,var(--aurora-accent) 13%,var(--aurora-border));
+}
+html[data-tema="lyria"][data-theme-mode="dark"] :is(.au-button,.au-chip):not(.fx-active):not([aria-pressed="true"]) {
+  color:color-mix(in srgb,var(--aurora-text-muted) 92%,#d8c6cc);
+}
+html[data-tema="lyria"][data-theme-mode="dark"] :is(.au-button,.au-chip).fx-active,
+html[data-tema="lyria"][data-theme-mode="dark"] :is(.au-button,.au-chip)[aria-pressed="true"] {
+  color:color-mix(in srgb,var(--aurora-accent) 76%,#f1dfe5);
+}
+
 html[data-theme-category="gothic"][data-theme-mode="dark"] .nav-rail {
   position: relative;
   background:
@@ -81,6 +106,15 @@ html[data-theme-category="gothic"][data-theme-mode="dark"] main::after {
   opacity: .28;
   border-color: color-mix(in srgb, var(--aurora-accent) 55%, transparent);
   filter: drop-shadow(0 0 8px var(--aurora-edge-glow));
+}
+
+/* Los arcos históricos estaban anclados al viewport y terminaban cruzando
+   controles reales (Historial arriba y micrófono abajo). El HUD actual ya
+   enmarca superficies semánticas, así que estos ornamentos no tienen dueño. */
+html[data-theme-category="gothic"] main::before,
+html[data-theme-category="gothic"] main::after {
+  content: none;
+  display: none;
 }
 
 html[data-theme-category="gothic"][data-theme-mode="dark"] main::before {

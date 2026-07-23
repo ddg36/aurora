@@ -22,6 +22,18 @@ const PROVEEDORES_EMBEBIDOS = [
   'grok.com', 'perplexity.ai', 'copilot.microsoft.com', 'kimi.moonshot.cn',
 ];
 
+// Únicos hosts donde vive la UI propia de Aurora (mismos puertos que
+// host_permissions en manifest.json) — el panel Cloud embebe ahí sus
+// iframes de LLM. Si el top-level real NO es ninguno de estos (ni un
+// proveedor conocido, ni la extensión), Aurora no tiene nada que ver con
+// este login: es un sitio de terceros cualquiera con su propio botón de
+// "Sign in with Google/Microsoft/Apple", y hay que dejarlo intacto.
+const AURORA_UI_HOSTS = [
+  'localhost:7779', '127.0.0.1:7779',
+  'localhost:7777', '127.0.0.1:7777',
+  'localhost:8088', '127.0.0.1:8088',
+];
+
 // Endpoints internos de sync de cookies particionadas (no son login) — pasan
 // SIEMPRE, aunque el iframe sí cuelgue de Aurora, y nunca hay que escaparlos.
 const RUTAS_NO_LOGIN = ['/RotateCookiesPage', '/ListAccounts', '/CheckCookie'];
@@ -43,10 +55,13 @@ const RUTAS_NO_LOGIN = ['/RotateCookiesPage', '/ListAccounts', '/CheckCookie'];
   try {
     const anc = location.ancestorOrigins;
     const top = anc && anc.length ? anc[anc.length - 1] : '';
+    if (!top) return; // sin ancestorOrigins fiable, no asumir que es Aurora
     if (top.startsWith('chrome-extension://')) return;
-    const topHost = top ? new URL(top).hostname : '';
+    const url = new URL(top);
+    const topHost = url.hostname;
     if (PROVEEDORES_EMBEBIDOS.some(h => topHost === h || topHost.endsWith('.' + h))) return;
-  } catch (_) { /* ancestorOrigins no soportado: seguir con el escape */ }
+    if (!AURORA_UI_HOSTS.includes(url.host)) return; // top-level ajeno a Aurora: no tocar
+  } catch (_) { return; /* ancestorOrigins raro/no parseable: no asumir Aurora */ }
 
   chrome.runtime.sendMessage({
     type: 'NAVIGATE_TO',

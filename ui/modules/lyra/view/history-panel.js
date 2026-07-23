@@ -1,6 +1,6 @@
 import { exportarChat } from '../scripts/chat/historial.js';
 import { exportarChatPDF } from '../scripts/chat/exportar-pdf.js';
-import { Chip, AutoFitChips } from '../../../components/index.js';
+import { Chip, AutoFitChips, Icon } from '../../../components/index.js';
 
 const html = (...args) => globalThis.html(...args);
 
@@ -29,11 +29,11 @@ export function HistoryPanel({ FloatingMenu, chats, chatIdActual, historial, mod
             style=${c.parent_chat_id ? 'margin-left:14px' : ''}
             onClick=${() => onCambiarChat(c.id)}>
             <div class="hi-info flex-1 overflow-hidden">
-              <span class="hi-nombre block overflow-hidden text-ellipsis whitespace-nowrap">${c.parent_chat_id ? '🌿 ' : ''}${c.nombre}</span>
+              <span class="hi-nombre block overflow-hidden text-ellipsis whitespace-nowrap inline-flex items-center gap-1">${c.parent_chat_id && html`<${Icon} name="split" size=${12}/>`}${c.nombre}</span>
               <span class="hi-meta text-[10px] text-aurora-text-dim">${c.modelo || '—'} · ${fmtFecha(c.updatedAt ?? c.actualizado_en)}</span>
             </div>
             <button class="hi-del px-1 bg-transparent border-0 text-aurora-text-dim cursor-pointer"
-              onClick=${e => { e.stopPropagation(); onEliminarChat(c.id); }}>×</button>
+              onClick=${e => { e.stopPropagation(); onEliminarChat(c.id); }}><${Icon} name="close" size=${13}/></button>
           </div>
         `)}
       </div>

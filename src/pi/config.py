@@ -32,8 +32,8 @@ def _por_so(clave: str, default: str) -> str:
 
 
 # El shim de pi usa el node del sistema (v18, incompatible) — se ejecuta vía bun.
-PI_BIN = _por_so('bin', str(_HOME / '.bun' / 'bin' / ('pi.cmd' if _WIN else 'pi')))
-RUNTIME = _por_so('runtime', str(_HOME / '.bun' / 'bin' / ('bun.exe' if _WIN else 'bun')))
+PI_BIN = _por_so('bin', '')
+RUNTIME = _por_so('runtime', '')
 
 # pi maneja sus sesiones donde las maneja SIEMPRE (~/.pi/agent/sessions/,
 # vía getAgentDir() de pi) — Aurora es sólo una interfaz distinta sobre el

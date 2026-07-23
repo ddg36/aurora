@@ -1,4 +1,4 @@
-/* HUD V4 — modifica la interfaz real; nunca pinta un escenario de fondo. */
+/* HUD V5 — modifica la interfaz real; nunca pinta un escenario de fondo. */
 .aurora-interface-hud-marker { display: none; }
 
 .aurora-ui-shell {
@@ -105,18 +105,18 @@
   box-shadow: inset 0 1px 0 color-mix(in srgb,#ffd7a0 7%,transparent), 0 10px 28px color-mix(in srgb,var(--hud-accent) 7%,transparent);
 }
 .aurora-hud-layer[data-hud="candles"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::before {
-  content: '✦'; color: color-mix(in srgb,var(--hud-accent) 76%,#f6c889); margin-right: .45em; opacity: .7; text-shadow: 0 0 8px var(--hud-glow);
+  content: ''; color: color-mix(in srgb,var(--hud-accent) 76%,#f6c889); margin-right: .45em; opacity: .7; text-shadow: 0 0 8px var(--hud-glow);
 }
 .aurora-hud-layer[data-hud="candles"] ~ .aurora-ui-shell button[aria-pressed="true"] {
   box-shadow: inset 0 -2px 0 color-mix(in srgb,#ffd08a 60%,var(--hud-accent)), 0 0 16px color-mix(in srgb,var(--hud-accent) 14%,transparent);
 }
 
 /* Runas: semántica en títulos, activo y cabeceras. */
-.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::before { content:'᛭'; margin-right:.45em; color:var(--hud-accent); opacity:.72; text-shadow:0 0 10px var(--hud-glow); }
-.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::after { content:'᛫'; margin-left:.45em; color:var(--hud-accent); opacity:.42; }
+.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::before { content:''; margin-right:.45em; color:var(--hud-accent); opacity:.72; text-shadow:0 0 10px var(--hud-glow); }
+.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::after { content:''; margin-left:.45em; color:var(--hud-accent); opacity:.42; }
 .aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell .nav-rail button[aria-current="page"]::after,
 .aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell .nav-rail button[aria-pressed="true"]::after {
-  content:'ᚨ'; position:absolute; right:2px; top:2px; font-size:7px; color:var(--hud-accent); opacity:.75;
+  content:''; position:absolute; right:2px; top:2px; font-size:7px; color:var(--hud-accent); opacity:.75;
 }
 
 /* Carmesí: remates en la propia geometría de paneles. */
@@ -161,14 +161,14 @@
 
 /* Compass: guía de navegación, no una brújula flotando sobre el fondo. */
 .aurora-hud-layer[data-hud="compass"] ~ .aurora-ui-shell .nav-rail::before {
-  content:'N'; position:sticky; top:0; display:block; text-align:center; padding:3px 0; font:700 7px/1 monospace; color:var(--hud-accent); background:var(--aurora-glass); backdrop-filter:blur(8px); z-index:3; opacity:.7;
+  content:''; position:sticky; top:0; display:block; text-align:center; padding:3px 0; font:700 7px/1 monospace; color:var(--hud-accent); background:var(--aurora-glass); backdrop-filter:blur(8px); z-index:3; opacity:.7;
 }
 .aurora-hud-layer[data-hud="compass"] ~ .aurora-ui-shell .nav-rail button[aria-pressed="true"],
 .aurora-hud-layer[data-hud="compass"] ~ .aurora-ui-shell .nav-rail button:focus-visible {
   box-shadow: inset 3px 0 0 var(--hud-accent), 0 0 14px color-mix(in srgb,var(--hud-accent) 13%,transparent);
 }
 .aurora-hud-layer[data-hud="compass"] ~ .aurora-ui-shell main::before {
-  content:'W  ·  N  ·  E'; position:sticky; top:0; align-self:center; z-index:20; font:600 7px/1 monospace; letter-spacing:.35em; color:color-mix(in srgb,var(--hud-accent) 58%,var(--aurora-text-muted)); opacity:.45; pointer-events:none; padding:4px 8px;
+  content:''; position:sticky; top:0; align-self:center; z-index:20; font:600 7px/1 monospace; letter-spacing:.35em; color:color-mix(in srgb,var(--hud-accent) 58%,var(--aurora-text-muted)); opacity:.45; pointer-events:none; padding:4px 8px;
 }
 
 @keyframes hud-focus-breathe { 0%,100%{filter:none} 50%{filter:brightness(1.06)} }
@@ -182,4 +182,130 @@ html[data-theme-mode="light"] .aurora-hud-layer[data-hud]:not([data-hud="none"])
 
 @media (prefers-reduced-motion: reduce) {
   .aurora-hud-layer[data-hud] ~ .aurora-ui-shell * { animation-duration: 6s !important; }
+}
+
+/* HUD V5 — integración con el sistema semántico vNext. Los estilos de arriba
+   conservan compatibilidad con módulos históricos; esta capa es la autoridad
+   para Panel, Button, Chip, campos, chat, footer y navegación actuales. */
+.aurora-hud-layer[data-hud]:not([data-hud="none"]) ~ .aurora-ui-shell :is(
+  .au-panel,.au-chat-message,.au-dropdown,.au-toolbar,.au-field,.au-button,.au-chip,.aurora-footer,.nav-rail
+) { --hud-local-line:color-mix(in srgb,var(--hud-accent) 32%,var(--aurora-border)); }
+
+.aurora-hud-layer[data-hud="pulse-rings"] ~ .aurora-ui-shell :is(.au-button,.au-chip,.nav-rail-button,.footer-action)[aria-pressed="true"],
+.aurora-hud-layer[data-hud="pulse-rings"] ~ .aurora-ui-shell :is(.au-button,.au-chip,.nav-rail-button,.footer-action).fx-active,
+.atmosphere-hud-preview[data-preview-hud="pulse-rings"] :is(.atmosphere-hud-panel,.is-active) {
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--aurora-accent) 68%,transparent),0 0 0 5px color-mix(in srgb,var(--aurora-accent) 10%,transparent),0 0 24px color-mix(in srgb,var(--aurora-accent) 16%,transparent) !important;
+}
+
+.aurora-hud-layer[data-hud="scanlines"] ~ .aurora-ui-shell :is(.au-panel,.au-chat-message,.au-dropdown,.au-toolbar,.aurora-footer,.nav-rail),
+.atmosphere-hud-preview[data-preview-hud="scanlines"] :is(.atmosphere-hud-panel,.atmosphere-hud-rail) {
+  background-image:repeating-linear-gradient(0deg,color-mix(in srgb,var(--aurora-accent) 4%,transparent) 0 1px,transparent 1px 4px),linear-gradient(90deg,color-mix(in srgb,var(--aurora-accent) 3%,transparent),transparent 45%) !important;
+}
+
+.aurora-hud-layer[data-hud="circuit"] ~ .aurora-ui-shell :is(.au-panel,.au-toolbar,.aurora-footer,.nav-rail),
+.atmosphere-hud-preview[data-preview-hud="circuit"] :is(.atmosphere-hud-panel,.atmosphere-hud-rail) {
+  position:relative;
+  border-color:color-mix(in srgb,var(--aurora-accent) 36%,var(--aurora-border)) !important;
+  background-image:linear-gradient(90deg,transparent 0 12%,color-mix(in srgb,var(--aurora-accent) 12%,transparent) 12% 12.5%,transparent 12.5% 68%,color-mix(in srgb,var(--aurora-accent) 10%,transparent) 68% 68.5%,transparent 68.5%),linear-gradient(0deg,transparent 0 70%,color-mix(in srgb,var(--aurora-accent) 9%,transparent) 70% 70.5%,transparent 70.5%) !important;
+}
+.aurora-hud-layer[data-hud="circuit"] ~ .aurora-ui-shell :is(.au-panel,.au-toolbar)::after,
+.atmosphere-hud-preview[data-preview-hud="circuit"] .atmosphere-hud-panel::after { content:'';position:absolute;right:7px;top:7px;width:4px;height:4px;border-radius:50%;background:var(--aurora-accent);box-shadow:-22px 0 0 color-mix(in srgb,var(--aurora-accent) 44%,transparent),0 0 9px var(--aurora-edge-glow); }
+
+.aurora-hud-layer[data-hud="corners"] ~ .aurora-ui-shell :is(.au-panel,.au-chat-message,.au-dropdown),
+.atmosphere-hud-preview[data-preview-hud="corners"] .atmosphere-hud-panel {
+  background-image:linear-gradient(var(--aurora-accent),var(--aurora-accent)),linear-gradient(var(--aurora-accent),var(--aurora-accent)),linear-gradient(var(--aurora-accent),var(--aurora-accent)),linear-gradient(var(--aurora-accent),var(--aurora-accent)),linear-gradient(var(--aurora-accent),var(--aurora-accent)),linear-gradient(var(--aurora-accent),var(--aurora-accent)),linear-gradient(var(--aurora-accent),var(--aurora-accent)),linear-gradient(var(--aurora-accent),var(--aurora-accent)) !important;
+  background-repeat:no-repeat !important;background-size:12px 1px,1px 12px,12px 1px,1px 12px,12px 1px,1px 12px,12px 1px,1px 12px !important;background-position:left top,left top,right top,right top,left bottom,left bottom,right bottom,right bottom !important;
+}
+
+/* Ornamento geométrico: no depende de caracteres decorativos ni emoji. */
+.aurora-hud-layer[data-hud="candles"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::before,
+.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::before,
+.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::after {
+  content:'';display:inline-block;width:9px;height:9px;margin-right:.5em;border:1px solid var(--hud-accent);transform:rotate(45deg);opacity:.68;box-shadow:0 0 9px var(--hud-glow);vertical-align:middle;
+}
+.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell :is(h1,h2,.message-header)::after { width:5px;height:5px;margin:0 0 0 .5em;opacity:.38; }
+.aurora-hud-layer[data-hud="runes"] ~ .aurora-ui-shell .nav-rail button[aria-current="page"]::after { content:'';position:absolute;right:3px;top:3px;width:5px;height:5px;border-top:1px solid var(--hud-accent);border-right:1px solid var(--hud-accent);opacity:.8; }
+.aurora-hud-layer[data-hud="candles"] ~ .aurora-ui-shell :is(.au-panel,.au-chat-message,.aurora-footer,.nav-rail),
+.atmosphere-hud-preview[data-preview-hud="candles"] :is(.atmosphere-hud-panel,.atmosphere-hud-heading) { border-color:color-mix(in srgb,#ffd08a 35%,var(--aurora-border)) !important;box-shadow:inset 0 1px 0 color-mix(in srgb,#ffd7a0 10%,transparent),0 8px 24px color-mix(in srgb,var(--aurora-accent) 8%,transparent) !important; }
+.atmosphere-hud-preview[data-preview-hud="runes"] .atmosphere-hud-panel { border-color:color-mix(in srgb,var(--aurora-accent) 42%,var(--aurora-border));clip-path:polygon(7px 0,calc(100% - 7px) 0,100% 7px,100% calc(100% - 7px),calc(100% - 7px) 100%,7px 100%,0 calc(100% - 7px),0 7px); }
+
+.aurora-hud-layer[data-hud="drip"] ~ .aurora-ui-shell :is(.au-panel,.au-chat-message,.au-toolbar),
+.atmosphere-hud-preview[data-preview-hud="drip"] .atmosphere-hud-panel { border-top-color:color-mix(in srgb,var(--aurora-accent) 72%,var(--aurora-border)) !important;background-image:radial-gradient(ellipse at 14% 0,color-mix(in srgb,var(--aurora-accent) 28%,transparent) 0 3px,transparent 4px),radial-gradient(ellipse at 72% 0,color-mix(in srgb,var(--aurora-accent) 20%,transparent) 0 5px,transparent 6px) !important; }
+
+.aurora-hud-layer[data-hud="sonar"] ~ .aurora-ui-shell :is(.au-button,.au-chip,.nav-rail-button).fx-active,
+.aurora-hud-layer[data-hud="sonar"] ~ .aurora-ui-shell :is(.au-chat-message.streaming,.tool-running),
+.atmosphere-hud-preview[data-preview-hud="sonar"] .is-active { animation:hud-sonar 2s ease-out infinite; }
+
+.aurora-hud-layer[data-hud="ember"] ~ .aurora-ui-shell :is(.au-panel,.au-chat-message,.aurora-footer,.nav-rail),
+.atmosphere-hud-preview[data-preview-hud="ember"] :is(.atmosphere-hud-panel,.atmosphere-hud-rail) { border-color:color-mix(in srgb,var(--aurora-accent) 34%,var(--aurora-border)) !important;box-shadow:inset 0 -1px 0 color-mix(in srgb,var(--aurora-accent) 24%,transparent) !important; }
+.aurora-hud-layer[data-hud="ember"] ~ .aurora-ui-shell :is(.au-button,.au-chip,.nav-rail-button).fx-active,
+.atmosphere-hud-preview[data-preview-hud="ember"] .is-active { box-shadow:inset 0 -2px 0 color-mix(in srgb,#ffd089 45%,var(--aurora-accent)),0 0 18px color-mix(in srgb,var(--aurora-accent) 18%,transparent) !important; }
+
+.aurora-hud-layer[data-hud="torii"] ~ .aurora-ui-shell :is(.au-panel-header,.au-toolbar,h1,h2),
+.atmosphere-hud-preview[data-preview-hud="torii"] .atmosphere-hud-heading { border-top:2px solid color-mix(in srgb,var(--aurora-accent) 68%,transparent);border-bottom:1px solid color-mix(in srgb,var(--aurora-accent) 28%,transparent);padding:4px 8px; }
+.atmosphere-hud-preview[data-preview-hud="torii"] .atmosphere-hud-panel::before { content:'';position:absolute;left:12%;right:12%;top:-5px;height:4px;border-left:2px solid var(--aurora-accent);border-right:2px solid var(--aurora-accent);border-top:1px solid var(--aurora-accent);opacity:.6; }
+
+/* Compass conserva la función de orientación sin insertar letras flotantes. */
+.aurora-hud-layer[data-hud="compass"] ~ .aurora-ui-shell .nav-rail::before,
+.aurora-hud-layer[data-hud="compass"] ~ .aurora-ui-shell main::before { content:'';display:block;position:sticky;top:4px;z-index:3;width:12px;height:12px;margin:3px auto;border:1px solid color-mix(in srgb,var(--hud-accent) 60%,transparent);border-radius:50%;background:linear-gradient(135deg,transparent 44%,var(--hud-accent) 45% 54%,transparent 55%);opacity:.6;pointer-events:none; }
+.aurora-hud-layer[data-hud="compass"] ~ .aurora-ui-shell main::before { width:34px;height:5px;border-width:1px 0 0;border-radius:0;background:linear-gradient(90deg,transparent,var(--hud-accent),transparent); }
+.atmosphere-hud-preview[data-preview-hud="compass"] .atmosphere-hud-panel::before { content:'';position:absolute;right:12px;top:10px;width:22px;height:22px;border:1px solid color-mix(in srgb,var(--aurora-accent) 48%,transparent);border-radius:50%;background:linear-gradient(135deg,transparent 45%,var(--aurora-accent) 46% 54%,transparent 55%); }
+
+/* Lyria: la interfaz se comporta como armadura, no como decoración de sangre.
+   El carmesí señala autoridad y actividad; hierro y filigrana contienen todo lo demás. */
+.aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell :is(
+  .au-panel,.au-chat-message,.au-toolbar,.au-dropdown,.aurora-footer,.nav-rail,
+  .message,.chat-input-area,.lyra-session-bar,.lyria-empty-stage,.llama-history-panel,.llama-toolbar-panel
+),
+.atmosphere-hud-preview[data-preview-hud="lyria"] :is(.atmosphere-hud-panel,.atmosphere-hud-rail) {
+  border-color:color-mix(in srgb,#9b7664 34%,var(--aurora-border)) !important;
+  background-image:
+    radial-gradient(circle at 9px 9px,#b48a70 0 1px,#24171a 1.4px 2.2px,transparent 2.7px),
+    radial-gradient(circle at calc(100% - 9px) 9px,#b48a70 0 1px,#24171a 1.4px 2.2px,transparent 2.7px),
+    radial-gradient(circle at 9px calc(100% - 9px),#765748 0 1px,#160e10 1.4px 2.2px,transparent 2.7px),
+    radial-gradient(circle at calc(100% - 9px) calc(100% - 9px),#765748 0 1px,#160e10 1.4px 2.2px,transparent 2.7px),
+    radial-gradient(circle at 16px 16px,transparent 0 10px,color-mix(in srgb,#aa806b 42%,transparent) 10.6px 11.3px,transparent 12px),
+    radial-gradient(circle at calc(100% - 16px) calc(100% - 16px),transparent 0 10px,color-mix(in srgb,#7d5d50 34%,transparent) 10.6px 11.3px,transparent 12px),
+    repeating-linear-gradient(112deg,transparent 0 7px,rgba(225,205,210,.018) 7px 8px,transparent 8px 15px),
+    linear-gradient(180deg,color-mix(in srgb,#d8c6cc 5%,transparent),transparent 22%,rgba(0,0,0,.08)) !important;
+  background-repeat:no-repeat !important;
+  background-size:100% 100% !important;
+  background-position:center !important;
+  box-shadow:inset 0 1px 0 color-mix(in srgb,#eadde2 6%,transparent),inset 0 0 0 1px rgba(38,24,28,.46),0 12px 34px rgba(0,0,0,.22) !important;
+}
+.aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell :is(h1,h2,.au-panel-title,.message-header)::before,
+.atmosphere-hud-preview[data-preview-hud="lyria"] .atmosphere-hud-heading::before {
+  content:'';display:inline-block;width:11px;height:11px;margin-right:.5em;border:1px solid color-mix(in srgb,#b28a76 72%,#d8c6cc);border-radius:50%;box-shadow:inset -3px 0 0 1px var(--aurora-surface),inset -4px 0 0 color-mix(in srgb,var(--aurora-accent) 32%,transparent),0 0 8px color-mix(in srgb,var(--aurora-accent) 12%,transparent);vertical-align:middle;
+}
+.atmosphere-hud-preview[data-preview-hud="lyria"] .atmosphere-hud-panel::after {
+  content:'';position:absolute;left:50%;top:12px;width:7px;height:3px;border-radius:90% 18% 90% 18%;background:#ff1838;box-shadow:12px 0 #ff1838,0 0 5px #ff5d73,0 0 12px rgba(227,27,54,.58),12px 0 5px #ff5d73,12px 0 12px rgba(227,27,54,.58);transform:translateX(-10px) skewX(-16deg);opacity:.9;
+}
+.aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell :is(.au-button,.au-chip,.nav-rail-button,.footer-action).fx-active,
+.aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell :is(.au-button,.au-chip,.nav-rail-button,.footer-action)[aria-pressed="true"],
+.aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell :is(.au-chat-message.streaming,.message.streaming,.tool-running),
+.atmosphere-hud-preview[data-preview-hud="lyria"] :is(.is-active,.atmosphere-hud-panel) {
+  border-color:color-mix(in srgb,var(--aurora-accent) 44%,#8d6b5c) !important;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,#b78b75 34%,transparent),inset 0 1px 0 color-mix(in srgb,#f0dfe4 7%,transparent),0 0 20px color-mix(in srgb,var(--aurora-accent) 11%,transparent) !important;
+}
+.aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell :is(input,textarea,select):focus {
+  border-color:color-mix(in srgb,var(--aurora-accent) 58%,var(--aurora-border)) !important;
+  box-shadow:inset 0 1px 8px rgba(0,0,0,.42),0 0 0 1px color-mix(in srgb,var(--aurora-accent) 18%,transparent),0 0 22px color-mix(in srgb,var(--aurora-accent) 10%,transparent) !important;
+}
+.aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell .lyria-empty-stage {
+  border-top-color:color-mix(in srgb,var(--aurora-accent) 38%,#8d6b5c) !important;
+  background-color:color-mix(in srgb,#080306 64%,transparent) !important;
+  backdrop-filter:blur(2.5px) saturate(1.08);
+  box-shadow:inset 0 1px 0 rgba(255,91,108,.28),inset 1px 0 0 rgba(227,27,54,.1),inset -1px 0 0 rgba(227,27,54,.07),0 -18px 54px rgba(227,27,54,.12),0 18px 42px rgba(0,0,0,.38) !important;
+}
+.aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell .lyria-starter-grid button { background:color-mix(in srgb,#070306 76%,transparent);backdrop-filter:blur(3px); }
+.aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell .lyria-starter-grid button:hover { background:color-mix(in srgb,var(--aurora-accent) 13%,#070306 70%);box-shadow:inset 0 1px 0 rgba(255,117,132,.18),0 0 22px rgba(227,27,54,.12); }
+html:has(.llama-view[data-lyria-state]) .aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell :is(.lyra-session-bar,.chat-input-area,.lyria-empty-stage,.aurora-footer,.nav-rail) { transition:border-color .45s ease,box-shadow .55s ease,background-color .55s ease,filter .55s ease; }
+html:has(.llama-view[data-lyria-state="listening"]) .aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell :is(.chat-input-area,.lyria-empty-stage) { border-color:rgba(255,67,88,.4)!important;box-shadow:inset 0 1px 0 rgba(255,106,122,.24),0 0 30px rgba(227,27,54,.14)!important; }
+html:has(.llama-view[data-lyria-state="thinking"]) .aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell :is(.lyra-session-bar,.lyria-empty-stage) { border-color:rgba(227,27,54,.3)!important;box-shadow:inset 0 1px 0 rgba(255,91,108,.18),0 0 38px rgba(227,27,54,.1)!important; }
+html:has(.llama-view[data-lyria-state="working"]) .aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell :is(.lyra-session-bar,.chat-input-area,.lyria-empty-stage,.aurora-footer,.nav-rail) { border-color:rgba(255,53,77,.48)!important;box-shadow:inset 0 1px 0 rgba(255,119,133,.28),0 0 38px rgba(227,27,54,.16)!important; }
+html:has(.lyria-starter-grid button:hover) .aurora-hud-layer[data-hud="lyria"] ~ .aurora-ui-shell .lyria-empty-stage { border-color:rgba(255,72,92,.52)!important;box-shadow:inset 0 1px 0 rgba(255,136,148,.3),0 -16px 48px rgba(227,27,54,.16),0 18px 42px rgba(0,0,0,.4)!important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora-hud-layer[data-hud] ~ .aurora-ui-shell *,
+  .atmosphere-hud-preview * { animation:none !important; }
 }

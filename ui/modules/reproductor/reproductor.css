@@ -1,0 +1,80 @@
+/* Reproductor — módulo Aurora. Usa tokens --aurora-* (nada de temas propios,
+   el tema global de Aurora ya cubre eso). */
+.rp-viz { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: .55; }
+.rp-app { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; padding-bottom: 84px; }
+.rp-loading { position: relative; z-index: 1; padding: 24px; color: var(--aurora-text-muted); }
+.rp-library { flex: 1; overflow: auto; padding: 18px 20px; }
+.rp-library h2 { font-size: 20px; margin-bottom: 4px; color: var(--aurora-text); }
+.rp-sub { color: var(--aurora-text-muted); margin-bottom: 14px; font-size: 13px; }
+.rp-genrow, .rp-searchrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+/* flex-1 por si solo (flex-basis:0%) nunca dispara wrap — el navegador lo
+   cuenta como ~0 y "entra" todo en una línea, aplastando el input a nada.
+   Un min-width real es lo que fuerza a los botones a bajar de línea. */
+input.rp-input-grow { min-width: 140px !important; }
+.rp-count { color: var(--aurora-text-muted); font-size: 12px; }
+.rp-scan { color: var(--aurora-text-muted); font-size: 12px; margin-bottom: 10px; }
+.rp-sentinel { height: 30px; }
+
+.rp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.rp-grid.is-list { grid-template-columns: 1fr; gap: 4px; }
+.rp-album { background: var(--aurora-surface-1); border: 1px solid var(--aurora-border); border-radius: var(--aurora-radius-md); overflow: hidden; cursor: pointer; position: relative; transition: .15s; }
+.rp-album:hover { transform: translateY(-2px); border-color: var(--aurora-accent); }
+.rp-album img { width: 100%; aspect-ratio: 1/1; display: block; background: var(--aurora-surface-2); }
+.rp-album-meta { padding: 8px 10px; }
+.rp-album-t { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--aurora-text); }
+.rp-album-d { font-size: 11px; color: var(--aurora-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-fav { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.45); border: none; color: #ffd24d; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; }
+.rp-badge { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,.5); font-size: 10px; padding: 2px 6px; border-radius: 8px; color: #fff; }
+.rp-album.is-playing { border-color: var(--aurora-accent); box-shadow: 0 0 0 2px var(--aurora-edge-glow); }
+.rp-grid.is-list .rp-album { display: flex; align-items: center; gap: 10px; border-radius: var(--aurora-radius-sm); }
+.rp-grid.is-list .rp-album img { width: 42px; height: 42px; flex: none; border-radius: 6px; }
+.rp-grid.is-list .rp-album-meta { padding: 4px 8px; flex: 1; min-width: 0; }
+.rp-grid.is-list .rp-fav { position: static; background: none; }
+.rp-grid.is-list .rp-badge { position: static; background: var(--aurora-surface-2); color: var(--aurora-text-muted); }
+
+/* flex-wrap en vez de @media: en un sidepanel angosto (~380px) esta barra
+   necesita acomodarse a varias líneas, no aplastarse en una sola — mismo
+   layout, se ajusta solo (sin romper estructura por breakpoint). */
+.rp-controls { position: fixed; left: var(--aurora-rail-w, 0); right: 0; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; background: var(--aurora-glass); backdrop-filter: blur(8px); border-top: 1px solid var(--aurora-border); max-height: 45vh; overflow-y: auto; }
+.rp-cover { width: 40px; height: 40px; border-radius: 8px; overflow: hidden; flex: none; background: var(--aurora-surface-2); }
+.rp-cover img { width: 100%; height: 100%; object-fit: cover; }
+.rp-nowinfo { min-width: 90px; max-width: 190px; flex: 1 1 90px; }
+.rp-nowtitle { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--aurora-text); }
+.rp-nowseed { font-size: 11px; color: var(--aurora-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-transport { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.rp-progwrap { flex: 1 1 160px; display: flex; align-items: center; gap: 10px; min-width: 160px; order: 10; }
+.rp-progbar { flex: 1; height: 6px; border-radius: 6px; background: var(--aurora-surface-2); position: relative; cursor: pointer; }
+.rp-progfill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: var(--aurora-accent); }
+.rp-time { font-size: 11px; color: var(--aurora-text-muted); min-width: 34px; text-align: center; }
+.rp-volwrap { display: flex; align-items: center; gap: 6px; width: 110px; flex: 0 0 auto; }
+.rp-volwrap input { flex: 1; }
+.rp-smallbtns { display: flex; gap: 4px; flex: 0 0 auto; }
+
+.rp-panel, .rp-editor { position: fixed; top: 0; right: 0; bottom: 73px; width: 340px; max-width: 92vw; z-index: 6; background: var(--aurora-surface-1); border-left: 1px solid var(--aurora-border); overflow: auto; padding: 16px; }
+.rp-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.rp-panel h3 { font-size: 16px; color: var(--aurora-text); }
+.rp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.rp-row label { font-size: 13px; color: var(--aurora-text-muted); }
+.rp-section { border-top: 1px solid var(--aurora-divider); margin-top: 14px; padding-top: 14px; }
+.rp-st { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--aurora-text-muted); margin-bottom: 10px; }
+.rp-eqrow { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+.rp-presets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.rp-eqband { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+.rp-eq-slider { writing-mode: vertical-lr; direction: rtl; width: 6px; height: 90px; }
+.rp-fl { font-size: 10px; color: var(--aurora-text-muted); }
+.rp-file-overlay { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.rp-editor { display: flex; flex-direction: column; }
+.rp-editor-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.rp-editor-head .rp-sp { flex: 1; }
+.rp-rollwrap { flex: 1; overflow: auto; background: var(--aurora-surface-2); border: 1px solid var(--aurora-border); border-radius: var(--aurora-radius-md); padding: 10px; }
+.rp-roll { display: grid; gap: 2px; }
+.rp-cell { background: var(--aurora-surface3); border-radius: 3px; min-height: 18px; cursor: pointer; }
+.rp-cell.on { background: var(--aurora-accent); }
+.rp-cell.bc { box-shadow: inset 2px 0 0 var(--aurora-border); }
+
+@media (max-width: 768px) {
+  .rp-panel, .rp-editor { width: 100%; bottom: 0; top: auto; height: 70%; border-left: none; border-top: 1px solid var(--aurora-border); }
+  .rp-nowinfo { display: none; }
+  .rp-volwrap { width: 90px; }
+}

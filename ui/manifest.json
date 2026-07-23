@@ -1,0 +1,24 @@
+{
+  "name": "Aurora",
+  "short_name": "Aurora",
+  "description": "Entorno humano/AI local con agente, tools y extensión de navegador.",
+  "start_url": "/ui/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "/ui/assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/ui/assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

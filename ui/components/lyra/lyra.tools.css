@@ -71,11 +71,19 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   user-select: none;
 }
-.tool-toggle-chevron { flex-shrink: 0; font-size: 9px; color: var(--text-dim); width: 10px; }
-.tool-execution-icon { flex-shrink: 0; font-size: 10px; }
+.tool-execution-header:focus-visible{outline:1px solid var(--aurora-accent);outline-offset:3px;border-radius:3px}
+.tool-toggle-chevron { flex-shrink: 0; color: var(--text-dim); width: 12px; display:flex;align-items:center; }
+.tool-execution-icon { flex-shrink: 0; display:flex;align-items:center; }
 .tool-execution-name { font-weight: 700; color: var(--text); white-space: nowrap; flex-shrink: 1; min-width: 24px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
 .tool-execution-preview { color: var(--text-dim); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .tool-execution-body { display: flex; flex-direction: column; gap: 4px; }
@@ -107,9 +115,13 @@
   word-break: break-word;
   font-family: inherit;
 }
-.tool-running { border-left: 2px solid rgba(96,165,250,.62); background: color-mix(in srgb, var(--aurora-bg) 50%, transparent); }
-.tool-success { border-left: 2px solid rgba(34,197,94,.62); background: color-mix(in srgb, #22c55e 12%, var(--aurora-bg) 50%); }
-.tool-error   { border-left: 2px solid rgba(239,68,68,.72); background: color-mix(in srgb, #ef4444 12%, var(--aurora-bg) 50%); }
+.tool-running { border-left: 2px solid color-mix(in srgb,var(--aurora-warning) 72%,transparent); background: color-mix(in srgb,var(--aurora-warning) 7%,var(--aurora-bg) 50%); }
+.tool-running .tool-execution-icon { color:var(--aurora-warning); animation:tool-running-spin 1.4s linear infinite; }
+.tool-success .tool-execution-icon { color:var(--aurora-success); }
+.tool-error .tool-execution-icon { color:var(--aurora-error); }
+@keyframes tool-running-spin { to { transform:rotate(360deg); } }
+.tool-success { border-left: 2px solid color-mix(in srgb,var(--aurora-success) 64%,transparent); background: color-mix(in srgb,var(--aurora-success) 8%,var(--aurora-bg) 50%); }
+.tool-error   { border-left: 2px solid color-mix(in srgb,var(--aurora-error) 68%,transparent); background: color-mix(in srgb,var(--aurora-error) 8%,var(--aurora-bg) 50%); }
 
 /* ── Banner de confirmación Nexus MEDIUM/HIGH ──────── */
 .nexus-confirm-banner {
@@ -140,6 +152,9 @@
   gap: 8px;
 }
 .nexus-confirm-risk {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.05em;
@@ -173,6 +188,7 @@
   gap: 6px;
   justify-content: flex-end;
 }
+.nexus-confirm-actions button { display:inline-flex;align-items:center;gap:5px; }
 /* ── Chips de resultados Nexus modo manual ─────────── */
 .nexus-resultados-chips {
   display: flex;

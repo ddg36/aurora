@@ -24,6 +24,15 @@
     const button = first(SELECTORS.stop, root);
     return button?.isConnected && !button.hidden && button.getAttribute('aria-hidden') !== 'true' ? button : null;
   };
+  // `model-response`/`user-query` no traen ID propio: sus únicos atributos son
+  // marcadores internos de Angular (_ngcontent-*, _nghost-*) compartidos por
+  // TODOS los turnos de la misma plantilla, no por instancia — confirmado en
+  // vivo, idéntico en 10 turnos reales de una conversación. El contenedor
+  // padre (`.conversation-container`) sí trae un `id` real y único por
+  // intercambio (confirmado en vivo: 10 turnos, 10 ids distintos, sin
+  // repetir) — usuario y su respuesta comparten el mismo id, porque el par
+  // completo vive en un solo contenedor, no cada mensaje por separado.
+  const turnId = turn => turn?.closest?.('.conversation-container')?.id || '';
   const observe = Object.freeze({
     getInput: () => first(SELECTORS.input),
     getSendControl: ({ visible = false } = {}) => SELECTORS.send.map(s => document.querySelector(s)).find(b => b && !b.disabled && (!visible || b.offsetParent !== null)) || null,
@@ -32,8 +41,12 @@
     getAssistantTurns: () => all(SELECTORS.assistant),
     getUserTurns: () => all(SELECTORS.user),
     getUserTurnCount: () => all(SELECTORS.user).length,
-    getNewUserTurnIds: () => [],
-    findAssistantAfterUserIds: () => null,
+    getNewUserTurnIds: baseline => all(SELECTORS.user).map(node => turnId(node)).filter(id => id && !baseline?.has(id)),
+    findAssistantAfterUserIds(ids, turns = all(SELECTORS.assistant)) {
+      const users = all(SELECTORS.user).filter(node => ids?.includes(turnId(node)));
+      const user = users.at(-1);
+      return user ? turns.filter(turn => user.compareDocumentPosition(turn) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1) || null : null;
+    },
     getTextNode: bestTextNode,
     // Markdown fiel del DOM, no innerText plano — ver relay-chatgpt.js.
     readAssistant: turn => {
@@ -41,7 +54,7 @@
       const domToMarkdown = globalThis.__auroraRelayV2?.utils?.domToMarkdown;
       return (domToMarkdown ? domToMarkdown(node) : (node?.innerText || '')).trim();
     },
-    getTurnId: turn => turn?.getAttribute?.('data-turn-id') || turn?.id || '',
+    getTurnId: turnId,
     isGenerating: () => Boolean(stopControl()),
     isComplete: turn => Boolean(turn && first(SELECTORS.complete, turn)),
     getConversationKey: () => location.pathname,
@@ -92,7 +105,7 @@
     id: 'gemini', version: 2,
     matches: loc => /(^|\.)gemini\.google\.com$/i.test(loc.hostname),
     capabilities: Object.freeze({ text: true, images: true, files: true, newChat: true, streaming: true }),
-    policies: Object.freeze({ authoritativeStop: false, anchorAfterUser: false, sequentialAttachments: false, attachmentSettleMs: { image: 800, file: 800 } }),
+    policies: Object.freeze({ authoritativeStop: false, anchorAfterUser: true, sequentialAttachments: false, attachmentSettleMs: { image: 800, file: 800 } }),
     observe, act,
   });
   globalThis.__auroraRelayV2?.registerProvider(adapter);

@@ -15,28 +15,30 @@ import { Chip } from '../../../components/Chip.js';
 import { AutoFitChips } from '../../../components/shared/iconButton.js';
 import { Panel, PanelHeader, PanelBody, PanelFooter } from '../../../components/Panel.js';
 import { Empty } from '../../../components/Empty.js';
+import { Icon, resolveIconName } from '../../../components/Icon.js';
 import { getTeamRoles } from '../../../components/shared/builder-api.js';
 import TabComfyUI from './prompts-comfyui.js';
 import TabWan from './prompts-wan.js';
 import { TeamRolesEditor } from './editor-roles.js';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 import { CreativityIdeasEditor } from './editor-ideas.js';
 
 const AI_DESTINOS = [
-  { id: 'lyra',     label: '🦙 Lyra (local)', url: null },
-  { id: 'chatgpt',    label: '💬 ChatGPT',        url: 'https://chatgpt.com' },
-  { id: 'claude',     label: '◆ Claude',          url: 'https://claude.ai' },
-  { id: 'gemini',     label: '✦ Gemini',          url: 'https://gemini.google.com' },
-  { id: 'perplexity', label: '◑ Perplexity',      url: 'https://www.perplexity.ai' },
+  { id: 'lyra',       label: 'Lyria (local)', url: null },
+  { id: 'chatgpt',    label: 'ChatGPT',       url: 'https://chatgpt.com' },
+  { id: 'claude',     label: 'Claude',        url: 'https://claude.ai' },
+  { id: 'gemini',     label: 'Gemini',        url: 'https://gemini.google.com' },
+  { id: 'perplexity', label: 'Perplexity',    url: 'https://www.perplexity.ai' },
 ];
 
 const SECCIONES = [
-  { id: 'biblioteca', label: '📚 Biblioteca' },
-  { id: 'historial',  label: '🕐 Historial'  },
-  { id: 'guardados',  label: '💾 Guardados'  },
-  { id: 'ideas',      label: '💡 Ideas'      },
-  { id: 'equipo',     label: '👥 Equipo AI'  },
-  { id: 'comfyui',   label: '🖼 ComfyUI'    },
-  { id: 'wan',        label: '🎬 Wan Video'  },
+  { id: 'biblioteca', label: 'Biblioteca', icon: 'book' },
+  { id: 'historial',  label: 'Historial',  icon: 'history' },
+  { id: 'guardados',  label: 'Guardados',  icon: 'save' },
+  { id: 'ideas',      label: 'Ideas',       icon: 'bulb' },
+  { id: 'equipo',     label: 'Equipo AI',   icon: 'users' },
+  { id: 'comfyui',    label: 'ComfyUI',     icon: 'image' },
+  { id: 'wan',        label: 'Wan Video',   icon: 'film' },
 ];
 
 function _tematicaAEstilo(tematica) {
@@ -208,36 +210,38 @@ function TabBiblioteca({ lista, onEnviarPrompt }) {
   return html`
     <div class="flex flex-col gap-3 flex-1 overflow-clip">
       ${msg && html`<div class="text-xs text-aurora-text-muted">${msg}</div>`}
-      <div class="flex gap-1.5 items-center">
-        <${Input} class="flex-1" placeholder="Buscar…" value=${busqueda}
+      <div class="prompt-library-toolbar">
+        <${Input} class="prompt-library-search" placeholder="Buscar por intención, contenido o nombre…" value=${busqueda}
           onInput=${e => setBusqueda(e.target.value)} />
-        <${Select} value=${categoria} onChange=${e => setCategoria(e.target.value)}>
+        <${Select} class="prompt-library-filter" value=${categoria} onChange=${e => setCategoria(e.target.value)}>
           <option value="">Todas</option>
           ${cats.map(c => html`<option key=${c} value=${c}>${c}</option>`)}
         </${Select}>
-        <${Chip} active=${soloFav} onClick=${() => setSoloFav(!soloFav)}>★ Favs</${Chip}>
+        <${Chip} active=${soloFav} onClick=${() => setSoloFav(!soloFav)}><${Icon} name="spark" size=${13}/> Favoritos</${Chip}>
       </div>
 
       ${visibles.length === 0 && html`
-        <${Empty} icon="✦" title="Sin prompts">Creá el primero con ＋ o importá plantillas.</${Empty}>
+        <${Empty} icon="spark" title="Sin prompts">Crea el primero o importa plantillas.</${Empty}>
       `}
 
-      <div class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-2">
+      <div class="prompt-library-grid">
         ${visibles.map(p => html`
-          <div key=${p.id} class="flex flex-col gap-1.5 bg-aurora-surface border border-aurora-border rounded-lg p-3 cursor-pointer transition-colors hover:border-aurora-accent hover:bg-[color-mix(in_srgb,var(--aurora-accent)_4%,var(--aurora-surface))]" onClick=${() => copiar(p)}>
-            <div class="flex items-start justify-between gap-2">
-              <div class="flex-1 min-w-0">
-                ${p.categoria && html`<div class="text-[10px] text-aurora-text-muted uppercase">${p.categoria}</div>`}
-                <div class="text-sm font-semibold text-aurora-text truncate">${p.nombre}</div>
+          <div key=${p.id} class="prompt-library-card" onClick=${() => copiar(p)}>
+            <div class="prompt-library-card-head">
+              <span class="prompt-library-card-icon"><${Icon} name=${p.categoria === 'image' ? 'image' : p.categoria === 'code' ? 'code' : 'prompt'} size=${15}/></span>
+              <div class="prompt-library-card-copy">
+                ${p.categoria && html`<small>${p.categoria}</small>`}
+                <strong>${p.nombre}</strong>
               </div>
-              <${Chip} active=${p.favorito} variant="accent" onClick=${e => { e.stopPropagation(); toggleFavorito(p.id); }}>★</${Chip}>
+              <${Button} icon="spark" iconOnly active=${p.favorito} title=${p.favorito ? 'Quitar de favoritos' : 'Añadir a favoritos'} onClick=${e => { e.stopPropagation(); toggleFavorito(p.id); }} />
             </div>
-            <div class="text-xs text-aurora-text-dim line-clamp-2">${p.contenido}</div>
-            <div class="flex items-center gap-1 flex-wrap" onClick=${e => e.stopPropagation()}>
+            <div class="prompt-library-summary">${p.contenido}</div>
+            <div class="prompt-library-card-foot" onClick=${e => e.stopPropagation()}>
               ${detectarVariables(p.contenido).length > 0 && html`<${Chip} variant="accent">{{vars}}</${Chip}>`}
               ${p.usos > 0 && html`<span class="text-[10px] text-aurora-text-muted">${p.usos} usos</span>`}
-              <${Button} size="sm" class="ml-auto" onClick=${() => setEditando(p)}>✎</${Button}>
-              <${Button} size="sm" variant="danger" onClick=${() => borrarPrompt(p.id)}>🗑</${Button}>
+              <${Button} icon="copy" iconOnly class="ml-auto" title="Copiar prompt" onClick=${() => copiar(p)} />
+              <${Button} icon="edit" iconOnly title="Editar" onClick=${() => setEditando(p)} />
+              <${Button} icon="trash" iconOnly title="Eliminar" onClick=${() => borrarPrompt(p.id)} />
             </div>
           </div>
         `)}
@@ -464,7 +468,7 @@ function TabEquipo({ onEnviarPrompt }) {
           return html`
             <div key=${rol.id} class="bg-aurora-surface border border-aurora-border rounded-lg p-3 flex flex-col gap-2">
               <div class="flex items-center gap-2.5">
-                <span class="text-xl flex-shrink-0">${rol.icono || '🤖'}</span>
+                <span class="flex-shrink-0"><${Icon} name=${resolveIconName(rol.icono) || 'bot'} size=${18}/></span>
                 <div class="flex-1 min-w-0">
                   <div class="text-sm font-semibold text-aurora-text">${rol.nombre}</div>
                   ${m.cargo && html`<div class="text-xs text-aurora-text-dim">${m.cargo}</div>`}
@@ -493,7 +497,7 @@ function TabEquipo({ onEnviarPrompt }) {
         <div class="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-1.5">
           ${roles.map(r => html`
             <div key=${r.id} class="bg-aurora-surface border border-aurora-border rounded-md px-3 py-2 flex items-center gap-2 cursor-pointer hover:border-aurora-accent transition-colors text-xs" onClick=${() => generar(r)}>
-              <span class="text-base">${r.icono || '🤖'}</span>
+              <span><${Icon} name=${resolveIconName(r.icono) || 'bot'} size=${16}/></span>
               <div class="flex-1 min-w-0">
                 <div class="font-semibold text-aurora-text truncate">${r.nombre}</div>
                 ${r.prompt_template && html`<div class="text-[9px] text-aurora-text-dim">${r.prompt_template.slice(0,50)}…</div>`}
@@ -537,11 +541,27 @@ export default function Prompts() {
     setTab('wan');
   }, []);
 
+  useEffect(() => registerAIView({
+    id: 'prompts',
+    description: 'Biblioteca de PromptAssets, ideas y constructores especializados reutilizables.',
+    actions: {
+      status: { description: 'Resume sección y cantidad de assets.', readOnly: true, run: () => ({ tab, count: lista.length }) },
+      list_prompts: { description: 'Lista metadatos y contenido de prompts disponibles.', readOnly: true, run: () => lista.map(({ id, nombre, contenido, categoria, tags, favorito, usos }) => ({ id, name: nombre, content: contenido, category: categoria, tags, favorite: !!favorito, uses: usos || 0 })) },
+      select_section: { description: 'Abre una sección de la biblioteca.', input: { section: { type: 'string', enum: SECCIONES.map(item => item.id), required: true } }, run: ({ section }) => { setTab(section); return { section }; } },
+      send_to_lyria: { description: 'Envía un PromptAsset existente al composer local.', input: { id: { type: 'number', required: true } }, run: ({ id }) => { const item = lista.find(p => Number(p.id) === Number(id)); if (!item) throw new Error(`Prompt inexistente: ${id}`); enviarALyra(item.contenido || ''); return { id, sent: true }; } },
+    },
+  }), [tab, lista, enviarALyra]);
+
   return html`
     <div class="prompts-view">
+      <header class="prompts-header">
+        <span class="prompts-header-icon"><${Icon} name="prompt" size=${17}/></span>
+        <div><strong>Biblioteca de prompts</strong><small>Assets reutilizables para iniciar trabajo con una intención clara.</small></div>
+        <span class="prompts-header-count">${lista.length}</span>
+      </header>
       <${AutoFitChips} class="prompts-nav">
         ${SECCIONES.map(s => html`
-          <${Chip} key=${s.id} active=${tab === s.id} onClick=${() => setTab(s.id)}>${s.label}<//>
+          <${Chip} key=${s.id} active=${tab === s.id} onClick=${() => setTab(s.id)}><${Icon} name=${s.icon} size=${14}/> ${s.label}<//>
         `)}
       <//>
 

@@ -7,7 +7,8 @@ import { setViewActions, clearViewActions } from '../../../components/footer/reg
 import { getJSON } from '../../../components/shared/api.js';
 import { FileTree } from '../../../components/shared/FileTree.js';
 import { SplitPane } from '../../../components/shared/SplitPane.js';
-import { Button, Chip } from '../../../components/index.js';
+import { Button, Chip, Empty, Icon, Input } from '../../../components/index.js?v=v1-surface-convergence-1';
+import { registerAIView } from '../../../components/shared/ai-view-actions.js';
 
 export default function Wiki() {
   const [raiz, setRaiz] = useState([]);
@@ -106,40 +107,52 @@ export default function Wiki() {
 
   useEffect(() => {
     setViewActions([
-      { id: 'wiki-nuevo', icon: '📄', title: 'Nuevo archivo', onClick: nuevoArchivo },
-      { id: 'wiki-carpeta', icon: '📁', title: 'Nueva carpeta', onClick: nuevaCarpeta },
-      { id: 'wiki-buscar', icon: '🔍', title: 'Buscar en wiki', onClick: () => setBuscando(b => !b), active: () => buscando },
-      { id: 'wiki-preview', icon: '👁', title: 'Toggle preview', onClick: () => setPreview(p => !p), active: () => preview, disabled: () => !archivo },
-      { id: 'wiki-renombrar', icon: '✎', title: 'Renombrar', onClick: renombrar, disabled: () => !archivo },
-      { id: 'wiki-borrar', icon: '🗑', title: 'Borrar', onClick: borrarActual, disabled: () => !archivo },
+      { id: 'wiki-nuevo', icon: 'file-text', title: 'Nuevo archivo', onClick: nuevoArchivo },
+      { id: 'wiki-carpeta', icon: 'folder', title: 'Nueva carpeta', onClick: nuevaCarpeta },
+      { id: 'wiki-buscar', icon: 'search', title: 'Buscar en wiki', onClick: () => setBuscando(b => !b), active: () => buscando },
+      { id: 'wiki-preview', icon: 'eye', title: 'Alternar vista previa', onClick: () => setPreview(p => !p), active: () => preview, disabled: () => !archivo },
+      { id: 'wiki-renombrar', icon: 'edit', title: 'Renombrar', onClick: renombrar, disabled: () => !archivo },
+      { id: 'wiki-borrar', icon: 'trash', title: 'Borrar', onClick: borrarActual, disabled: () => !archivo },
     ]);
     return () => clearViewActions();
   }, [archivo, preview, buscando]);
 
+  useEffect(() => registerAIView({
+    id: 'wiki',
+    description: 'Base de conocimiento editable en archivos, distinta del lector documental MD.',
+    actions: {
+      status: { description: 'Resume documento y modo visual actuales.', readOnly: true, run: () => ({ root: WIKI_ROOT, file: archivo, dirty: sucio, preview, chars: contenido.length, searching: buscando }) },
+      list_files: { description: 'Lista el árbol raíz de conocimiento.', readOnly: true, run: async () => listar() },
+      read: { description: 'Lee un archivo de Wiki sin cambiar la interfaz.', input: { path: { type: 'string', required: true, maxLength: 1000 } }, readOnly: true, run: async ({ path }) => ({ path, content: await leer(path) }) },
+      open: { description: 'Abre un archivo existente en Wiki.', input: { path: { type: 'string', required: true, maxLength: 1000 } }, run: async ({ path }) => { await abrir(path); return { path, opened: true }; } },
+      search: { description: 'Busca texto indexado en Wiki.', input: { query: { type: 'string', required: true, maxLength: 1000 } }, readOnly: true, run: async ({ query }) => getJSON(`/db/wiki/grep?q=${encodeURIComponent(query)}`) },
+    },
+  }), [archivo, sucio, preview, contenido.length, buscando, raiz]);
+
   return html`
-    <${SplitPane} sidebarClassName="p-2" sidebar=${html`
-        <div class="flex items-center gap-1 mb-2">
-          <span class="text-xs font-semibold flex-1">📖 Wiki</span>
-          <${Button} iconOnly onClick=${nuevoArchivo} title="Nuevo archivo">＋<//>
-          <${Button} iconOnly onClick=${nuevaCarpeta} title="Nueva carpeta">📁<//>
+    <${SplitPane} className="wiki-workspace" sidebarClassName="wiki-sidebar" sidebar=${html`
+        <div class="wiki-sidebar-head">
+          <span><${Icon} name="book" size=${15}/><strong>Wiki</strong><small>${raiz.length} raíces</small></span>
+          <${Button} icon="plus" iconOnly onClick=${nuevoArchivo} title="Nuevo archivo" />
+          <${Button} icon="folder" iconOnly onClick=${nuevaCarpeta} title="Nueva carpeta" />
         </div>
         <${FileTree} entries=${raiz} abierto=${abierto} onToggle=${toggle} onOpen=${abrir} seleccion=${archivo} loadChildren=${listar} />
         ${raiz.length === 0 && html`<div class="text-xs text-white/30 p-2">Wiki vacía</div>`}
       `}>
         ${buscando && html`
-          <div class="border-b border-white/5 p-2 bg-black/20">
-            <input autofocus
-              class="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-xs outline-none"
+          <div class="wiki-search-panel">
+            <${Input} autofocus
+              class="w-full"
               placeholder="Buscar en el contenido de la wiki…"
               value=${query}
               onInput=${e => { setQuery(e.target.value); buscar(e.target.value); }}
               onKeyDown=${e => e.key === 'Enter' && buscar()} />
             ${resultados && html`
-              <div class="mt-2 max-h-48 overflow-y-auto flex flex-col gap-1">
+              <div class="wiki-search-results">
                 ${resultados.length === 0 && html`<div class="text-[11px] text-white/30 px-1">Sin resultados</div>`}
                 ${resultados.map(r => html`
                   <button key=${r.path} onClick=${() => abrirResultado(r.path)}
-                    class="text-left px-2 py-1 rounded hover:bg-white/5 text-xs">
+                    class="wiki-search-result">
                     <div class="text-white/80">${r.path}</div>
                     ${r.hits.map(h => html`<div class="text-[10px] text-white/40 truncate">${h.linea}: ${h.texto}</div>`)}
                   </button>
@@ -149,29 +162,27 @@ export default function Wiki() {
           </div>
         `}
         ${archivo ? html`
-          <div class="flex items-center gap-2 px-3 py-1.5 border-b border-white/5 text-xs">
-            <span class="text-white/60 truncate flex-1">${archivo.replace(WIKI_ROOT + '/', '')}</span>
-            <span class="text-white/30">${sucio ? '● sin guardar' : msg}</span>
-            <${Chip} active=${preview} onClick=${() => setPreview(!preview)}>👁 preview<//>
-            <${Button} iconOnly onClick=${renombrar} title="Renombrar">✎<//>
-            <${Button} iconOnly variant="danger" onClick=${borrarActual} title="Borrar">🗑<//>
+          <div class="wiki-document-bar">
+            <span class="wiki-document-path"><${Icon} name="file-text" size=${14}/>${archivo.replace(WIKI_ROOT + '/', '')}</span>
+            <span class=${`wiki-save-state ${sucio ? 'is-dirty' : ''}`}>${sucio ? 'sin guardar' : msg || 'guardado'}</span>
+            <${Chip} active=${preview} onClick=${() => setPreview(!preview)}><${Icon} name="eye" size=${14}/> Vista previa<//>
+            <${Button} icon="edit" iconOnly onClick=${renombrar} title="Renombrar" />
+            <${Button} icon="trash" iconOnly variant="danger" onClick=${borrarActual} title="Borrar" />
           </div>
-          <div class="flex-1 flex flex-col md:flex-row min-h-0">
+          <div class=${`wiki-editor-grid ${preview ? 'has-preview' : ''}`}>
             <textarea
-              class="flex-1 bg-transparent p-3 text-xs font-mono outline-none resize-none text-white/80"
+              class="wiki-source-editor"
               value=${contenido}
               onInput=${e => onEdit(e.target.value)}
               spellcheck="false"
             />
             ${preview && html`
-              <div class="flex-1 border-t md:border-t-0 md:border-l border-white/5 p-3 overflow-y-auto text-sm"
+              <div class="wiki-preview markdown-body"
                 dangerouslySetInnerHTML=${{ __html: renderMarkdown(contenido) }} />
             `}
           </div>
         ` : html`
-          <div class="flex-1 flex items-center justify-center text-white/30 text-sm">
-            Seleccioná un archivo o creá uno nuevo
-          </div>
+          <${Empty} icon="book" title="Wiki lista">Selecciona un archivo o crea uno nuevo.<//>
         `}
       </${SplitPane}>
   `;

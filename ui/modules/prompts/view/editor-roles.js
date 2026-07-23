@@ -5,6 +5,7 @@ import { Input, Textarea } from '../../../components/Input.js';
 import { Panel, PanelHeader, PanelBody, PanelFooter } from '../../../components/Panel.js';
 import { getTeamRoles, createTeamRole, updateTeamRole, deleteTeamRole, reorderTeamRoles } from '../../../components/shared/builder-api.js';
 import { Toast } from '../../../components/shared/toast.js';
+import { Icon, resolveIconName } from '../../../components/Icon.js';
 
 const EMPTY_ROLE = { nombre: '', icono: '🤖', color: '#8b5cf6', prompt_template: '', default_members: [] };
 
@@ -66,7 +67,7 @@ export function TeamRolesEditor({ onClose }) {
   return html`
     <${Panel} class="w-[min(560px,100%)] max-h-[88vh] flex flex-col">
       <${PanelHeader}>
-        <span class="text-sm font-bold text-aurora-text">👥 Editar Roles del Equipo</span>
+        <span class="text-sm font-bold text-aurora-text inline-flex items-center gap-2"><${Icon} name="users" size=${16}/> Editar roles del equipo</span>
         <${Button} size="sm" onClick=${onClose}>✕</${Button}>
       </${PanelHeader}>
       <${PanelBody} class="flex flex-col gap-2 overflow-y-auto">
@@ -105,13 +106,13 @@ export function TeamRolesEditor({ onClose }) {
 
         ${roles.map((r, idx) => html`
           <div key=${r.id} class="bg-aurora-surface border border-aurora-border rounded-lg px-3 py-2 flex items-center gap-2">
-            <span class="text-xl flex-shrink-0" style=${{ color: r.color || '' }}>${r.icono || '🤖'}</span>
+            <span class="flex-shrink-0" style=${{ color: r.color || '' }}><${Icon} name=${resolveIconName(r.icono) || 'bot'} size=${18}/></span>
             <div class="flex-1 min-w-0">
               <div class="text-sm font-semibold text-aurora-text">${r.nombre}</div>
               ${r.prompt_template && html`<div class="text-[9px] text-aurora-text-dim truncate">${r.prompt_template.slice(0, 60)}…</div>`}
             </div>
-            <${Button} iconOnly onClick=${() => moveUp(idx)} disabled=${idx === 0} title="Subir">▲<//>
-            <${Button} iconOnly onClick=${() => moveDown(idx)} disabled=${idx === roles.length - 1} title="Bajar">▼<//>
+            <${Button} icon="arrowUp" iconOnly onClick=${() => moveUp(idx)} disabled=${idx === 0} title="Subir" />
+            <${Button} icon="arrowDown" iconOnly onClick=${() => moveDown(idx)} disabled=${idx === roles.length - 1} title="Bajar" />
             <${Button} size="sm" onClick=${() => startEdit(r)}>✏</${Button}>
             <${Button} size="sm" variant="danger" onClick=${() => remove(r.id)}>🗑</${Button}>
           </div>

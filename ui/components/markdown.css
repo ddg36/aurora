@@ -49,6 +49,7 @@
 .code-btn {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   flex-shrink: 0;
   white-space: nowrap;
   font-size: 12px;

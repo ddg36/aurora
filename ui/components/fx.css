@@ -123,6 +123,9 @@
   line-height: 1;
   white-space: nowrap;
   text-overflow: ellipsis;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .tool-activity-list {
   display: flex;
@@ -156,7 +159,11 @@
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
+.fx-tool-chip:hover,.fx-tool-chip.is-selected{background:color-mix(in srgb,var(--aurora-accent) 9%,var(--aurora-field));border-color:color-mix(in srgb,var(--aurora-accent) 58%,var(--aurora-border))}.fx-tool-chip:focus-visible{outline:1px solid var(--aurora-accent);outline-offset:1px}
 .fx-tool-chip[data-risk="high"]   { border-color: rgba(199,62,62,0.4); }
 .fx-tool-chip[data-risk="medium"] { border-color: rgba(251,191,36,0.28); }
 .fx-tool-chip[data-risk="low"]    { border-color: rgba(76,175,80,0.22); }
@@ -196,6 +203,7 @@
   border-color: var(--aurora-border-strong);
   color: var(--aurora-text);
 }
+.fx-tool-activity.is-inspecting{grid-template-rows:auto minmax(0,auto);max-height:min(42vh,360px);overflow:visible;align-items:center}.tool-activity-inspector{grid-column:1/-1;min-width:0;max-height:310px;overflow:auto;padding:10px;border:1px solid var(--aurora-border-strong);border-radius:var(--aurora-radius);background:color-mix(in srgb,var(--aurora-surface-1) 96%,transparent);box-shadow:0 14px 34px rgba(0,0,0,.3)}.tool-activity-inspector header{display:flex;align-items:center;gap:8px;margin-bottom:8px}.tool-activity-inspector header>div{display:flex;flex:1;min-width:0;flex-direction:column}.tool-activity-inspector header strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tool-activity-inspector header small{color:var(--aurora-text-dim);font-size:9px}.tool-detail-block{margin-top:7px}.tool-detail-block>span{display:block;margin-bottom:3px;color:var(--aurora-text-muted);font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.tool-detail-block pre{max-height:116px;margin:0;overflow:auto;padding:8px;border:1px solid var(--aurora-border-quiet);border-radius:6px;background:var(--aurora-field);color:var(--aurora-text);font:10px/1.45 var(--aurora-font-mono);white-space:pre-wrap;word-break:break-word}.tool-detail-block.is-error pre{border-color:color-mix(in srgb,var(--aurora-error) 48%,var(--aurora-border))}.tool-detail-empty{margin:6px 0;color:var(--aurora-text-dim);font-size:10px}
 
 /* ── Chat/cloud surfaces ─────────────────────────────── */
 .fx-chat-shell {

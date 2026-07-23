@@ -736,7 +736,9 @@
 .slash-item-icon {
   flex: none;
   width: 1.4em;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .slash-item-name {
   font-weight: 600;

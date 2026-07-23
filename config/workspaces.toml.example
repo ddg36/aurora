@@ -1,0 +1,14 @@
+# Copiá este archivo como workspaces.toml y completá tus rutas locales.
+# workspaces.toml está en .gitignore — cada máquina tiene el suyo.
+
+[paths]
+# Ruta absoluta a tu carpeta raíz de trabajo.
+linux   = ""
+windows = ""
+
+[wiki]
+subfolder = "wiki"
+
+[scratchpad]
+subfolder = "wiki/scratchpad.md"
+images    = "scratchpad/images"

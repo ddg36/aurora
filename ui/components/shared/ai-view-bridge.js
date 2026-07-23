@@ -3,54 +3,17 @@
 
 import { onEvento } from './eventos-ws.js';
 import { postJSON } from './api.js';
-import { setTab } from '../../store.js';
 import { describeAIViews, invokeAIView } from './ai-view-actions.js';
-
-const VIEW_TABS = {
-  aurora: 'aurora',
-  toolkit: 'toolkit',
-  canvas: 'lyra',
-  scratchpad: 'scratchpad',
-  'md-reader': 'md-reader',
-};
-
-function waitForView(view, timeoutMs = 8000) {
-  const current = describeAIViews(view);
-  if (current?.active) return Promise.resolve(current);
-  return new Promise((resolve, reject) => {
-    let timer;
-    const done = () => {
-      const entry = describeAIViews(view);
-      if (!entry?.active) return;
-      clearTimeout(timer);
-      window.removeEventListener('aurora:ai-view-registry', done);
-      resolve(entry);
-    };
-    window.addEventListener('aurora:ai-view-registry', done);
-    timer = setTimeout(() => {
-      window.removeEventListener('aurora:ai-view-registry', done);
-      reject(new Error(`La vista ${view} no publicó acciones en ${timeoutMs / 1000}s`));
-    }, timeoutMs);
-    const tab = VIEW_TABS[view];
-    if (!tab) {
-      clearTimeout(timer);
-      window.removeEventListener('aurora:ai-view-registry', done);
-      reject(new Error(`No existe ruta semántica para la vista ${view}`));
-      return;
-    }
-    setTab(tab);
-    queueMicrotask(done);
-  });
-}
+import { VIEW_TABS, waitForAIView } from './view-action-dispatch.js';
 
 async function handleRequest({ reqId, op, view, action, args } = {}) {
   let result;
   try {
     if (op === 'describe') {
-      if (view) await waitForView(view);
+      if (view) await waitForAIView(view);
       result = { ok: true, operation: op, result: describeAIViews(view) };
     } else if (op === 'invoke') {
-      await waitForView(view);
+      await waitForAIView(view);
       result = await invokeAIView({ view, action, args, requestId: reqId });
     } else {
       result = { ok: false, error: `Operación AI view desconocida: ${op}` };
@@ -65,4 +28,4 @@ async function handleRequest({ reqId, op, view, action, args } = {}) {
 
 onEvento('ai_view_request', handleRequest);
 
-globalThis.__auroraViewBridge = { waitForView, routes: { ...VIEW_TABS } };
+globalThis.__auroraViewBridge = { waitForView: waitForAIView, routes: { ...VIEW_TABS } };

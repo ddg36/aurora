@@ -198,17 +198,18 @@ let _extWsOutboxQueue = Promise.resolve();
 let _auroraToken = null;  // token de usuario confirmado por el servidor
 let _auroraUserId = null;
 
+const AURORA_AUTH_LOCAL = 'aurora_auth';
+
 async function _fetchToken() {
   try {
-    const r = await fetch(AURORA + '/db/usuarios/init', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre: 'deml' }),
+    const stored = await chrome.storage.local.get([AURORA_AUTH_LOCAL]);
+    const auth = stored[AURORA_AUTH_LOCAL];
+    if (!auth?.token) return null;
+    const r = await fetch(AURORA + '/db/usuarios/me', {
+      headers: { Authorization: 'Bearer ' + auth.token },
       signal: AbortSignal.timeout(3000),
     });
-    if (!r.ok) return null;
-    const d = await r.json();
-    return d.token ?? null;
+    return r.ok ? auth.token : null;
   } catch { return null; }
 }
 
@@ -675,6 +676,73 @@ async function handleServerCmd(msg) {
       sendExtResult(id, true, { restored: (params.tabs || []).length });
       return;
     }
+    // Centro de comandos: abre una ventana real del SO por proveedor,
+    // acomodadas en una GRILLA 2D (filas y columnas, no una sola fila) que
+    // se ajusta al área útil de la pantalla principal. La forma de la
+    // grilla considera el aspecto de la pantalla (ancho/alto), no solo la
+    // cantidad de ventanas — en una ultrawide da más columnas que filas,
+    // en una pantalla más cuadrada se equilibra distinto. Ventanas reales,
+    // no iframes — cada una es su propio proceso: si una se cuelga, no
+    // arrastra a las demás. Lista fija por ahora (sin UI de selección
+    // todavía); windowIds guardados para poder cerrarlos todos juntos con
+    // 'close_ai_grid'.
+    case 'spawn_ai_grid': {
+      if (!chrome.system?.display) { sendExtResult(id, false, null, 'chrome.system.display no disponible'); return; }
+      const FIXED_AI_URLS = [
+        'https://chatgpt.com/', 'https://gemini.google.com/app', 'https://claude.ai/new',
+        'https://chat.qwen.ai/', 'https://grok.com/', 'https://www.perplexity.ai/',
+        'https://kimi.moonshot.cn/', 'https://poe.com/',
+      ];
+      // Mismo historial que ya alimenta session-sniffer.js (LLM_SESSION_URL
+      // más arriba) y que lee llm-sesiones.js del lado UI para restaurar el
+      // hilo al reabrir Cloud — acá se reusa tal cual, sin mecanismo nuevo:
+      // cada ventana de la grilla abre la última conversación conocida de
+      // ese host, no la URL base, si es que hay alguna registrada.
+      let historyByHost = {};
+      try {
+        await _ensureToken();
+        const r = await fetch(AURORA + '/db/llm/history?slot=sniffer', { headers: _hdrs() });
+        const rows = r.ok ? await r.json() : [];
+        for (const row of (rows || [])) historyByHost[row.ai_id] = row.url;
+      } catch (_) { /* sin historial disponible: usar URLs base */ }
+      const restoredUrls = FIXED_AI_URLS.map(base => {
+        try { return historyByHost[new URL(base).host] || base; } catch { return base; }
+      });
+      const displays = await chrome.system.display.getInfo();
+      const primary = displays.find(d => d.isPrimary) || displays[0];
+      if (!primary) { sendExtResult(id, false, null, 'sin info de pantalla'); return; }
+      const area = primary.workArea;
+      const n = FIXED_AI_URLS.length;
+      // cols pensado para que cada celda quede lo más cuadrada posible dado
+      // el aspecto real de la pantalla: cols = raíz(n * ancho/alto).
+      const aspect = area.width / area.height;
+      const cols = Math.max(1, Math.min(n, Math.round(Math.sqrt(n * aspect))));
+      const rows = Math.max(1, Math.ceil(n / cols));
+      const urls = restoredUrls.slice(0, cols * rows);
+      const winWidth = Math.floor(area.width / cols);
+      const winHeight = Math.floor(area.height / rows);
+      const created = [];
+      for (let i = 0; i < urls.length; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const win = await chrome.windows.create({
+          url: urls[i], type: 'normal', focused: false,
+          left: area.left + col * winWidth, top: area.top + row * winHeight,
+          width: winWidth, height: winHeight,
+        });
+        created.push({ windowId: win.id, url: urls[i] });
+      }
+      await chrome.storage.local.set({ aurora_ai_grid_windows: created });
+      sendExtResult(id, true, { created, cols, rows, displayWidth: area.width, displayHeight: area.height });
+      return;
+    }
+    case 'close_ai_grid': {
+      const { aurora_ai_grid_windows: created } = await chrome.storage.local.get('aurora_ai_grid_windows');
+      for (const w of (created || [])) { try { await chrome.windows.remove(w.windowId); } catch (_) {} }
+      await chrome.storage.local.remove('aurora_ai_grid_windows');
+      sendExtResult(id, true, { closed: (created || []).length });
+      return;
+    }
     case 'meeting_snapshot': {
       const tab = await getActiveUserTab();
       if (!tab) { sendExtResult(id, false, null, 'no tab'); return; }
@@ -921,6 +989,22 @@ chrome.runtime.onConnect.addListener(port => {
 
 // ─── MENSAJES ─────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+
+  if (msg.type === 'AURORA_SAVE_AUTH') {
+    const { nombre, token } = msg;
+    chrome.storage.local.set({ [AURORA_AUTH_LOCAL]: { nombre, token } })
+      .then(async () => {
+        _auroraToken = token;
+        connectExtWs({ force: true, reason: 'auth_updated' }).catch(() => {});
+        // Sincronizar JSON Family al nuevo usuario: lee caché local y escribe en
+        // servidor + broadcastea JSON_FAMILY_STATE a los content scripts.
+        const state = await loadJsonFamilyState().catch(() => _jsonFamilyEnabled);
+        saveJsonFamilyState(state).catch(() => {});
+      })
+      .catch(() => {});
+    sendResponse({ ok: true });
+    return true;
+  }
 
   if (msg.type === 'AURORA_RELAY_REINJECT') {
     AuroraRelayReinjector.scan(msg.reason || 'message')

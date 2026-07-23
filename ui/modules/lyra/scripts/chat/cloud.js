@@ -512,7 +512,7 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
           emitirToolVisual(visual);
           agregar({
             role: 'assistant', _via: 'pi-tool', _toolError: true,
-            content: `🔧 cortacircuito\n\n[ERROR] ${aiId || 'Cloud'} repitió ${repeticionesFormato} veces la misma tool inválida. Se detuvo el loop.`,
+            content: `Cortacircuito\n\n[ERROR] ${aiId || 'Cloud'} repitió ${repeticionesFormato} veces la misma tool inválida. Se detuvo el loop.`,
             _toolVisual: visual, _convId: convId,
           });
           await completarTurnoCloud(turnId, 'failed');
@@ -530,7 +530,7 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
         agregar({
           role: 'assistant', _via: 'pi-tool', _toolError: true,
           _toolIter: iter + 1, _toolMax: MAX_ITER,
-          content: `🔧 tool inválida · iteración ${iter + 1}/${MAX_ITER}\n\n[ERROR] ${error}`,
+          content: `Tool inválida · iteración ${iter + 1}/${MAX_ITER}\n\n[ERROR] ${error}`,
           _toolVisual: visual, _convId: convId,
         });
         resultados.push('Tool request error: ' + error);
@@ -551,7 +551,7 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
       });
 
       const prepararCall = (call, indice) => {
-        const etiqueta = `🔧 ${call.tool} ${argsCompactos(call.args)}`;
+        const etiqueta = `${call.tool} ${argsCompactos(call.args)}`;
         const callId = `cloud-tool-${turnId}-${iter}-${indice}`;
         const visual = toolVisual({ tool: call.tool, args: call.args, status: 'running', paneId: 'cloud' });
         emitirToolVisual(visual);
@@ -647,7 +647,7 @@ export async function enviarACloud({ iframe, texto, aiId, url, images, files, re
         agregar({
           role: 'assistant', _via: 'pi-tool', _toolError: true,
           _toolIter: iter + 1, _toolMax: MAX_ITER,
-          content: `🔧 límite de seguridad\n\n[ERROR] Se alcanzó MAX_ITER=${MAX_ITER}. El loop Cloud se detuvo para evitar una ejecución infinita.`,
+          content: `Límite de seguridad\n\n[ERROR] Se alcanzó MAX_ITER=${MAX_ITER}. El loop Cloud se detuvo para evitar una ejecución infinita.`,
           _toolVisual: visual, _convId: convId,
         });
         await completarTurnoCloud(turnId, 'failed');

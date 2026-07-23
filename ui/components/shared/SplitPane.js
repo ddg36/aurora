@@ -22,12 +22,11 @@ export function SplitPane({
   children,
 }) {
   return html`
-    <div class="flex flex-col md:flex-row h-full min-h-0 ${className}">
-      <aside class="w-full ${sidebarWidth} ${sidebarMaxH} md:max-h-none shrink-0 overflow-y-auto
-        border-b md:border-b-0 md:border-r border-white/5 ${sidebarClassName}">
+    <div class="au-split-pane ${className}">
+      <aside class="au-split-sidebar ${sidebarWidth} ${sidebarMaxH} ${sidebarClassName}">
         ${sidebar}
       </aside>
-      <div class="flex-1 flex flex-col min-w-0 min-h-0 ${mainClassName}">
+      <div class="au-split-main flex flex-col ${mainClassName}">
         ${children}
       </div>
     </div>

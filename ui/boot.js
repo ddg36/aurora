@@ -183,39 +183,156 @@ requestAnimationFrame(() => globalThis.auroraTwind.apply());
 
 }
 
+async function _chequearSetup() {
+  try {
+    const r = await fetch(BASE + '/setup/status');
+    if (!r.ok) return;
+    const st = await r.json();
+    if (st.pi_sdk?.ok) return;
+    await new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.95);display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
+      const check = (ok, label, detail, href) => `
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;text-align:left">
+          <span style="font-size:18px;margin-top:1px">${ok ? '✅' : '❌'}</span>
+          <div>
+            <div style="color:${ok ? '#86efac' : '#fca5a5'};font-weight:600;font-size:14px">${label}</div>
+            ${detail ? `<div style="color:#666;font-size:12px;margin-top:2px">${detail}</div>` : ''}
+            ${href && !ok ? `<a data-ext-link="${href}" href="${href}"
+              style="font-size:12px;color:#7dd3fc;text-decoration:underline;cursor:pointer;margin-top:4px;display:inline-block">
+              → ${href}</a>` : ''}
+          </div>
+        </div>`;
+      overlay.innerHTML = `
+        <div style="background:#111;border:1px solid #222;border-radius:14px;padding:40px 36px;width:360px;text-align:center">
+          <div style="font-size:24px;font-weight:700;color:#fff;margin-bottom:6px">Aurora</div>
+          <div style="font-size:13px;color:#666;margin-bottom:28px">Verificando requisitos…</div>
+          <div style="margin-bottom:24px">
+            ${check(true, 'Python', 'Servidor corriendo')}
+            ${check(st.pi_sdk?.ok, 'Pi', st.pi_sdk?.ok ? 'Instalado' : 'Agente de herramientas opcional', 'https://pi.dev/')}
+          </div>
+          <div style="display:flex;gap:10px">
+            <button id="aurora-setup-retry"
+              style="flex:1;padding:10px;border-radius:8px;border:1px solid #333;background:#1a1a1a;color:#fff;font-size:13px;cursor:pointer">
+              Verificar de nuevo
+            </button>
+            <button id="aurora-setup-continue"
+              style="flex:1;padding:10px;border-radius:8px;border:none;background:#fff;color:#000;font-size:13px;font-weight:600;cursor:pointer">
+              Continuar
+            </button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelectorAll('[data-ext-link]').forEach(a => {
+        a.addEventListener('click', e => {
+          e.preventDefault();
+          const url = a.getAttribute('data-ext-link');
+          try { window.open(url, '_blank'); } catch (_) {}
+          // fallback: postear al parent (extensión) para que abra la URL
+          try { window.parent.postMessage({ type: 'AURORA_OPEN_URL', url }, '*'); } catch (_) {}
+        });
+      });
+      overlay.querySelector('#aurora-setup-continue').addEventListener('click', () => {
+        overlay.remove(); resolve();
+      });
+      overlay.querySelector('#aurora-setup-retry').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true; btn.textContent = 'Verificando…';
+        overlay.remove(); await _chequearSetup(); resolve();
+      });
+    });
+  } catch (_) {}
+}
+
+function _notificarExtension(nombre, token) {
+  if (window.parent === window) return;
+  try {
+    window.parent.postMessage({
+      type: 'AURORA_BG_REQUEST', id: 'auth-init',
+      payload: { type: 'AURORA_SAVE_AUTH', nombre, token },
+    }, '*');
+  } catch (_) {}
+}
+
+function _mostrarLoginOverlay() {
+  return new Promise((resolve, reject) => {
+    const overlay = document.createElement('div');
+    overlay.id = 'aurora-login-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
+    overlay.innerHTML = `
+      <div style="background:#111;border:1px solid #333;border-radius:12px;padding:40px 36px;width:320px;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:#fff;margin-bottom:8px">Aurora</div>
+        <div style="font-size:13px;color:#888;margin-bottom:28px">¿Con qué nombre entrás?</div>
+        <input id="aurora-login-input" type="text" placeholder="Tu nombre..." autocomplete="off" spellcheck="false"
+          style="width:100%;box-sizing:border-box;padding:10px 14px;border-radius:8px;border:1px solid #444;background:#1a1a1a;color:#fff;font-size:15px;outline:none;margin-bottom:16px"/>
+        <button id="aurora-login-btn"
+          style="width:100%;padding:10px;border-radius:8px;border:none;background:#fff;color:#000;font-size:15px;font-weight:600;cursor:pointer">
+          Entrar
+        </button>
+        <div id="aurora-login-error" style="margin-top:12px;font-size:12px;color:#f87171;min-height:16px"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const input = overlay.querySelector('#aurora-login-input');
+    const btn = overlay.querySelector('#aurora-login-btn');
+    const errorEl = overlay.querySelector('#aurora-login-error');
+    input.focus();
+
+    const intentar = async () => {
+      const nombre = input.value.trim();
+      if (!nombre) { errorEl.textContent = 'Escribí tu nombre para continuar.'; return; }
+      btn.disabled = true; btn.textContent = '…'; errorEl.textContent = '';
+      try {
+        const res = await fetch(BASE + '/db/usuarios/init', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nombre }),
+        });
+        if (!res.ok) throw new Error('Error del servidor (' + res.status + ')');
+        const data = await res.json();
+        if (!data.token) throw new Error('Sin token en la respuesta');
+        localStorage.setItem('aurora_token', data.token);
+        _notificarExtension(nombre, data.token);
+        overlay.remove();
+        resolve(data.token);
+      } catch (err) {
+        errorEl.textContent = err.message || 'No se pudo conectar con el servidor.';
+        btn.disabled = false; btn.textContent = 'Entrar';
+      }
+    };
+
+    btn.addEventListener('click', intentar);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') intentar(); });
+  });
+}
+
 async function ensureAuroraUser() {
+  const existing = localStorage.getItem('aurora_token');
 
-const existing = localStorage.getItem("aurora_token");
+  if (existing) {
+    // Validar el token contra el servidor antes de usarlo.
+    try {
+      const r = await fetch(BASE + '/db/usuarios/me', {
+        headers: { Authorization: 'Bearer ' + existing },
+      });
+      if (r.ok) {
+        const data = await r.json().catch(() => ({}));
+        // Re-sincronizar extensión aunque la sesión ya existiera — cubre el
+        // caso de extensión reinstalada sin que aparezca el overlay de login.
+        _notificarExtension(data.nombre || '', existing);
+        return existing;
+      }
+    } catch (_) {}
+    // Token inválido o servidor caído — limpiar y pedir login.
+    localStorage.removeItem('aurora_token');
+  }
 
-if (existing) return existing;
-
-const res = await fetch(BASE + "/db/usuarios/init", {
-
-method: "POST",
-
-headers: { "Content-Type": "application/json" },
-
-body: JSON.stringify({
-
-nombre: "deml",
-
-workspace_root: "/media/almacen/deml/Downloads/core_instruction",
-
-}),
-
-});
-
-if (!res.ok) throw new Error("usuarios/init failed " + res.status);
-
-const data = await res.json();
-
-if (data.token) localStorage.setItem("aurora_token", data.token);
-
-return data.token || "";
-
+  return _mostrarLoginOverlay();
 }
 
 setupTwind();
+
+await _chequearSetup();
 
 await ensureAuroraUser().catch(err => {
 
@@ -225,7 +342,7 @@ console.warn("[Aurora v2] auth init failed", err);
 
 const [{ App }, store, extBridge, eventos, agentEye, cloudBridge] = await Promise.all([
 
-import("./app.js?v=v5-cloud-recovery-1"),
+import("./app.js?v=v47-performance-tooling"),
 
 import("./store.js"),
 

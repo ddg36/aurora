@@ -1,5 +1,8 @@
-litestar[standard]>=2.8.0
-aiosqlite>=0.20.0
-httpx>=0.27.0
-faster-whisper>=1.2.0
-edge-tts>=7.0.0
+litestar[standard]>=2.24.0
+aiosqlite>=0.22.0
+httpx>=0.28.0
+faster-whisper>=1.2.1
+edge-tts>=7.2.0
+
+# Opcional — automatización de navegador (requiere: playwright install chromium)
+# browser-use>=0.1.0

@@ -254,12 +254,12 @@ export default function MDReader() {
 
   useEffect(() => {
     setViewActions([
-      { id: 'mdreader-refresh', icon: '↻', title: 'Recargar índice Markdown', onClick: () => loadWorkspace(root) },
-      { id: 'mdreader-new', icon: '＋', title: 'Nueva nota', onClick: nuevaNota },
-      { id: 'mdreader-save', icon: '⌁', title: 'Guardar archivo actual', onClick: guardarActual, disabled: () => !activePath || !rawDirty },
-      { id: 'mdreader-edit', icon: '✎', title: 'Editar Markdown', onClick: () => setEditMode(v => !v), active: () => editMode, disabled: () => !activePath },
-      { id: 'mdreader-summary', icon: '✦', title: 'Resumir con Aurora', onClick: resumirActual, disabled: () => !content.trim() || summarizing },
-      { id: 'mdreader-graph', icon: '◌', title: 'Abrir grafo workspace', onClick: () => setMode('workspace') },
+      { id: 'mdreader-refresh', icon: 'refresh', title: 'Recargar índice Markdown', onClick: () => loadWorkspace(root) },
+      { id: 'mdreader-new', icon: 'plus', title: 'Nueva nota', onClick: nuevaNota },
+      { id: 'mdreader-save', icon: 'save', title: 'Guardar archivo actual', onClick: guardarActual, disabled: () => !activePath || !rawDirty },
+      { id: 'mdreader-edit', icon: 'edit', title: 'Editar Markdown', onClick: () => setEditMode(v => !v), active: () => editMode, disabled: () => !activePath },
+      { id: 'mdreader-summary', icon: 'spark', title: 'Resumir con Aurora', onClick: resumirActual, disabled: () => !content.trim() || summarizing },
+      { id: 'mdreader-graph', icon: 'grid', title: 'Abrir grafo workspace', onClick: () => setMode('workspace') },
     ]);
     return () => clearViewActions();
   }, [root, activePath, rawDirty, editMode, content, summarizing]);
@@ -716,7 +716,7 @@ export default function MDReader() {
       </aside>
 
       <${sidebarMenu.FloatingMenu} class="mdr-sidebar mdr-sidebar-floating">
-        <${Button} iconOnly class="sp-nav-toggle" title="Ocultar biblioteca" onClick=${() => setTreeOpen(false)}>✕<//>
+        <${Button} icon="close" iconOnly class="sp-nav-toggle" title="Ocultar biblioteca" onClick=${() => setTreeOpen(false)} />
         ${sidebarContent}
       <//>
 
@@ -731,9 +731,9 @@ export default function MDReader() {
             </div>
           </div>
           <div class="mdr-primary-actions">
-            <${Button} iconOnly variant=${rawDirty ? 'primary' : undefined} onClick=${guardarActual} disabled=${!activePath || !rawDirty} title="Guardar">💾<//>
-            <${Button} iconOnly active=${editMode} onClick=${() => setEditMode(v => !v)} disabled=${!activePath} title="Editar">✎<//>
-            <${Button} iconOnly btnRef=${summaryMenu.anchorRef} active=${!!summary} onClick=${resumirActual} disabled=${!content.trim() || summarizing} title=${summarizing ? 'Generando resumen…' : 'Resumen'}>${summarizing ? '◌' : '📝'}<//>
+            <${Button} icon="save" iconOnly variant=${rawDirty ? 'primary' : undefined} onClick=${guardarActual} disabled=${!activePath || !rawDirty} title="Guardar" />
+            <${Button} icon="edit" iconOnly active=${editMode} onClick=${() => setEditMode(v => !v)} disabled=${!activePath} title="Editar" />
+            <${Button} icon=${summarizing ? 'refresh' : 'spark'} iconOnly btnRef=${summaryMenu.anchorRef} active=${!!summary} onClick=${resumirActual} disabled=${!content.trim() || summarizing} title=${summarizing ? 'Generando resumen…' : 'Resumen'} />
             ${['read', 'doc', 'workspace'].includes(mode) && !sidePanelOpen && html`
               <${Button} iconOnly title="Mostrar panel lateral" onClick=${() => setSidePanelOpen(true)}>‹<//>
             `}
@@ -759,7 +759,7 @@ export default function MDReader() {
             />
           </div>
           <div class="mdr-command-actions">
-            <${Button} iconOnly onClick=${abrirExplorador} disabled=${!activePath && !root} title="Abrir en el explorador del sistema">📂<//>
+            <${Button} icon="folder" iconOnly onClick=${abrirExplorador} disabled=${!activePath && !root} title="Abrir en el explorador del sistema" />
             <${Button} iconOnly onClick=${() => loadWorkspace(root)} disabled=${loading} title=${loading ? 'Indexando…' : 'Refrescar workspace'}>${loading ? '◌' : '↻'}<//>
           </div>
         </div>
@@ -841,7 +841,7 @@ export default function MDReader() {
         `}
 
         ${mode === 'read' && rendered && html`
-          <div class=${clsx('mdr-reader-layout', !sidePanelOpen && 'is-panel-collapsed')}>
+          <div class=${clsx('mdr-reader-layout', (!sidePanelOpen || rendered.headings.length === 0) && 'is-panel-collapsed')}>
             <div id="md-reader-scroll" class="mdr-reader-scroll" onScroll=${onReaderScroll} onClick=${handleContentClick}>
               <article class="mdr-reader-page">
                 <header class="mdr-document-head">
@@ -866,10 +866,12 @@ export default function MDReader() {
                   onInput=${e => { setContent(e.target.value); setRawDirty(true); }}
                 />
               `}
-                <div class="markdown-body" dangerouslySetInnerHTML=${{ __html: rendered.html }} />
+                ${content.trim()
+                  ? html`<div class="markdown-body" dangerouslySetInnerHTML=${{ __html: rendered.html }} />`
+                  : html`<div class="mdr-document-empty"><${Icon} name="edit" size=${22}/><strong>Esta nota está vacía</strong><span>Activa edición y convierte este espacio en algo recuperable.</span></div>`}
               </article>
             </div>
-            <aside class=${clsx('mdr-outline', !sidePanelOpen && 'is-hidden')}>
+            <aside class=${clsx('mdr-outline', (!sidePanelOpen || rendered.headings.length === 0) && 'is-hidden')}>
               <div class="mdr-outline-head">
                 <strong>Outline</strong>
                 <small>${rendered.headings.length}</small>
@@ -985,7 +987,7 @@ export default function MDReader() {
         <${summaryMenu.FloatingMenu} class="mdr-summary">
           <div class="mdr-summary-head">
             <strong>Resumen Aurora</strong>
-            <${Button} iconOnly onClick=${() => setSummary('')} title="Cerrar">✕<//>
+            <${Button} icon="close" iconOnly onClick=${() => setSummary('')} title="Cerrar" />
           </div>
           <div class="mdr-summary-body markdown-body" dangerouslySetInnerHTML=${{ __html: renderMarkdown(summary, 'resumen.md').html }} />
         <//>

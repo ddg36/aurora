@@ -6,9 +6,10 @@ import { Input, Select } from '../../../components/Input.js';
 import { Panel, PanelHeader, PanelBody } from '../../../components/Panel.js';
 import { getCreativityIdeas, saveCreativityIdeas, deleteCreativityIdeas } from '../../../components/shared/builder-api.js';
 import { Toast } from '../../../components/shared/toast.js';
+import { Icon } from '../../../components/Icon.js';
 
 const CAMPOS = ['personajes', 'escenarios', 'conflictos', 'giros', 'temas'];
-const ICONOS = { personajes: '👤', escenarios: '🏰', conflictos: '⚡', giros: '🌀', temas: '🎭' };
+const ICONOS = { personajes: 'user', escenarios: 'grid', conflictos: 'warning', giros: 'repeat', temas: 'users' };
 
 export function CreativityIdeasEditor({ onClose }) {
   const [tematicas, setTematicas] = useState([]);
@@ -75,7 +76,7 @@ export function CreativityIdeasEditor({ onClose }) {
   return html`
     <${Panel} class="w-[min(560px,100%)] max-h-[88vh] flex flex-col">
       <${PanelHeader}>
-        <span class="text-sm font-bold text-aurora-text">💡 Editar Conceptos Creativos</span>
+        <span class="text-sm font-bold text-aurora-text inline-flex items-center gap-2"><${Icon} name="bulb" size=${16}/> Editar conceptos creativos</span>
         <${Button} size="sm" onClick=${onClose}>✕</${Button}>
       </${PanelHeader}>
       <${PanelBody} class="flex flex-col gap-3 overflow-y-auto">
@@ -91,7 +92,7 @@ export function CreativityIdeasEditor({ onClose }) {
         ${tematica && CAMPOS.map(campo => html`
           <div key=${campo} class="flex flex-col gap-1">
             <div class="flex items-center gap-1.5">
-              <span class="text-xs font-bold text-aurora-text-muted uppercase">${ICONOS[campo]} ${campo}</span>
+              <span class="text-xs font-bold text-aurora-text-muted uppercase inline-flex items-center gap-1.5"><${Icon} name=${ICONOS[campo]} size=${13}/> ${campo}</span>
               <span class="text-[9px] text-aurora-text-dim">(${(current[campo] || []).length})</span>
             </div>
             <${ChipGroup}>

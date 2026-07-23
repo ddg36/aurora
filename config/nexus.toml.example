@@ -1,0 +1,11 @@
+# Copiá este archivo como nexus.toml y completá tus rutas locales.
+# nexus.toml está en .gitignore — cada máquina tiene el suyo.
+
+[nexus]
+host = "localhost"
+port = 7777
+
+[workspaces]
+# Rutas absolutas a los workspaces de los otros módulos Aurora (au-ash, au-aihub).
+ash   = ""
+aihub = ""

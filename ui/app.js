@@ -9,11 +9,11 @@ import { cargarTema } from './modules/ajustes/scripts/tema.js';
 
 import { aplicarTema } from './components/themes/manager.js';
 
-import { THEMES } from './components/themes/index.js?v=v4-interface-hud-1';
+import { THEMES } from './components/themes/index.js?v=v9-lyria-presence-1';
 
-import { BACKGROUND_LOADERS } from './components/themes/backgrounds/loaders.js?v=v4-interface-hud-1';
+import { BACKGROUND_LOADERS } from './components/themes/backgrounds/loaders.js?v=v20-scene-budget';
 
-import { HUD_LOADERS } from './components/themes/hud/loaders.js?v=v4-interface-hud-1';
+import { HUD_LOADERS } from './components/themes/hud/loaders.js?v=v9-lyria-presence-1';
 
 import { Footer } from './components/footer/footer.js';
 
@@ -25,6 +25,8 @@ import { NotifCenter } from './components/nav/notif-center.js';
 
 import { AgentEye } from './components/agent-eye/index.js';
 
+import { AvatarVoiceOverlay } from './components/lyra/avatar-presence.js?v=v3-avatar-mood';
+
 import { iniciarTemaAuto } from './components/themes/tema-hora.js';
 
 import { TABS } from './components/nav/nav-tabs.js';
@@ -34,6 +36,7 @@ import { CommandPalette } from './components/nav/command-palette.js';
 import { restaurarTab, iniciarPersistenciaUI } from './components/nav/sesion-ui.js';
 
 import { iconButtonClass } from './components/shared/iconButton.js';
+import { Icon } from './components/Icon.js';
 
 // Inicializa el registro semántico AIHub aunque la vista activa todavía no
 // haya publicado acciones.
@@ -42,41 +45,43 @@ import './components/shared/ai-view-bridge.js';
 
 const MODULE_LOADERS = {
 
-inicio:       () => import('./modules/inicio/view/inicio.js?v=v2-clean-ui-14'),
+inicio:       () => import('./modules/inicio/view/inicio.js?v=v13-ai-view'),
 
-aurora:       () => import('./modules/aurora/view/aurora.js?v=v2-control-center-3'),
+aurora:       () => import('./modules/aurora/view/aurora.js?v=v3-surface-convergence-1'),
 
-productividad: () => import('./modules/productividad/view/productividad.js?v=v2-productividad-1'),
+productividad: () => import('./modules/productividad/view/productividad.js?v=v4-ai-view'),
 
-lyra:         () => import('./modules/lyra/view/lyra.js?v=v2-keepalive-1'),
+lyra:         () => import('./modules/lyra/view/lyra.js?v=v19-performance-tooling'),
 
-llmcloud:     () => import('./modules/llmcloud/view/llmcloud.js?v=v2-clean-ui-15'),
+llmcloud:     () => import('./modules/llmcloud/view/llmcloud.js?v=v8-ai-view'),
 
-prompts:      () => import('./modules/prompts/view/prompts.js?v=v2-clean-ui-14'),
+prompts:      () => import('./modules/prompts/view/prompts.js?v=v8-ai-view'),
 
-wiki:         () => import('./modules/wiki/view/wiki.js?v=v2-clean-ui-14'),
+wiki:         () => import('./modules/wiki/view/wiki.js?v=v9-ai-view'),
 
-scratchpad:   () => import('./modules/scratchpad/view/scratchpad.js?v=v2-clean-ui-14'),
+scratchpad:   () => import('./modules/scratchpad/view/scratchpad.js?v=v3-notes-pass-1'),
 
-'md-reader':  () => import('./modules/md-reader/view/md-reader.js?v=v2-md-reader-2'),
+'md-reader':  () => import('./modules/md-reader/view/md-reader.js?v=v8-radiation-pass-1'),
 
-editor:       () => import('./modules/editor/view/editor.js?v=v2-clean-ui-14'),
+editor:       () => import('./modules/editor/view/editor.js?v=v4-ai-view'),
 
-stats:        () => import('./modules/stats/view/stats.js?v=v2-clean-ui-14'),
+stats:        () => import('./modules/stats/view/stats.js?v=v9-ai-view'),
 
-captura:      () => import('./modules/captura/view/captura.js?v=v2-bd-real-1'),
+captura:      () => import('./modules/captura/view/captura.js?v=v4-radiation-pass-1'),
 
-toolkit:      () => import('./modules/toolkit/view/toolkit.js?v=v2-clean-ui-15'),
+toolkit:      () => import('./modules/toolkit/view/toolkit.js?v=v8-surface-convergence-1'),
 
-chain:        () => import('./modules/chain/view/chain.js?v=v2-clean-ui-14'),
+chain:        () => import('./modules/chain/view/chain.js?v=v9-ai-view'),
 
-detective:    () => import('./modules/detective-tokens/view/detective.js?v=v2-clean-ui-14'),
+detective:    () => import('./modules/detective-tokens/view/detective.js?v=v9-ai-view'),
 
-webnavigator: () => import('./modules/webnavigator/view/web-navigator.js?v=v2-clean-ui-14'),
+webnavigator: () => import('./modules/webnavigator/view/web-navigator.js?v=v10-ai-view'),
 
-stylecatalog: () => import('./modules/stylecatalog/view/stylecatalog.js?v=v2-clean-ui-14'),
+stylecatalog: () => import('./modules/stylecatalog/view/stylecatalog.js?v=v5-ai-view'),
 
-ajustes:      () => import('./modules/ajustes/view/ajustes.js?v=v4-interface-hud-1'),
+ajustes:      () => import('./modules/ajustes/view/ajustes.js?v=v12-ai-view'),
+
+reproductor:  () => import('./modules/reproductor/view/reproductor.js?v=v3-batch-render-1'),
 
 };
 
@@ -279,21 +284,17 @@ return h(NotifCenter, { onClose: () => { notifAbierto.value = false; } });
 // de chocar contra él. Ícono-solo, scroll vertical nativo (la lista de 18
 // tabs es corta y el scroll táctil/rueda ya funciona solo, sin flechas).
 function NavBar({ tab }) {
-  return h('nav', { class: 'nav-rail relative z-10 h-full flex flex-col items-stretch border-l border-white/5 bg-black/20 backdrop-blur-sm overflow-y-auto scrollbar-none' },
+  return h('nav', { class: 'nav-rail relative z-10 h-full flex flex-col items-stretch overflow-y-auto scrollbar-none', 'aria-label': 'Herramientas de Aurora' },
     TABS.map(t => h('button', {
       key: t.id,
       onClick: () => setTab(t.id),
-      class: iconButtonClass(tab === t.id, 'rounded-md w-full h-9 flex-shrink-0 text-xs'),
+      class: iconButtonClass(tab === t.id, 'nav-rail-button w-full flex-shrink-0'),
       title: t.label,
       'aria-label': t.label,
       'aria-current': tab === t.id ? 'page' : undefined,
       'aria-pressed': tab === t.id ? 'true' : 'false',
     },
-      h('span', {
-        class: 'flex-shrink-0 flex items-center justify-center',
-        style: 'width:16px;height:16px',
-        dangerouslySetInnerHTML: { __html: t.svg || t.icon || '' },
-      }),
+      h(Icon, { name: t.icon, size: 17 }),
     ))
   );
 }
@@ -344,7 +345,7 @@ return h(
 
 'div',
 
-{ class: 'relative h-screen overflow-hidden', style: 'background:var(--aurora-bg,#0a0a0f);color:var(--aurora-text,#fff)' },
+{ class: 'aurora-app relative h-screen overflow-hidden' },
 
 h('div', { class: 'aurora-bg-layer fixed inset-0 z-0 pointer-events-none overflow-hidden', 'data-bg': bgId }, h(Background, {})),
 
@@ -364,7 +365,7 @@ h(
 
 h(
   'div',
-  { class: 'flex-1 min-w-0 min-h-0 flex flex-col' },
+  { class: 'aurora-workspace flex-1 min-w-0 min-h-0 flex flex-col' },
 
   // overflow-y-auto (no "hidden"): views como Ajustes no manejan su propio
   // scroll interno — en desktop entraban igual por sobra de alto, en un
@@ -384,7 +385,7 @@ h(
   // nunca se restringe al ancho real disponible).
   h(
     'main',
-    { class: 'flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col' },
+    { class: 'aurora-main flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col' },
     h(PersistentLyraView, { active: tab === 'lyra' }),
     tab !== 'lyra' ? h(ModuleView, { tabId: tab }) : null,
   ),
@@ -406,6 +407,8 @@ h(UserSwitcherMount, {}),
 h(NotifMount, {}),
 
 h(AgentEye, {}),
+
+h(AvatarVoiceOverlay, {}),
 
 );
 

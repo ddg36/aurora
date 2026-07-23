@@ -1,0 +1,29 @@
+.lyra-session-bar{min-height:42px;padding:6px 8px!important;background:color-mix(in srgb,var(--aurora-surface-1) 88%,transparent)}
+.lyra-session-bar>select:first-of-type{min-width:160px;flex:1 1 190px;max-width:260px}
+.lyra-empty-stage{width:min(440px,calc(100% - 24px));margin:auto;padding:14px;border:1px solid var(--aurora-border);border-radius:var(--aurora-radius-md);background:color-mix(in srgb,var(--aurora-surface-1) 80%,transparent);box-shadow:var(--aurora-shadow-sm)}
+.lyra-empty-stage .au-empty{padding:15px 12px 12px}.lyra-starter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.lyra-starter-grid button{min-width:0;min-height:42px;padding:7px;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--aurora-border);border-radius:var(--aurora-radius-sm);background:var(--aurora-surface-1);color:var(--aurora-text-muted);font-size:9px;cursor:pointer}.lyra-starter-grid button:hover{border-color:var(--aurora-border-strong);background:var(--aurora-surface-2);color:var(--aurora-text)}.lyra-starter-grid button .au-icon{color:var(--aurora-accent)}
+@media(max-width:480px){.lyra-starter-grid{grid-template-columns:1fr}.lyra-starter-grid button{justify-content:flex-start}.lyra-empty-stage{padding:9px}}
+
+/* MIRADA DE LYRIA — presencia semántica, visible sólo con su HUD canónico. */
+.lyria-presence,.lyria-gaze{display:none}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .lyria-status-dot{display:none}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .lyria-presence{display:inline-flex;align-items:center;justify-content:center;gap:5px;width:30px;height:20px;flex:0 0 auto}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell :is(.lyria-presence,.lyria-gaze)>i{display:block;width:7px;height:3px;border-radius:90% 18% 90% 18%;background:#5f1520;box-shadow:0 0 4px rgba(227,27,54,.18);transform:skewX(-16deg)}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell :is(.lyria-presence,.lyria-gaze)>i+ i{transform:scaleX(-1) skewX(-16deg)}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .lyria-gaze{position:relative;z-index:1;display:flex;justify-content:center;gap:12px;height:14px;margin:5px 0 -5px;pointer-events:none}
+.aurora-bg-layer:has(.aurora-lyria-presence)~.aurora-ui-shell .lyria-gaze{display:none}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .lyria-gaze>i{width:18px;height:5px;background:#8f1225;box-shadow:0 0 5px #e31b36,0 0 14px rgba(227,27,54,.34)}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .lyra-empty-stage .au-empty-icon{display:none}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .lyria-empty-stage{position:relative;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,78,95,.18),0 -12px 42px rgba(227,27,54,.075),0 16px 38px rgba(0,0,0,.34)}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .lyria-empty-stage::before{content:'';position:absolute;z-index:0;inset:0;pointer-events:none;background:radial-gradient(ellipse 70% 42% at 50% -8%,rgba(255,50,72,.16),rgba(227,27,54,.045) 48%,transparent 76%)}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .lyria-empty-stage>*{position:relative;z-index:1}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .llama-view[data-lyria-state="offline"] :is(.lyria-presence,.lyria-gaze)>i{background:#4e4649!important;box-shadow:none!important;opacity:.38}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .llama-view[data-lyria-state="ready"] :is(.lyria-presence,.lyria-gaze)>i{background:#9f1427;box-shadow:0 0 5px rgba(227,27,54,.54),0 0 12px rgba(227,27,54,.18)}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .llama-view[data-lyria-state="listening"] :is(.lyria-presence,.lyria-gaze)>i{background:#ff304c;box-shadow:0 0 4px #ff7184,0 0 10px #ff203f,0 0 24px rgba(227,27,54,.74);animation:lyria-gaze-listen 1.45s ease-in-out infinite}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .llama-view[data-lyria-state="thinking"] :is(.lyria-presence,.lyria-gaze)>i{background:#f52140;box-shadow:0 0 4px #ff6479,0 0 12px #e31b36,0 0 26px rgba(227,27,54,.56);animation:lyria-gaze-think 1.7s ease-in-out infinite}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .llama-view[data-lyria-state="thinking"] :is(.lyria-presence,.lyria-gaze)>i+ i{animation-delay:-.85s}
+.aurora-hud-layer[data-hud="lyria"]~.aurora-ui-shell .llama-view[data-lyria-state="working"] :is(.lyria-presence,.lyria-gaze)>i{background:#ff1838;box-shadow:0 0 5px #ff6a7e,0 0 13px #ff1838,0 0 30px rgba(227,27,54,.8);animation:lyria-gaze-work .95s ease-in-out infinite}
+@keyframes lyria-gaze-listen{0%,100%{opacity:.78;filter:brightness(.92)}50%{opacity:1;filter:brightness(1.28)}}
+@keyframes lyria-gaze-think{0%,100%{opacity:.5;filter:brightness(.8)}50%{opacity:1;filter:brightness(1.35)}}
+@keyframes lyria-gaze-work{0%,100%{opacity:.72;filter:brightness(.9)}45%{opacity:1;filter:brightness(1.45)}55%{opacity:.9;filter:brightness(1.15)}}
+@media(prefers-reduced-motion:reduce){.lyria-presence>i,.lyria-gaze>i{animation:none!important}}

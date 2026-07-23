@@ -1,0 +1,157 @@
+{
+  "manifest_version": 3,
+  "name": "Aurora Hub",
+  "version": "2.1.0",
+  "description": "Aurora v2 — hub unificado de contenido, tareas y automatización.",
+  "permissions": [
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback",
+    "sidePanel",
+    "tabs",
+    "scripting",
+    "activeTab",
+    "storage",
+    "clipboardWrite",
+    "clipboardRead",
+    "tabCapture",
+    "windows",
+    "webNavigation",
+    "debugger",
+    "downloads",
+    "notifications"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "host_permissions": [
+    "http://localhost:7779/*",
+    "ws://localhost:7779/*",
+    "http://127.0.0.1:7779/*",
+    "http://localhost:7777/*",
+    "http://127.0.0.1:7777/*",
+    "http://localhost:8088/*",
+    "*://*.youtube.com/*",
+    "*://chat.openai.com/*",
+    "*://chatgpt.com/*",
+    "*://auth.openai.com/*",
+    "*://gemini.google.com/*",
+    "*://claude.ai/*",
+    "*://copilot.microsoft.com/*",
+    "*://*.perplexity.ai/*",
+    "*://grok.com/*",
+    "*://kimi.moonshot.cn/*",
+    "*://poe.com/*",
+    "*://you.com/*",
+    "*://chat.qwen.ai/*",
+    "*://accounts.google.com/*",
+    "*://appleid.apple.com/*",
+    "*://login.microsoftonline.com/*",
+    "*://login.live.com/*",
+    "https://*/*",
+    "<all_urls>"
+  ],
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Aurora Hub"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["sandbox/*", "general/*", "debug-artifacts/*", "ui/images/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+  },
+  "externally_connectable": {
+    "ids": ["amgjbhnocmeiifdgdgjabbgblcggleah"]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://gemini.google.com/*",
+        "*://chat.openai.com/*",
+        "*://chatgpt.com/*",
+        "*://claude.ai/*",
+        "*://grok.com/*",
+        "*://*.perplexity.ai/*",
+        "*://copilot.microsoft.com/*",
+        "*://kimi.moonshot.cn/*",
+        "*://poe.com/*",
+        "*://you.com/*",
+        "*://chat.qwen.ai/*"
+      ],
+      "js": ["content-scripts/aurora-visibility-shim.js"],
+      "all_frames": true,
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "*://gemini.google.com/*",
+        "*://chat.openai.com/*",
+        "*://chatgpt.com/*",
+        "*://claude.ai/*",
+        "*://grok.com/*",
+        "*://*.perplexity.ai/*",
+        "*://copilot.microsoft.com/*",
+        "*://kimi.moonshot.cn/*",
+        "*://poe.com/*",
+        "*://you.com/*",
+        "*://chat.qwen.ai/*"
+      ],
+      "js": ["content-scripts/ai-bridge.js", "content-scripts/gem-observer.js", "content-scripts/session-sniffer.js", "content-scripts/cloud-relay.js"],
+      "all_frames": true,
+      "run_at": "document_end",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "*://auth.openai.com/*",
+        "*://accounts.google.com/*",
+        "*://appleid.apple.com/*",
+        "*://login.microsoftonline.com/*",
+        "*://login.live.com/*"
+      ],
+      "js": ["content-scripts/auth-escape.js"],
+      "all_frames": true,
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-scripts/main.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content-scripts/yt-captures.js"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content-scripts/yt-noambient.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-scripts/bold-hud.js"],
+      "run_at": "document_end"
+    }
+  ]
+}

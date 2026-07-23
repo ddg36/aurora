@@ -1,4 +1,5 @@
 import { BTN_HEIGHT, BTN_SAFE } from './shared/iconButton.js';
+import { Icon, splitIconLabel } from './Icon.js';
 
 const { html } = globalThis;
 
@@ -10,8 +11,9 @@ const VARIANTS = {
 };
 
 export function Chip({ active, variant, accentColor, padX, onClick, title, disabled, class: cls, children }) {
+  const normalized = splitIconLabel(children);
   const base = [
-    'inline-flex items-center text-xs rounded-md border cursor-pointer transition-colors',
+    'au-chip inline-flex items-center text-xs cursor-pointer transition-colors',
     BTN_HEIGHT, BTN_SAFE,
     padX == null && 'px-2.5',
     !accentColor && (active ? 'border-aurora-accent text-aurora-accent fx-active' : 'border-aurora-border text-aurora-text fx-hover'),
@@ -32,10 +34,12 @@ export function Chip({ active, variant, accentColor, padX, onClick, title, disab
     style && `color:${style.color};background:${style.background};border-color:${style.borderColor};`,
   ].filter(Boolean).join('');
 
-  return html`<span class=${base} style=${inlineStyle || undefined} onClick=${disabled ? undefined : onClick} title=${title}>${children}</span>`;
+  return html`<span class=${base} style=${inlineStyle || undefined} onClick=${disabled ? undefined : onClick} title=${title}>
+    ${normalized.icon && html`<${Icon} name=${normalized.icon} size=${14} />`}${normalized.label}
+  </span>`;
 }
 
 export function ChipGroup({ class: cls, rowRef, gap, children }) {
   const style = gap != null ? `gap:${gap}px;` : undefined;
-  return html`<div ref=${rowRef} class=${['flex flex-wrap', gap == null && 'gap-1.5', cls].filter(Boolean).join(' ')} style=${style}>${children}</div>`;
+  return html`<div ref=${rowRef} class=${['au-chip-group flex flex-wrap', gap == null && 'gap-1.5', cls].filter(Boolean).join(' ')} style=${style}>${children}</div>`;
 }

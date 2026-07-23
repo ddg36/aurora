@@ -1,26 +1,27 @@
 import { Button } from '../Button.js';
 import { Chip } from '../Chip.js';
+import { Icon } from '../Icon.js';
 import { useFloatingMenu, AutoFitChips } from '../shared/iconButton.js';
 
 const { html } = globalThis;
 
 
 export const SCRATCHPAD_COMMANDS = [
-  { type: 'paragraph', label: 'Text', hint: 'Plain writing block' },
-  { type: 'heading_1', label: 'Heading 1', hint: 'Large section title' },
-  { type: 'heading_2', label: 'Heading 2', hint: 'Medium section title' },
-  { type: 'heading_3', label: 'Heading 3', hint: 'Small section title' },
-  { type: 'bullet', label: 'Bullet list', hint: 'Simple list item' },
-  { type: 'todo', label: 'To-do', hint: 'Checkbox task' },
-  { type: 'quote', label: 'Quote', hint: 'Quoted note' },
-  { type: 'code', label: 'Code', hint: 'Code snippet' },
-  { type: 'callout', label: 'Callout', hint: 'Highlighted idea' },
-  { type: 'toggle', label: 'Toggle', hint: 'Collapsible note' },
-  { type: 'image', label: 'Image', hint: 'Upload or paste an image URL' },
-  { type: 'bookmark', label: 'Bookmark', hint: 'Preview a useful link' },
-  { type: 'divider', label: 'Divider', hint: 'Visual break' },
-  { type: 'mini_table', label: 'Table view', hint: 'Small structured table' },
-  { type: 'mini_kanban', label: 'Board view', hint: 'Small kanban board' },
+  { type: 'paragraph', label: 'Texto', hint: 'Bloque de escritura libre' },
+  { type: 'heading_1', label: 'Título 1', hint: 'Sección principal' },
+  { type: 'heading_2', label: 'Título 2', hint: 'Sección intermedia' },
+  { type: 'heading_3', label: 'Título 3', hint: 'Sección pequeña' },
+  { type: 'bullet', label: 'Lista', hint: 'Elemento con viñeta' },
+  { type: 'todo', label: 'Tarea', hint: 'Compromiso verificable' },
+  { type: 'quote', label: 'Cita', hint: 'Fragmento citado' },
+  { type: 'code', label: 'Código', hint: 'Fragmento técnico' },
+  { type: 'callout', label: 'Aviso', hint: 'Idea que debe destacar' },
+  { type: 'toggle', label: 'Desplegable', hint: 'Detalle plegable' },
+  { type: 'image', label: 'Imagen', hint: 'Pega o carga una imagen' },
+  { type: 'bookmark', label: 'Enlace', hint: 'Referencia recuperable' },
+  { type: 'divider', label: 'Separador', hint: 'Cambio visual de sección' },
+  { type: 'mini_table', label: 'Tabla', hint: 'Datos estructurados' },
+  { type: 'mini_kanban', label: 'Tablero', hint: 'Flujo por columnas' },
 ];
 
 function cx(...items) {
@@ -227,11 +228,11 @@ export function ScratchpadWorkspaceNav({
 
   return html`
     <aside class="sp-workspace-nav is-collapsed">
-      <${Button} iconOnly btnRef=${navMenu.anchorRef} class="sp-nav-toggle" title="Expand sidebar" onClick=${onToggle}>☰<//>
+      <${Button} icon="menu" iconOnly btnRef=${navMenu.anchorRef} class="sp-nav-toggle" title="Abrir navegación" onClick=${onToggle} />
       ${contentEl}
     </aside>
     <${navMenu.FloatingMenu} class="sp-workspace-nav sp-workspace-nav-floating">
-      <${Button} iconOnly class="sp-nav-toggle" title="Collapse sidebar" onClick=${onToggle}>✕<//>
+      <${Button} icon="close" iconOnly class="sp-nav-toggle" title="Cerrar navegación" onClick=${onToggle} />
       ${contentEl}
     <//>
   `;
@@ -248,11 +249,11 @@ export function ScratchpadTopBar({
 }) {
   return html`
     <${AutoFitChips} class="sp-topbar">
-      <${Chip} active=${createPanelOpen} onClick=${onToggleCreatePanel} title="Insert block or view">Insert<//>
-      ${nexusOk && html`<${Chip} variant="accent" onClick=${onSave} title="Save to wiki/scratchpad.md">Save<//>`}
-      <${Chip} onClick=${onPaste} title="Paste from clipboard">Paste<//>
-      <${Chip} onClick=${onCopy} title="Copy markdown export">Copy<//>
-      <${Chip} onClick=${onClear} title="Clear scratchpad">Clear<//>
+      <${Chip} active=${createPanelOpen} onClick=${onToggleCreatePanel} title="Insertar bloque o vista"><${Icon} name="plus" size=${13}/> Insertar<//>
+      ${nexusOk && html`<${Chip} variant="accent" onClick=${onSave} title="Guardar en wiki/scratchpad.md"><${Icon} name="save" size=${13}/> Guardar<//>`}
+      <${Chip} onClick=${onPaste} title="Pegar desde el portapapeles"><${Icon} name="clipboard" size=${13}/> Pegar<//>
+      <${Chip} onClick=${onCopy} title="Copiar como Markdown"><${Icon} name="copy" size=${13}/> Copiar<//>
+      <${Chip} onClick=${onClear} title="Vaciar la nota"><${Icon} name="trash" size=${13}/> Limpiar<//>
     <//>
   `;
 }

@@ -1,15 +1,15 @@
 import { copiarTexto } from '../../../components/shared/clipboard.js';
-import { Button, Chip, AutoFitChips } from '../../../components/index.js';
+import { Button, Chip, AutoFitChips, Icon } from '../../../components/index.js';
 
 const html = (...args) => globalThis.html(...args);
 const { useEffect, useState } = globalThis.preactHooks;
 
 const ICONOS = {
-  tree: '🌳', model: '🧠', settings: '⚙️', 'scoped-models': '⭐',
-  session: '📊', hotkeys: '⌨️', changelog: '📜', trust: '🔒',
-  copy: '📋', export: '📄', share: '🔗', login: '🔑', logout: '🔑',
-  reload: '🔄', new: '🌱', name: '🏷️', compact: '🗜️',
-  fork: '🌿', clone: '🌿', import: '📥', quit: '🛑',
+  tree: 'split', model: 'brain', settings: 'settings', 'scoped-models': 'spark',
+  session: 'chart', hotkeys: 'terminal', changelog: 'history', trust: 'key',
+  copy: 'copy', export: 'file-text', share: 'link', login: 'key', logout: 'key',
+  reload: 'refresh', new: 'plus', name: 'tag', compact: 'package',
+  fork: 'split', clone: 'copy', import: 'download', quit: 'stop',
 };
 
 const TITULOS = {
@@ -45,8 +45,8 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
     <div class="comando-overlay-backdrop" onClick=${onClose} onKeyDown=${onKeyDown} tabIndex="-1">
       <div class="comando-overlay-card" onClick=${e => e.stopPropagation()}>
         <div class="comando-overlay-header">
-          <span>${ICONOS[comando] || '⚙️'} ${tituloDe(comando)}</span>
-          <${Button} iconOnly onClick=${onClose} title="Cerrar (Esc)">✕<//>
+          <span class="inline-flex items-center gap-2"><${Icon} name=${ICONOS[comando] || 'settings'} size=${16}/> ${tituloDe(comando)}</span>
+          <${Button} icon="close" iconOnly onClick=${onClose} title="Cerrar (Esc)" />
         </div>
         <div class="comando-overlay-body">
           ${aplicando && html`<div class="comando-overlay-aplicando">Aplicando…</div>`}
@@ -65,7 +65,7 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
                   style=${{ paddingLeft: (10 + n.profundidad * 16) + 'px' }}
                   onClick=${() => puedeRamificar && onAction('fork', n.id)}
                 >
-                  <span class="comando-overlay-marca">${n.actual ? '●' : ''}</span>
+                  <span class="comando-overlay-marca">${n.actual && html`<${Icon} name="check" size=${13}/>`}</span>
                   <span class="comando-overlay-rol comando-overlay-rol--${n.rol}">${n.rol}</span>
                   <span class="comando-overlay-preview">${n.preview}</span>
                 </div>
@@ -81,7 +81,9 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
                   class=${'comando-overlay-item' + (m.id === data.actual ? ' comando-overlay-item--actual' : '')}
                   onClick=${() => m.id !== data.actual && onAction('model', m.id)}
                 >
-                  <span class="comando-overlay-marca">${m.id === data.actual ? '●' : (m.favorito ? '⭐' : '')}</span>
+                  <span class="comando-overlay-marca">${m.id === data.actual
+                    ? html`<${Icon} name="check" size=${13}/>`
+                    : m.favorito ? html`<${Icon} name="spark" size=${13}/>` : null}</span>
                   <span class="comando-overlay-preview">${m.id}</span>
                   <span class="comando-overlay-badge">[${m.provider}]</span>
                 </div>
@@ -115,7 +117,7 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
                 const esFav = data.favoritos.includes(m.id);
                 return html`
                   <div key=${m.id} class="comando-overlay-item" onClick=${() => onAction('scoped-models', { id: m.id, quitar: esFav })}>
-                    <span class="comando-overlay-marca">${esFav ? '⭐' : '☆'}</span>
+                    <span class="comando-overlay-marca"><${Icon} name="spark" size=${13}/></span>
                     <span class="comando-overlay-preview">${m.id}</span>
                     <span class="comando-overlay-badge">[${m.provider}]</span>
                   </div>
@@ -124,7 +126,7 @@ export function ComandoOverlay({ comando, interactive, data, aplicando, onClose,
             </div>
           `}
           ${!aplicando && comando === 'copy' && copiado && html`
-            <div class="comando-overlay-aplicando">✔ Copiado al portapapeles</div>
+            <div class="comando-overlay-aplicando"><${Icon} name="check" size=${14}/> Copiado al portapapeles</div>
           `}
           ${!aplicando && !interactive && html`
             <pre class="comando-overlay-texto">${data.texto}</pre>

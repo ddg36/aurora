@@ -6,6 +6,7 @@ import { Input } from '../../../components/Input.js';
 import { Panel, PanelHeader, PanelBody } from '../../../components/Panel.js';
 import { getBuilderTemplate, saveBuilderTemplate } from '../../../components/shared/builder-api.js';
 import { Toast } from '../../../components/shared/toast.js';
+import { Icon, resolveIconName } from '../../../components/Icon.js';
 
 export function BuilderChipsEditor({ tipo, onClose }) {
   const [data, setData] = useState(null);
@@ -58,7 +59,7 @@ export function BuilderChipsEditor({ tipo, onClose }) {
   return html`
     <${Panel} class="w-[min(560px,100%)] max-h-[88vh] flex flex-col">
       <${PanelHeader}>
-        <span class="text-sm font-bold text-aurora-text">🏷 Editar Chips · ${tipo.toUpperCase()}</span>
+        <span class="text-sm font-bold text-aurora-text inline-flex items-center gap-2"><${Icon} name="tag" size=${16}/> Editar chips · ${tipo.toUpperCase()}</span>
         <${Button} size="sm" onClick=${onClose}>✕</${Button}>
       </${PanelHeader}>
       <${PanelBody} class="flex flex-col gap-3 overflow-y-auto">
@@ -68,7 +69,7 @@ export function BuilderChipsEditor({ tipo, onClose }) {
         ${(data.secciones || []).map(sec => html`
           <div key=${sec.id} class="bg-aurora-surface border border-aurora-border rounded-lg p-3 flex flex-col gap-2">
             <div class="flex items-center gap-2">
-              <span class="text-base">${sec.icon || '🏷'}</span>
+              <span><${Icon} name=${resolveIconName(sec.icon) || 'tag'} size=${15}/></span>
               <span class="text-xs font-bold text-aurora-text uppercase flex-1">${sec.label || sec.id}</span>
               <span class="text-[9px] text-aurora-text-dim">(${(sec.chips || []).length})</span>
               <${Button} size="sm" variant="danger" onClick=${() => removeSection(sec.id)}>🗑</${Button}>

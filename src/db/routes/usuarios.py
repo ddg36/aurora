@@ -9,6 +9,20 @@ from ..auth import auth_guard
 from .backup import TABLAS_HIJAS
 
 
+_AJUSTES_DEFAULT = {
+    "json_family_enabled_v1": "true",
+}
+
+
+async def _insertar_ajustes_default(db, usuario_id: int) -> None:
+    for clave, valor in _AJUSTES_DEFAULT.items():
+        await db.execute(
+            "INSERT OR IGNORE INTO ajustes (usuario_id, clave, valor) VALUES (?,?,?)",
+            (usuario_id, clave, valor),
+        )
+    await db.commit()
+
+
 @dataclass
 class InitBody:
     nombre: str = "default"
@@ -68,6 +82,7 @@ class UsuariosController(Controller):
         await db.commit()
         async with db.execute("SELECT id FROM usuarios WHERE token = ?", (token,)) as cur:
             row = await cur.fetchone()
+        await _insertar_ajustes_default(db, row["id"])
         return {"ok": True, "usuario_id": row["id"], "token": token}
 
     @post("/init")
@@ -95,7 +110,9 @@ class UsuariosController(Controller):
         await db.commit()
         async with db.execute("SELECT id FROM usuarios WHERE token = ?", (token,)) as cur:
             row = await cur.fetchone()
-        return {"usuario_id": row["id"], "token": token, "nuevo": True}
+        uid = row["id"]
+        await _insertar_ajustes_default(db, uid)
+        return {"usuario_id": uid, "token": token, "nuevo": True}
 
     @get("/me", guards=[auth_guard])
     async def me(self, request: Request) -> dict:

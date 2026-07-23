@@ -28,7 +28,7 @@ import {
   updateScratchpadBoard,
   updateScratchpadTable,
 } from '../scripts/notas.js?v=v2-clean-ui-4';
-import { ScratchpadPageShell, ScratchpadBlockEditor, SCRATCHPAD_COMMANDS } from '../../../components/scratchpad/index.js?v=v2-clean-ui-4';
+import { ScratchpadPageShell, ScratchpadBlockEditor, SCRATCHPAD_COMMANDS } from '../../../components/scratchpad/index.js?v=v3-notes-pass-1';
 import { setViewActions, clearViewActions } from '../../../components/footer/registry.js';
 import { usePersistedState } from '../../../components/shared/persisted-state.js';
 import { registerAIView } from '../../../components/shared/ai-view-actions.js';

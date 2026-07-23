@@ -22,3 +22,7 @@ src/db/aurora.db
 .qwen/
 *.bak-*
 .mi-utilidad/
+config/workspaces.toml
+config/nexus.toml
+.understand-anything/
+*.backup.*
